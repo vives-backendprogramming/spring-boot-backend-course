@@ -82,9 +82,17 @@ curl http://localhost:8080/api/pizzas
 ├── README.md
 ├── lesson-01-servlets/
 │   └── README.md
+├── lesson-02-spring-di-ioc/
+│   └── README.md
+├── lesson-03-properties-profiles/
+│   └── README.md
 ├── lesson-04-spring-boot-intro/
 │   ├── README.md
 │   └── pizzastore/                 # First Spring Boot project
+├── lesson-05-spring-mvc/
+│   └── README.md
+├── lesson-06-rest-principles/
+│   └── README.md
 ├── lesson-07-dtos-mappers/
 │   ├── README.md
 │   └── pizzastore-with-dtos/
