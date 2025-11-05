@@ -1,4 +1,4 @@
-# Lesson 9: Validation & Exception Handling
+# Lesson 10: Validation & Exception Handling
 
 **Building Robust APIs with Input Validation and Consistent Error Responses**
 

@@ -1,4 +1,4 @@
-# Lesson 10: Testing Spring Boot Applications
+# Lesson 11: Testing Spring Boot Applications
 
 **Writing Comprehensive Tests for Production-Ready APIs**
 

@@ -1,4 +1,4 @@
-# Lesson 8: Building a Complete REST API
+# Lesson 9: Building a Complete REST API
 
 **Implementing Full CRUD Operations with REST Best Practices**
 

@@ -1,4 +1,4 @@
-# Lesson 4: Spring MVC & Building a REST API
+# Lesson 5: Spring MVC & Building a REST API
 
 ## 📚 Table of Contents
 

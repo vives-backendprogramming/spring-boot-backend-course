@@ -1,4 +1,4 @@
-# Lesson 7: Working with JPA
+# Lesson 8: Working with JPA
 
 **Java Persistence API and Spring Data JPA**
 

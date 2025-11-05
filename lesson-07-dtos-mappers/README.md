@@ -1,4 +1,4 @@
-# Lesson 6: DTOs & Mappers
+# Lesson 7: DTOs & Mappers
 
 **Data Transfer Objects and Entity-DTO Mapping**
 
