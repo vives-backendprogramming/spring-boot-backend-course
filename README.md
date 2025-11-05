@@ -75,43 +75,6 @@ curl http://localhost:8080/api/pizzas
 
 ---
 
-## 📁 Repository Structure
-
-```
-.
-├── README.md
-├── lesson-01-servlets/
-│   └── README.md
-├── lesson-02-spring-di-ioc/
-│   └── README.md
-├── lesson-03-properties-profiles/
-│   └── README.md
-├── lesson-04-spring-boot-intro/
-│   ├── README.md
-│   └── pizzastore/                 # First Spring Boot project
-├── lesson-05-spring-mvc/
-│   └── README.md
-├── lesson-06-rest-principles/
-│   └── README.md
-├── lesson-07-dtos-mappers/
-│   ├── README.md
-│   └── pizzastore-with-dtos/
-├── lesson-08-working-with-jpa/
-│   ├── README.md
-│   └── pizzastore-with-jpa/
-├── lesson-09-complete-rest-api/
-│   ├── README.md
-│   └── pizzastore-complete-api/    # Complete CRUD API
-├── lesson-10-validation-exception-handling/
-│   ├── README.md
-│   └── pizzastore-with-validation/
-└── lesson-11-testing/
-    ├── README.md
-    └── pizzastore-with-tests/      # Fully tested application
-```
-
----
-
 ## 📝 License
 
 This course material is created for educational purposes at VIVES University.
