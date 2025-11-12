@@ -1,4 +1,4 @@
-# Lesson 6: REST Principles
+# Lesson 8: REST Principles
 
 ## 📚 Table of Contents
 

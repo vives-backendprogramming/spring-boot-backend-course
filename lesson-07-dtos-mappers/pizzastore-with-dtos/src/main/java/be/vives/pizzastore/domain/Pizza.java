@@ -2,7 +2,8 @@ package be.vives.pizzastore.domain;
 
 import jakarta.persistence.*;
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
+import java.util.HashSet;
+import java.util.Set;
 
 @Entity
 @Table(name = "pizzas")
@@ -21,22 +22,13 @@ public class Pizza {
     @Column(length = 1000)
     private String description;
 
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt;
+    // @OneToOne: Pizza has one NutritionalInfo
+    @OneToOne(mappedBy = "pizza", cascade = CascadeType.ALL, orphanRemoval = true)
+    private NutritionalInfo nutritionalInfo;
 
-    @Column(name = "updated_at")
-    private LocalDateTime updatedAt;
-
-    @PrePersist
-    protected void onCreate() {
-        createdAt = LocalDateTime.now();
-        updatedAt = LocalDateTime.now();
-    }
-
-    @PreUpdate
-    protected void onUpdate() {
-        updatedAt = LocalDateTime.now();
-    }
+    // @ManyToMany: Pizza can be favorited by many Customers
+    @ManyToMany(mappedBy = "favoritePizzas")
+    private Set<Customer> favoritedByCustomers = new HashSet<>();
 
     // Constructors
     public Pizza() {
@@ -81,19 +73,28 @@ public class Pizza {
         this.description = description;
     }
 
-    public LocalDateTime getCreatedAt() {
-        return createdAt;
+    public NutritionalInfo getNutritionalInfo() {
+        return nutritionalInfo;
     }
 
-    public void setCreatedAt(LocalDateTime createdAt) {
-        this.createdAt = createdAt;
+    public void setNutritionalInfo(NutritionalInfo nutritionalInfo) {
+        this.nutritionalInfo = nutritionalInfo;
     }
 
-    public LocalDateTime getUpdatedAt() {
-        return updatedAt;
+    public Set<Customer> getFavoritedByCustomers() {
+        return favoritedByCustomers;
     }
 
-    public void setUpdatedAt(LocalDateTime updatedAt) {
-        this.updatedAt = updatedAt;
+    public void setFavoritedByCustomers(Set<Customer> favoritedByCustomers) {
+        this.favoritedByCustomers = favoritedByCustomers;
+    }
+
+    @Override
+    public String toString() {
+        return "Pizza{" +
+                "id=" + id +
+                ", name='" + name + '\'' +
+                ", price=" + price +
+                '}';
     }
 }

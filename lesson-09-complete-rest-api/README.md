@@ -37,29 +37,30 @@ By the end of this lesson, you will be able to:
 
 Before building our complete REST API, let's recap the key concepts from previous lessons:
 
-### From Lesson 4: Spring Boot & Spring MVC
+### From Lesson 4 & 5: Spring Boot & Spring MVC
 - ✅ Spring MVC architecture
 - ✅ `@RestController` and `@RequestMapping`
 - ✅ Request handling with `@GetMapping`, `@PostMapping`, etc.
 - ✅ `ResponseEntity<T>` for full control over HTTP responses
 
-### From Lesson 5: REST Principles
-- ✅ Resource-based URLs (`/api/pizzas`, not `/api/getPizzas`)
-- ✅ HTTP methods for actions (GET, POST, PUT, DELETE)
-- ✅ HTTP status codes (200, 201, 204, 404, etc.)
-- ✅ Proper use of headers (Location, Content-Type)
+### From Lesson 6: Working with JPA
+- ✅ Entity relationships (@OneToOne, @OneToMany, @ManyToOne, @ManyToMany)
+- ✅ Spring Data JPA repositories
+- ✅ Custom queries and pagination
+- ✅ JOIN FETCH to avoid N+1 problems
 
-### From Lesson 6: DTOs & Mappers
+### From Lesson 7: DTOs & Mappers
 - ✅ Never expose entities directly
 - ✅ Request DTOs for input (CreatePizzaRequest, UpdatePizzaRequest)
 - ✅ Response DTOs for output (PizzaResponse)
 - ✅ MapStruct for entity ↔ DTO mapping
 
-### From Lesson 7: Working with JPA
-- ✅ Entity relationships (@OneToOne, @OneToMany, @ManyToOne, @ManyToMany)
-- ✅ Spring Data JPA repositories
-- ✅ Custom queries and pagination
-- ✅ JOIN FETCH to avoid N+1 problems
+### From Lesson 8: REST Principles
+- ✅ Resource-based URLs (`/api/pizzas`, not `/api/getPizzas`)
+- ✅ HTTP methods for actions (GET, POST, PUT, DELETE)
+- ✅ HTTP status codes (200, 201, 204, 404, etc.)
+- ✅ Proper use of headers (Location, Content-Type)
+
 
 **Now we combine everything into a production-ready REST API!** 🚀
 
