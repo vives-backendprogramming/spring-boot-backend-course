@@ -7,8 +7,6 @@ public record PizzaResponse(
         Long id,
         String name,
         BigDecimal price,
-        String description,
-        LocalDateTime createdAt,
-        LocalDateTime updatedAt
+        String description
 ) {
 }
