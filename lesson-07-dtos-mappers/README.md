@@ -373,15 +373,9 @@ public interface PizzaMapper {
     List<PizzaResponse> toResponseList(List<Pizza> pizzas);
     
     // Create Request DTO to Entity
-    @Mapping(target = "id", ignore = true)
-    @Mapping(target = "createdAt", ignore = true)
-    @Mapping(target = "updatedAt", ignore = true)
     Pizza toEntity(CreatePizzaRequest request);
     
     // Update existing entity from Update Request DTO
-    @Mapping(target = "id", ignore = true)
-    @Mapping(target = "createdAt", ignore = true)
-    @Mapping(target = "updatedAt", ignore = true)
     void updateEntityFromRequest(UpdatePizzaRequest request, @MappingTarget Pizza pizza);
 }
 ```
@@ -644,23 +638,6 @@ public class Pizza {
     @Column(length = 1000)
     private String description;
     
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt;
-    
-    @Column(name = "updated_at")
-    private LocalDateTime updatedAt;
-    
-    @PrePersist
-    protected void onCreate() {
-        createdAt = LocalDateTime.now();
-        updatedAt = LocalDateTime.now();
-    }
-    
-    @PreUpdate
-    protected void onUpdate() {
-        updatedAt = LocalDateTime.now();
-    }
-    
     // Constructors
     public Pizza() {}
     
@@ -683,11 +660,6 @@ public class Pizza {
     public String getDescription() { return description; }
     public void setDescription(String description) { this.description = description; }
     
-    public LocalDateTime getCreatedAt() { return createdAt; }
-    public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
-    
-    public LocalDateTime getUpdatedAt() { return updatedAt; }
-    public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }
 }
 ```
 
@@ -714,13 +686,9 @@ public interface PizzaMapper {
     List<PizzaResponse> toResponseList(List<Pizza> pizzas);
     
     @Mapping(target = "id", ignore = true)
-    @Mapping(target = "createdAt", ignore = true)
-    @Mapping(target = "updatedAt", ignore = true)
     Pizza toEntity(CreatePizzaRequest request);
     
     @Mapping(target = "id", ignore = true)
-    @Mapping(target = "createdAt", ignore = true)
-    @Mapping(target = "updatedAt", ignore = true)
     void updateEntity(UpdatePizzaRequest request, @MappingTarget Pizza pizza);
 }
 ```
@@ -976,68 +944,6 @@ class PizzaMapperTest {
 }
 ```
 
-### Test the Controller with DTOs
-
-```java
-package be.vives.pizzastore.controller;
-
-import be.vives.pizzastore.dto.request.CreatePizzaRequest;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.http.MediaType;
-import org.springframework.test.web.servlet.MockMvc;
-
-import java.math.BigDecimal;
-
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
-
-@SpringBootTest
-@AutoConfigureMockMvc
-class PizzaControllerTest {
-    
-    @Autowired
-    private MockMvc mockMvc;
-    
-    @Autowired
-    private ObjectMapper objectMapper;
-    
-    @Test
-    void shouldCreatePizza() throws Exception {
-        CreatePizzaRequest request = new CreatePizzaRequest(
-            "Margherita",
-            new BigDecimal("8.50"),
-            "Classic"
-        );
-        
-        mockMvc.perform(post("/api/pizzas")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.id").exists())
-                .andExpect(jsonPath("$.name").value("Margherita"))
-                .andExpect(jsonPath("$.price").value(8.50))
-                .andExpect(jsonPath("$.createdAt").exists());
-    }
-    
-    @Test
-    void shouldRejectInvalidPizza() throws Exception {
-        CreatePizzaRequest request = new CreatePizzaRequest(
-            "", // Invalid: blank name
-            new BigDecimal("-5.00"), // Invalid: negative price
-            "Classic"
-        );
-        
-        mockMvc.perform(post("/api/pizzas")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isBadRequest());
-    }
-}
-```
 
 ---
 
