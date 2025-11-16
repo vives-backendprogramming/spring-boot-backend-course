@@ -681,7 +681,7 @@ Resources include links to related resources
 - ✅ Appropriate status codes returned
 - ✅ Query parameters for filtering/sorting
 - ✅ CORS configured for mobile app
-- 🔲 DTOs instead of entities (next lesson!)
+- ✅ DTOs instead of entities
 - 🔲 Proper error handling (Lesson 11)
 - 🔲 API documentation (Lesson 16)
 - 🔲 Security (Lessons 12-15)
