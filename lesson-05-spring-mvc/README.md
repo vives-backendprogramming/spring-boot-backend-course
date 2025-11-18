@@ -28,8 +28,6 @@ By the end of this lesson, you will:
 - Handle **path variables** and **request parameters**
 - Work with **request and response bodies**
 - Understand the role of **Jackson** in JSON serialization
-- Implement basic **exception handling**
-- Return appropriate **HTTP status codes**
 
 ---
 
