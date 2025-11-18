@@ -1,5 +1,6 @@
 package be.vives.pizzastore.service;
 
+import be.vives.pizzastore.dto.PizzaRequest;
 import be.vives.pizzastore.model.Pizza;
 import be.vives.pizzastore.repository.PizzaRepository;
 import org.slf4j.Logger;
@@ -32,25 +33,9 @@ public class PizzaService {
             .orElseThrow(() -> new RuntimeException("Pizza not found with id: " + id));
     }
     
-    public List<Pizza> getAvailablePizzas() {
-        log.debug("Fetching available pizzas");
-        return pizzaRepository.findByAvailable(true);
-    }
-    
-    public Pizza createPizza(Pizza pizza) {
-        log.info("Creating pizza: {}", pizza.getName());
+    public Pizza createPizza(PizzaRequest request) {
+        log.info("Creating pizza: {}", request.name());
+        Pizza pizza = new Pizza(request.name(), request.price());
         return pizzaRepository.save(pizza);
-    }
-    
-    public Pizza updatePizza(Long id, Pizza pizza) {
-        log.info("Updating pizza with id: {}", id);
-        Pizza existing = getPizzaById(id);
-        pizza.setId(id);
-        return pizzaRepository.save(pizza);
-    }
-    
-    public void deletePizza(Long id) {
-        log.info("Deleting pizza with id: {}", id);
-        pizzaRepository.deleteById(id);
     }
 }

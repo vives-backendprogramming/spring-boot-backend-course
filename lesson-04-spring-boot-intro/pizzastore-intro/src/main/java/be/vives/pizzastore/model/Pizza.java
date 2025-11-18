@@ -11,30 +11,18 @@ public class Pizza {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     
-    @Column(nullable = false, length = 100)
-    private String name;
-    
-    @Column(length = 500)
+    @Column(nullable = false, length = 500)
     private String description;
     
     @Column(nullable = false, precision = 10, scale = 2)
     private BigDecimal price;
     
-    @Column(name = "image_url")
-    private String imageUrl;
-    
-    @Column(nullable = false)
-    private boolean available = true;
-    
     public Pizza() {
     }
     
-    public Pizza(String name, String description, BigDecimal price, String imageUrl, boolean available) {
-        this.name = name;
+    public Pizza(String description, BigDecimal price) {
         this.description = description;
         this.price = price;
-        this.imageUrl = imageUrl;
-        this.available = available;
     }
     
     public Long getId() {
@@ -43,14 +31,6 @@ public class Pizza {
     
     public void setId(Long id) {
         this.id = id;
-    }
-    
-    public String getName() {
-        return name;
-    }
-    
-    public void setName(String name) {
-        this.name = name;
     }
     
     public String getDescription() {
@@ -69,29 +49,12 @@ public class Pizza {
         this.price = price;
     }
     
-    public String getImageUrl() {
-        return imageUrl;
-    }
-    
-    public void setImageUrl(String imageUrl) {
-        this.imageUrl = imageUrl;
-    }
-    
-    public boolean isAvailable() {
-        return available;
-    }
-    
-    public void setAvailable(boolean available) {
-        this.available = available;
-    }
-    
     @Override
     public String toString() {
         return "Pizza{" +
                 "id=" + id +
-                ", name='" + name + '\'' +
+                ", description='" + description + '\'' +
                 ", price=" + price +
-                ", available=" + available +
                 '}';
     }
 }

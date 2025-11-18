@@ -17,7 +17,6 @@
 - [🔧 What Just Happened?](#-what-just-happened)
 - [🏗️ Spring Boot Build Plugin](#️-spring-boot-build-plugin)
 - [📊 Spring Boot Actuator](#-spring-boot-actuator)
-- [💡 Tips & Tricks](#-tips--tricks)
 - [🎓 Summary](#-summary)
 - [📖 Additional Resources](#-additional-resources)
 
@@ -29,7 +28,7 @@ In the previous lessons, we learned about Spring Framework - Dependency Injectio
 
 **Spring Boot** changes this by embracing **"Convention over Configuration"**. It makes it easy to create **stand-alone, production-grade** Spring applications that you can **"just run"**.
 
-In this lesson, we'll discover how Spring Boot simplifies Spring development dramatically and start building our **PizzaStore API** project.
+In this lesson, we'll discover how Spring Boot simplifies Spring development dramatically and start building our **PizzaStore API** project as a demo.
 
 ## 🎯 Learning Objectives
 
@@ -532,6 +531,8 @@ pizzastore-intro/
 │   │   │               ├── PizzaStoreApplication.java    # Main class
 │   │   │               ├── controller/
 │   │   │               │   └── PizzaController.java      # REST controllers
+│   │   │               ├── dto/
+│   │   │               │   └── PizzRequest.java          # Data transfer objects
 │   │   │               ├── service/
 │   │   │               │   └── PizzaService.java         # Business logic
 │   │   │               ├── repository/
@@ -607,6 +608,12 @@ pizzastore-intro/
             <artifactId>spring-boot-devtools</artifactId>
             <optional>true</optional>
         </dependency>
+
+        <!-- Spring Boot Starter Validation: Bean Validation with Hibernate Validator -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
         
         <!-- Test starter -->
         <dependency>
@@ -680,7 +687,7 @@ When you change code, only the restart classloader reloads → **much faster tha
 
 ---
 
-## 🍕 Building the PizzaStore - Complete Example with JPA
+## 🍕 Demo: Building a first PizzaStore
 
 Now let's build the PizzaStore REST API using proper JPA and H2 database.
 
@@ -691,6 +698,7 @@ Follow the **Creating Spring Boot Projects** section above to create a project w
 - Spring Data JPA
 - H2 Database
 - Spring Boot DevTools
+- Spring Boot Validation
 
 ### Step 2: Configure application.properties
 
@@ -736,6 +744,8 @@ spring.devtools.restart.enabled=true
 
 ### Step 3: Create the Pizza Entity
 
+For this introductory demo, we keep the Pizza entity simple with just three fields: id, description, and price.
+
 **`src/main/java/be/vives/pizzastore/model/Pizza.java`**:
 
 ```java
@@ -752,48 +762,26 @@ public class Pizza {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     
-    @Column(nullable = false, length = 100)
-    private String name;
-    
-    @Column(length = 500)
+    @Column(nullable = false, length = 500)
     private String description;
     
     @Column(nullable = false, precision = 10, scale = 2)
     private BigDecimal price;
     
-    @Column(name = "image_url")
-    private String imageUrl;
-    
-    @Column(nullable = false)
-    private boolean available = true;
-    
-    // Constructors
     public Pizza() {
     }
     
-    public Pizza(String name, String description, BigDecimal price, String imageUrl, boolean available) {
-        this.name = name;
+    public Pizza(String description, BigDecimal price) {
         this.description = description;
         this.price = price;
-        this.imageUrl = imageUrl;
-        this.available = available;
     }
     
-    // Getters and Setters
     public Long getId() {
         return id;
     }
     
     public void setId(Long id) {
         this.id = id;
-    }
-    
-    public String getName() {
-        return name;
-    }
-    
-    public void setName(String name) {
-        this.name = name;
     }
     
     public String getDescription() {
@@ -812,29 +800,12 @@ public class Pizza {
         this.price = price;
     }
     
-    public String getImageUrl() {
-        return imageUrl;
-    }
-    
-    public void setImageUrl(String imageUrl) {
-        this.imageUrl = imageUrl;
-    }
-    
-    public boolean isAvailable() {
-        return available;
-    }
-    
-    public void setAvailable(boolean available) {
-        this.available = available;
-    }
-    
     @Override
     public String toString() {
         return "Pizza{" +
                 "id=" + id +
-                ", name='" + name + '\'' +
+                ", description='" + description + '\'' +
                 ", price=" + price +
-                ", available=" + available +
                 '}';
     }
 }
@@ -847,7 +818,51 @@ public class Pizza {
 - `@GeneratedValue`: Auto-generates the ID
 - `@Column`: Configures column properties (nullable, length, precision)
 
-### Step 4: Create the Repository Interface
+### Step 4: Create a Request DTO with Validation
+
+**Important principle**: Never expose entities directly via REST APIs. Use DTOs (Data Transfer Objects) instead.
+
+For creating a pizza, we use a **PizzaRequest** record that contains only the data needed from the client. We also add validation to ensure data quality.
+
+**`src/main/java/be/vives/pizzastore/dto/PizzaRequest.java`**:
+
+```java
+package be.vives.pizzastore.dto;
+
+import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+
+import java.math.BigDecimal;
+
+public record PizzaRequest(
+        @NotBlank(message = "Name is required")
+        String name,
+        
+        @NotNull(message = "Price is required")
+        @DecimalMin(value = "0.0", inclusive = true, message = "Price must be at least 0")
+        @DecimalMax(value = "20.0", inclusive = true, message = "Price must not exceed 20")
+        BigDecimal price
+) {
+}
+```
+
+**Key Points**:
+- **Java Record**: Concise syntax for immutable data carriers (Java 14+)
+- **@NotBlank**: Validates that name is not null, empty, or whitespace
+- **@NotNull**: Validates that price is provided
+- **@DecimalMin / @DecimalMax**: Validates that price is between 0 and 20
+- **Custom messages**: Provide user-friendly error messages
+
+**Why use a DTO?**:
+- **Separation of concerns**: API contracts are independent from database schema
+- **Validation**: Input validation at the API boundary
+- **Security**: Prevents clients from manipulating fields they shouldn't (like `id`)
+- **Flexibility**: Can change the entity without breaking the API
+- **Clarity**: Clear contract of what data is expected
+
+### Step 5: Create the Repository Interface
 
 **`src/main/java/be/vives/pizzastore/repository/PizzaRepository.java`**:
 
@@ -858,39 +873,26 @@ import be.vives.pizzastore.model.Pizza;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
-import java.util.List;
-
 @Repository
 public interface PizzaRepository extends JpaRepository<Pizza, Long> {
-    
-    // Spring Data JPA provides implementations for:
-    // - findAll()
-    // - findById(Long id)
-    // - save(Pizza pizza)
-    // - deleteById(Long id)
-    // - count()
-    // - existsById(Long id)
-    // And many more!
-    
-    // Custom query methods (Spring Data JPA creates implementation automatically)
-    List<Pizza> findByAvailable(boolean available);
-    
-    List<Pizza> findByNameContainingIgnoreCase(String name);
 }
 ```
 
 **Magic of Spring Data JPA**:
 - You only write the **interface**
 - Spring Data JPA creates the **implementation** at runtime
-- Method names follow conventions: `findBy`, `countBy`, `deleteBy`, etc.
+- Basic CRUD methods are provided automatically: `findAll()`, `findById()`, `save()`, `deleteById()`, etc.
 
-### Step 5: Create the Service Layer
+### Step 6: Create the Service Layer
+
+The service layer handles business logic and performs the **mapping** between DTOs and entities.
 
 **`src/main/java/be/vives/pizzastore/service/PizzaService.java`**:
 
 ```java
 package be.vives.pizzastore.service;
 
+import be.vives.pizzastore.dto.PizzaRequest;
 import be.vives.pizzastore.model.Pizza;
 import be.vives.pizzastore.repository.PizzaRepository;
 import org.slf4j.Logger;
@@ -923,26 +925,11 @@ public class PizzaService {
             .orElseThrow(() -> new RuntimeException("Pizza not found with id: " + id));
     }
     
-    public List<Pizza> getAvailablePizzas() {
-        log.debug("Fetching available pizzas");
-        return pizzaRepository.findByAvailable(true);
-    }
-    
-    public Pizza createPizza(Pizza pizza) {
-        log.info("Creating pizza: {}", pizza.getName());
+    public Pizza createPizza(PizzaRequest request) {
+        log.info("Creating pizza: {}", request.name());
+        // Manual mapping from DTO to Entity
+        Pizza pizza = new Pizza(request.name(), request.price());
         return pizzaRepository.save(pizza);
-    }
-    
-    public Pizza updatePizza(Long id, Pizza pizza) {
-        log.info("Updating pizza with id: {}", id);
-        Pizza existing = getPizzaById(id);
-        pizza.setId(id);
-        return pizzaRepository.save(pizza);
-    }
-    
-    public void deletePizza(Long id) {
-        log.info("Deleting pizza with id: {}", id);
-        pizzaRepository.deleteById(id);
     }
 }
 ```
@@ -950,18 +937,22 @@ public class PizzaService {
 **Key Points**:
 - `@Service`: Marks this as a Spring service component
 - `@Transactional`: Ensures database operations are transactional
-- Constructor injection for `PizzaRepository`
-- SLF4J logger for debugging
+- **Manual mapping**: Simple mapping from `PizzaRequest` to `Pizza` entity
+- The `name` from the request becomes the `description` in the entity
 
-### Step 6: Create the REST Controller
+**Note**: For more complex mappings, you would use a library like MapStruct or ModelMapper. We'll cover that in a later lesson.
+
+### Step 7: Create the REST Controller
 
 **`src/main/java/be/vives/pizzastore/controller/PizzaController.java`**:
 
 ```java
 package be.vives.pizzastore.controller;
 
+import be.vives.pizzastore.dto.PizzaRequest;
 import be.vives.pizzastore.model.Pizza;
 import be.vives.pizzastore.service.PizzaService;
+import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -988,26 +979,10 @@ public class PizzaController {
         return pizzaService.getPizzaById(id);
     }
     
-    @GetMapping("/available")
-    public List<Pizza> getAvailablePizzas() {
-        return pizzaService.getAvailablePizzas();
-    }
-    
     @PostMapping
-    public ResponseEntity<Pizza> createPizza(@RequestBody Pizza pizza) {
-        Pizza created = pizzaService.createPizza(pizza);
+    public ResponseEntity<Pizza> createPizza(@Valid @RequestBody PizzaRequest request) {
+        Pizza created = pizzaService.createPizza(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
-    }
-    
-    @PutMapping("/{id}")
-    public Pizza updatePizza(@PathVariable Long id, @RequestBody Pizza pizza) {
-        return pizzaService.updatePizza(id, pizza);
-    }
-    
-    @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deletePizza(@PathVariable Long id) {
-        pizzaService.deletePizza(id);
-        return ResponseEntity.noContent().build();
     }
 }
 ```
@@ -1015,34 +990,38 @@ public class PizzaController {
 **Key Annotations**:
 - `@RestController`: Combines `@Controller` and `@ResponseBody`
 - `@RequestMapping("/api/pizzas")`: Base path for all endpoints
-- `@GetMapping`, `@PostMapping`, `@PutMapping`, `@DeleteMapping`: HTTP methods
+- `@GetMapping`, `@PostMapping`: HTTP methods
 - `@PathVariable`: Extracts value from URL path
 - `@RequestBody`: Converts JSON to Java object
+- `@Valid`: Triggers validation on the `PizzaRequest` object
 
-### Step 7: Add Sample Data (Optional)
+**Validation in Action**:
+When `@Valid` is used, Spring automatically validates the request object based on the constraints defined in `PizzaRequest`. If validation fails, Spring returns a `400 Bad Request` with details about validation errors.
+
+### Step 8: Add Sample Data (Optional)
 
 **Create `src/main/resources/data.sql`**:
 
 ```sql
-INSERT INTO pizzas (name, description, price, image_url, available) 
-VALUES ('Margherita', 'Classic tomato and mozzarella', 8.99, null, true);
+INSERT INTO pizzas (description, price) 
+VALUES ('Classic tomato and mozzarella', 8.99);
 
-INSERT INTO pizzas (name, description, price, image_url, available) 
-VALUES ('Pepperoni', 'Pepperoni and cheese', 10.99, null, true);
+INSERT INTO pizzas (description, price) 
+VALUES ('Pepperoni and cheese', 10.99);
 
-INSERT INTO pizzas (name, description, price, image_url, available) 
-VALUES ('Quattro Formaggi', 'Four cheese blend', 11.99, null, true);
+INSERT INTO pizzas (description, price) 
+VALUES ('Four cheese blend', 11.99);
 
-INSERT INTO pizzas (name, description, price, image_url, available) 
-VALUES ('Vegetariana', 'Fresh vegetables', 9.99, null, true);
+INSERT INTO pizzas (description, price) 
+VALUES ('Fresh vegetables', 9.99);
 
-INSERT INTO pizzas (name, description, price, image_url, available) 
-VALUES ('Diavola', 'Spicy salami', 12.99, null, false);
+INSERT INTO pizzas (description, price) 
+VALUES ('Spicy salami', 12.99);
 ```
 
 **Note**: Spring Boot automatically executes `data.sql` on startup when using H2.
 
-### Step 8: Run the Application
+### Step 9: Run the Application
 
 ### From IntelliJ
 1. Right-click `PizzaStoreApplication.java`
@@ -1076,7 +1055,7 @@ java -jar target/pizzastore-intro-1.0.0.jar
 
 You'll also see SQL statements being executed if you have `show-sql=true`.
 
-### Step 9: Test the API
+### Step 10: Test the API
 
 ### Using Browser
 Open: http://localhost:8080/api/pizzas
@@ -1099,55 +1078,80 @@ SELECT * FROM pizzas;
 curl http://localhost:8080/api/pizzas
 ```
 
-**Get available pizzas**:
-```bash
-curl http://localhost:8080/api/pizzas/available
-```
-
 **Get specific pizza**:
 ```bash
 curl http://localhost:8080/api/pizzas/1
 ```
 
-**Create new pizza**:
+**Create new pizza (valid)**:
 ```bash
 curl -X POST http://localhost:8080/api/pizzas \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Hawaii",
-    "description": "Pineapple and ham",
-    "price": 11.99,
-    "imageUrl": null,
-    "available": true
+    "price": 11.99
   }'
 ```
 
-**Update pizza**:
+**Create pizza with validation error (price too high)**:
 ```bash
-curl -X PUT http://localhost:8080/api/pizzas/1 \
+curl -X POST http://localhost:8080/api/pizzas \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "Margherita Deluxe",
-    "description": "Extra cheese and basil",
-    "price": 10.99,
-    "imageUrl": null,
-    "available": true
+    "name": "Expensive Pizza",
+    "price": 25.00
   }'
 ```
 
-**Delete pizza**:
+This will return a `400 Bad Request` with validation error details:
+```json
+{
+  "status": 400,
+  "error": "Bad Request",
+  "message": "Validation failed for object='pizzaRequest'. Error count: 1",
+  "errors": [
+    {
+      "field": "price",
+      "rejectedValue": 25.00,
+      "defaultMessage": "Price must not exceed 20"
+    }
+  ]
+}
+```
+
+**Create pizza with validation error (missing name)**:
 ```bash
-curl -X DELETE http://localhost:8080/api/pizzas/5
+curl -X POST http://localhost:8080/api/pizzas \
+  -H "Content-Type: application/json" \
+  -d '{
+    "price": 10.00
+  }'
+```
+
+This will return:
+```json
+{
+  "status": 400,
+  "errors": [
+    {
+      "field": "name",
+      "defaultMessage": "Name is required"
+    }
+  ]
+}
 ```
 
 ### Using Postman
 
 1. **GET** `http://localhost:8080/api/pizzas` - Get all pizzas
 2. **GET** `http://localhost:8080/api/pizzas/1` - Get pizza by ID
-3. **GET** `http://localhost:8080/api/pizzas/available` - Get available pizzas
-4. **POST** `http://localhost:8080/api/pizzas` - Create new pizza (set Body → raw → JSON)
-5. **PUT** `http://localhost:8080/api/pizzas/1` - Update pizza
-6. **DELETE** `http://localhost:8080/api/pizzas/1` - Delete pizza
+3. **POST** `http://localhost:8080/api/pizzas` - Create new pizza (set Body → raw → JSON)
+   ```json
+   {
+     "name": "Hawaii",
+     "price": 11.99
+   }
+   ```
 
 ### Expected Response
 
@@ -1156,21 +1160,24 @@ curl -X DELETE http://localhost:8080/api/pizzas/5
 [
   {
     "id": 1,
-    "name": "Margherita",
     "description": "Classic tomato and mozzarella",
-    "price": 8.99,
-    "imageUrl": null,
-    "available": true
+    "price": 8.99
   },
   {
     "id": 2,
-    "name": "Pepperoni",
     "description": "Pepperoni and cheese",
-    "price": 10.99,
-    "imageUrl": null,
-    "available": true
+    "price": 10.99
   }
 ]
+```
+
+**POST /api/pizzas** (successful):
+```json
+{
+  "id": 6,
+  "description": "Hawaii",
+  "price": 11.99
+}
 ```
 
 ---
@@ -1214,7 +1221,6 @@ Spring Boot automatically configured:
 @GeneratedValue          // Auto-generate ID
 @Column                  // Column configuration
 @Repository              // Data access component
-@Transactional          // Transaction management
 ```
 
 **Service Layer**:
@@ -1256,7 +1262,6 @@ The `spring-boot-maven-plugin` makes your application executable:
 **What it does:**
 - Creates an **executable JAR** with embedded server
 - Includes all dependencies
-- Configures the correct `MANIFEST.MF`
 
 ### Build Commands
 
@@ -1338,59 +1343,6 @@ curl http://localhost:8080/actuator/mappings
 ```
 
 **Note**: We'll explore Actuator in depth in Lesson 16.
-
----
-
-## 💡 Tips & Tricks
-
-### DevTools Hot Swap
-- ✅ Java code changes → Automatic restart (fast!)
-- ✅ Static resources (HTML, CSS, JS) → No restart, just LiveReload
-- ✅ `application.properties` changes → Automatic restart
-- ❌ `pom.xml` changes → Requires manual restart
-
-### Debug Logging
-```properties
-# Spring Web
-logging.level.org.springframework.web=DEBUG
-
-# Hibernate SQL
-logging.level.org.hibernate.SQL=DEBUG
-logging.level.org.hibernate.type.descriptor.sql.BasicBinder=TRACE
-
-# Your application
-logging.level.be.vives.pizzastore=DEBUG
-```
-
-### H2 Console Tips
-- Access at: http://localhost:8080/h2-console
-- **JDBC URL**: Must match `spring.datasource.url` in properties
-- **Username/Password**: Must match datasource configuration
-- Use to verify data, run queries, debug schema
-
-### IDE Tips for IntelliJ
-- **Alt+Insert** (Win) / **Cmd+N** (Mac) → Generate (getters, setters, constructors)
-- **Ctrl+Alt+O** (Win) / **Cmd+Alt+O** (Mac) → Optimize imports
-- **Ctrl+Shift+F** (Win) / **Cmd+Shift+F** (Mac) → Format code
-- **Shift+F10** (Win) / **Ctrl+R** (Mac) → Run
-- **Shift+F9** (Win) / **Ctrl+D** (Mac) → Debug
-
-### Common Issues
-
-**Issue**: Application won't start - port 8080 already in use
-**Solution**: Change port in `application.properties`:
-```properties
-server.port=8081
-```
-
-**Issue**: H2 console shows "Database not found"
-**Solution**: Verify JDBC URL matches exactly:
-```properties
-spring.datasource.url=jdbc:h2:mem:pizzastoredb
-```
-
-**Issue**: DevTools not restarting automatically
-**Solution**: Check IntelliJ settings (see DevTools section above)
 
 ---
 

@@ -1,7 +1,9 @@
 package be.vives.pizzastore.controller;
 
+import be.vives.pizzastore.dto.PizzaRequest;
 import be.vives.pizzastore.model.Pizza;
 import be.vives.pizzastore.service.PizzaService;
+import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -28,25 +30,9 @@ public class PizzaController {
         return pizzaService.getPizzaById(id);
     }
     
-    @GetMapping("/available")
-    public List<Pizza> getAvailablePizzas() {
-        return pizzaService.getAvailablePizzas();
-    }
-    
     @PostMapping
-    public ResponseEntity<Pizza> createPizza(@RequestBody Pizza pizza) {
-        Pizza created = pizzaService.createPizza(pizza);
+    public ResponseEntity<Pizza> createPizza(@Valid @RequestBody PizzaRequest request) {
+        Pizza created = pizzaService.createPizza(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
-    }
-    
-    @PutMapping("/{id}")
-    public Pizza updatePizza(@PathVariable Long id, @RequestBody Pizza pizza) {
-        return pizzaService.updatePizza(id, pizza);
-    }
-    
-    @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deletePizza(@PathVariable Long id) {
-        pizzaService.deletePizza(id);
-        return ResponseEntity.noContent().build();
     }
 }

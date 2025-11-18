@@ -1,14 +1,14 @@
-INSERT INTO pizzas (name, description, price, image_url, available) 
-VALUES ('Margherita', 'Classic tomato and mozzarella', 8.99, null, true);
+INSERT INTO pizzas (description, price) 
+VALUES ('Classic tomato and mozzarella', 8.99);
 
-INSERT INTO pizzas (name, description, price, image_url, available) 
-VALUES ('Pepperoni', 'Pepperoni and cheese', 10.99, null, true);
+INSERT INTO pizzas (description, price) 
+VALUES ('Pepperoni and cheese', 10.99);
 
-INSERT INTO pizzas (name, description, price, image_url, available) 
-VALUES ('Quattro Formaggi', 'Four cheese blend', 11.99, null, true);
+INSERT INTO pizzas (description, price) 
+VALUES ('Four cheese blend', 11.99);
 
-INSERT INTO pizzas (name, description, price, image_url, available) 
-VALUES ('Vegetariana', 'Fresh vegetables', 9.99, null, true);
+INSERT INTO pizzas (description, price) 
+VALUES ('Fresh vegetables', 9.99);
 
-INSERT INTO pizzas (name, description, price, image_url, available) 
-VALUES ('Diavola', 'Spicy salami', 12.99, null, false);
+INSERT INTO pizzas (description, price) 
+VALUES ('Spicy salami', 12.99);
