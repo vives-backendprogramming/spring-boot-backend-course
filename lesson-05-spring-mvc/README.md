@@ -9,8 +9,6 @@
 - [📥 Request Parameters](#-request-parameters)
 - [📤 Response Handling](#-response-handling)
 - [📦 Jackson - JSON Serialization](#-jackson---json-serialization)
-- [⚠️ Exception Handling](#️-exception-handling)
-- [📊 HTTP Status Codes](#-http-status-codes)
 - [🎓 Summary](#-summary)
 - [📖 Additional Resources](#-additional-resources)
 
@@ -527,61 +525,6 @@ public class Pizza {
     // getters / setters
 }
 ```
-
----
-
-## ⚠️ Exception Handling
-
-### Custom Exception
-
-```java
-package com.example.pizzastore.exception;
-
-public class ResourceNotFoundException extends RuntimeException {
-    
-    public ResourceNotFoundException(String message) {
-        super(message);
-    }
-}
-```
-
-### Basic Exception Handler in Controller
-
-```java
-@RestController
-@RequestMapping("/api/pizzas")
-public class PizzaController {
-    
-    // ... controller methods ...
-    
-    @ExceptionHandler(ResourceNotFoundException.class)
-    public ResponseEntity<String> handleNotFound(ResourceNotFoundException ex) {
-        return ResponseEntity
-            .status(HttpStatus.NOT_FOUND)
-            .body(ex.getMessage());
-    }
-}
-```
-
-**Note:** We'll cover advanced exception handling with `@ControllerAdvice` in Lesson 11.
-
----
-
-## 📊 HTTP Status Codes
-
-Use appropriate status codes:
-
-| Code | Meaning | When to Use |
-|------|---------|-------------|
-| **200** | OK | Successful GET, PUT, PATCH |
-| **201** | Created | Successful POST (resource created) |
-| **204** | No Content | Successful DELETE |
-| **400** | Bad Request | Invalid request data |
-| **404** | Not Found | Resource doesn't exist |
-| **409** | Conflict | Resource already exists |
-| **500** | Internal Server Error | Unexpected server error |
-
----
 
 ## 🎓 Summary
 
