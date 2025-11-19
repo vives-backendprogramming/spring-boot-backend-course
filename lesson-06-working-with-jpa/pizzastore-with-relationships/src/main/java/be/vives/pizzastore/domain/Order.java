@@ -1,6 +1,12 @@
 package be.vives.pizzastore.domain;
 
 import jakarta.persistence.*;
+import org.springframework.data.annotation.CreatedBy;
+import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.annotation.LastModifiedBy;
+import org.springframework.data.annotation.LastModifiedDate;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
+
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -8,6 +14,7 @@ import java.util.List;
 
 @Entity
 @Table(name = "orders")
+@EntityListeners(AuditingEntityListener.class)
 public class Order {
 
     @Id
@@ -27,10 +34,26 @@ public class Order {
     @Column(nullable = false, length = 20)
     private OrderStatus status;
 
-    // @ManyToOne: Many Orders belong to one Customer
+    @CreatedDate
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private LocalDateTime createdAt;
+
+    @CreatedBy
+    @Column(name = "created_by", length = 100)
+    private String createdBy;
+
+    @LastModifiedDate
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
+
+    @LastModifiedBy
+    @Column(name = "updated_by", length = 100)
+    private String updatedBy;
+
+    // @ManyToOne: Many Orders belong to one User
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "customer_id", nullable = false)
-    private Customer customer;
+    @JoinColumn(name = "user_id", nullable = false)
+    private User user;
 
     // @OneToMany: Order has many OrderLines
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
@@ -40,9 +63,9 @@ public class Order {
     public Order() {
     }
 
-    public Order(String orderNumber, Customer customer, OrderStatus status) {
+    public Order(String orderNumber, User user, OrderStatus status) {
         this.orderNumber = orderNumber;
-        this.customer = customer;
+        this.user = user;
         this.status = status;
         this.orderDate = LocalDateTime.now();
         this.totalAmount = BigDecimal.ZERO;
@@ -108,12 +131,44 @@ public class Order {
         this.status = status;
     }
 
-    public Customer getCustomer() {
-        return customer;
+    public LocalDateTime getCreatedAt() {
+        return createdAt;
     }
 
-    public void setCustomer(Customer customer) {
-        this.customer = customer;
+    public void setCreatedAt(LocalDateTime createdAt) {
+        this.createdAt = createdAt;
+    }
+
+    public String getCreatedBy() {
+        return createdBy;
+    }
+
+    public void setCreatedBy(String createdBy) {
+        this.createdBy = createdBy;
+    }
+
+    public LocalDateTime getUpdatedAt() {
+        return updatedAt;
+    }
+
+    public void setUpdatedAt(LocalDateTime updatedAt) {
+        this.updatedAt = updatedAt;
+    }
+
+    public String getUpdatedBy() {
+        return updatedBy;
+    }
+
+    public void setUpdatedBy(String updatedBy) {
+        this.updatedBy = updatedBy;
+    }
+
+    public User getUser() {
+        return user;
+    }
+
+    public void setUser(User user) {
+        this.user = user;
     }
 
     public List<OrderLine> getOrderLines() {

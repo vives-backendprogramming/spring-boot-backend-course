@@ -9,6 +9,7 @@
 By the end of this lesson, you will be able to:
 - Understand ORM, JPA, and Spring Data JPA concepts
 - Create JPA entities with proper annotations
+- Implement JPA Auditing for automatic tracking of entity changes
 - Implement entity relationships: `@OneToOne`, `@OneToMany`, `@ManyToOne`, `@ManyToMany`
 - Choose between `LAZY` and `EAGER` fetch types
 - Use cascade types effectively
@@ -17,7 +18,6 @@ By the end of this lesson, you will be able to:
 - Implement pagination and sorting
 - Handle Optional results properly
 - Configure DDL generation strategies
-- Expand PizzaStore with Customer and Order entities
 
 ---
 
@@ -25,15 +25,15 @@ By the end of this lesson, you will be able to:
 
 1. [ORM, JPA, and Spring Data JPA](#orm-jpa-and-spring-data-jpa)
 2. [JPA Entities in Depth](#jpa-entities-in-depth)
-3. [Entity Relationships](#entity-relationships)
-4. [Fetch Types: LAZY vs EAGER](#fetch-types-lazy-vs-eager)
-5. [Cascade Types](#cascade-types)
-6. [Spring Data JPA Repository Interfaces](#spring-data-jpa-repository-interfaces)
-7. [Custom Queries](#custom-queries)
-8. [Pagination and Sorting](#pagination-and-sorting)
-9. [Optional Handling](#optional-handling)
-10. [Database Configuration](#database-configuration)
-11. [PizzaStore: Adding Customer and Order](#pizzastore-adding-customer-and-order)
+3. [JPA Auditing](#jpa-auditing)
+4. [Entity Relationships](#entity-relationships)
+5. [Fetch Types: LAZY vs EAGER](#fetch-types-lazy-vs-eager)
+6. [Cascade Types](#cascade-types)
+7. [Spring Data JPA Repository Interfaces](#spring-data-jpa-repository-interfaces)
+8. [Custom Queries](#custom-queries)
+9. [Pagination and Sorting](#pagination-and-sorting)
+10. [Optional Handling](#optional-handling)
+11. [Database Configuration](#database-configuration)
 12. [Summary](#summary)
 
 ---
@@ -219,21 +219,30 @@ private String calculatedField;  // Not saved to database
 ```
 
 #### @Enumerated
-Maps enum types.
+Maps enum types (from PizzaStore project).
 
 ```java
-public enum PizzaSize {
-    SMALL, MEDIUM, LARGE
+// OrderStatus.java (from project)
+public enum OrderStatus {
+    PENDING,
+    CONFIRMED,
+    PREPARING,
+    READY,
+    DELIVERED,
+    CANCELLED
 }
 
-@Enumerated(EnumType.STRING)  // Save as "SMALL", "MEDIUM", "LARGE"
-private PizzaSize size;
+// In Order.java
+@Enumerated(EnumType.STRING)  // Save as "PENDING", "CONFIRMED", etc.
+@Column(nullable = false, length = 20)
+private OrderStatus status;
 
-@Enumerated(EnumType.ORDINAL) // Save as 0, 1, 2 (not recommended!)
-private PizzaSize size;
+// ❌ DON'T USE EnumType.ORDINAL
+@Enumerated(EnumType.ORDINAL) // Save as 0, 1, 2 (breaks if enum order changes!)
+private OrderStatus status;
 ```
 
-**Recommendation**: Always use `EnumType.STRING` for maintainability.
+**Recommendation**: Always use `EnumType.STRING` for maintainability and clarity.
 
 ### Entity Lifecycle Callbacks
 
@@ -270,6 +279,168 @@ public class Pizza {
 
 ---
 
+## 🕐 JPA Auditing
+
+### What is JPA Auditing?
+
+**JPA Auditing** automatically tracks **who** created/modified an entity and **when** it happened.
+
+**Without Auditing** (manual approach with @PrePersist/@PreUpdate):
+```java
+@Entity
+public class Pizza {
+    private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
+    
+    @PrePersist
+    protected void onCreate() {
+        createdAt = LocalDateTime.now();
+        updatedAt = LocalDateTime.now();
+    }
+    
+    @PreUpdate
+    protected void onUpdate() {
+        updatedAt = LocalDateTime.now();
+    }
+}
+```
+
+**With JPA Auditing** (automatic, from PizzaStore project):
+```java
+@Entity
+@Table(name = "pizzas")
+@EntityListeners(AuditingEntityListener.class)  // Enable auditing for this entity
+public class Pizza {
+    
+    @CreatedDate
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private LocalDateTime createdAt;
+    
+    @CreatedBy
+    @Column(name = "created_by")
+    private String createdBy;
+    
+    @LastModifiedDate
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
+    
+    @LastModifiedBy
+    @Column(name = "updated_by")
+    private String updatedBy;
+}
+```
+
+### Auditing Annotations
+
+| Annotation | Description | Example Value |
+|------------|-------------|---------------|
+| `@CreatedDate` | When entity was created | `2024-01-15T10:30:00` |
+| `@CreatedBy` | Who created the entity | `"admin"` or `"john.doe@example.com"` |
+| `@LastModifiedDate` | When last updated | `2024-01-16T14:20:00` |
+| `@LastModifiedBy` | Who last updated | `"admin"` or `"jane.smith@example.com"` |
+
+### Enabling JPA Auditing
+
+#### Step 1: Add @EnableJpaAuditing to Main Application
+
+```java
+package be.vives.pizzastore;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
+
+@SpringBootApplication
+@EnableJpaAuditing  // Enable JPA Auditing globally
+public class PizzaStoreApplication {
+    
+    public static void main(String[] args) {
+        SpringApplication.run(PizzaStoreApplication.class, args);
+    }
+}
+```
+
+#### Step 2: Add @EntityListeners to Entities
+
+```java
+@Entity
+@Table(name = "orders")
+@EntityListeners(AuditingEntityListener.class)  // Required!
+public class Order {
+    
+    @CreatedDate
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private LocalDateTime createdAt;
+    
+    @LastModifiedDate
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
+    
+    // ... other fields
+}
+```
+
+### Example: Full Entity with Auditing (from PizzaStore)
+
+```java
+package be.vives.pizzastore.domain;
+
+import jakarta.persistence.*;
+import org.springframework.data.annotation.CreatedBy;
+import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.annotation.LastModifiedBy;
+import org.springframework.data.annotation.LastModifiedDate;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+
+@Entity
+@Table(name = "pizzas")
+@EntityListeners(AuditingEntityListener.class)
+public class Pizza {
+    
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    
+    @Column(nullable = false, length = 100)
+    private String name;
+    
+    @Column(nullable = false, precision = 10, scale = 2)
+    private BigDecimal price;
+    
+    @Column(length = 500)
+    private String description;
+    
+    @Column(name = "image_url", length = 255)
+    private String imageUrl;
+    
+    @Column(nullable = false)
+    private boolean available = true;
+    
+    // ===== AUDIT FIELDS =====
+    
+    @CreatedDate
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private LocalDateTime createdAt;
+    
+    @CreatedBy
+    @Column(name = "created_by")
+    private String createdBy;
+    
+    @LastModifiedDate
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
+    
+    @LastModifiedBy
+    @Column(name = "updated_by")
+    private String updatedBy;
+    
+    // Constructors, getters, setters...
+}
+```
+
 ## 🔗 Entity Relationships
 
 ### Types of Relationships
@@ -277,9 +448,9 @@ public class Pizza {
 | Relationship | Example                      | Database Implementation |
 |--------------|------------------------------|------------------------|
 | `@OneToOne` | Pizza ↔ NutritionalInfo      | Foreign key in either table |
-| `@OneToMany` | Customer → Orders            | Foreign key in Orders table |
-| `@ManyToOne` | Order → Customer             | Foreign key in Order table |
-| `@ManyToMany` | Customer ↔ Pizza (favorites) | Join table |
+| `@OneToMany` | User → Orders                | Foreign key in Orders table |
+| `@ManyToOne` | Order → User                 | Foreign key in Order table |
+| `@ManyToMany` | User ↔ Pizza (favorites)     | Join table |
 
 ---
 
@@ -345,57 +516,76 @@ price                       calories
 
 One entity is associated with multiple instances of another entity.
 
-**Example**: Customer has many Orders, each Order belongs to one Customer.
+**Example**: User has many Orders, each Order belongs to one User (from PizzaStore project).
 
 ```java
 @Entity
-@Table(name = "customers")
-public class Customer {
+@Table(name = "users")
+@EntityListeners(AuditingEntityListener.class)
+public class User {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     
+    @Column(nullable = false, length = 100)
     private String name;
+    
+    @Column(nullable = false, unique = true, length = 100)
     private String email;
     
-    // One customer → many orders
-    @OneToMany(mappedBy = "customer", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private Role role = Role.CUSTOMER;  // CUSTOMER or ADMIN
+    
+    // One user → many orders
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<Order> orders = new ArrayList<>();
     
     // Helper method
     public void addOrder(Order order) {
         orders.add(order);
-        order.setCustomer(this);
+        order.setUser(this);
     }
 }
 
 @Entity
 @Table(name = "orders")
+@EntityListeners(AuditingEntityListener.class)
 public class Order {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     
+    @Column(name = "order_number", nullable = false, unique = true)
     private String orderNumber;
+    
+    @Column(name = "order_date", nullable = false)
     private LocalDateTime orderDate;
+    
+    @Column(name = "total_amount", nullable = false, precision = 10, scale = 2)
     private BigDecimal totalAmount;
     
-    // Many orders → one customer
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private OrderStatus status;  // PENDING, CONFIRMED, PREPARING, READY, DELIVERED, CANCELLED
+    
+    // Many orders → one user
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "customer_id", nullable = false)
-    private Customer customer;
+    @JoinColumn(name = "user_id", nullable = false)
+    private User user;
 }
 ```
 
 **Database Structure**:
 ```sql
-customers               orders
----------               ------
+users                   orders
+-----                   ------
 id (PK)                 id (PK)
-name                    customer_id (FK) → customers.id
-email                   orderNumber
-                        orderDate
-                        totalAmount
+name                    user_id (FK) → users.id
+email                   order_number
+role                    order_date
+                        total_amount
+                        status
 ```
 
 **Key Points**:
@@ -410,35 +600,38 @@ email                   orderNumber
 
 Multiple entities are associated with multiple instances of another entity.
 
-**Example**: Customers have favorite Pizzas, Pizzas are favorited by Customers.
+**Example**: Users have favorite Pizzas, Pizzas are favorited by Users (from PizzaStore project).
 
 ```java
 @Entity
-@Table(name = "customers")
-public class Customer {
+@Table(name = "users")
+public class User {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     
+    @Column(nullable = false)
     private String name;
+    
+    @Column(nullable = false, unique = true)
     private String email;
     
     @ManyToMany
     @JoinTable(
-        name = "customer_favorite_pizzas",
-        joinColumns = @JoinColumn(name = "customer_id"),
+        name = "user_favorite_pizzas",
+        joinColumns = @JoinColumn(name = "user_id"),
         inverseJoinColumns = @JoinColumn(name = "pizza_id")
     )
     private Set<Pizza> favoritePizzas = new HashSet<>();
     
     public void addFavoritePizza(Pizza pizza) {
         favoritePizzas.add(pizza);
-        pizza.getFavoritedByCustomers().add(this);
+        pizza.getFavoritedByUsers().add(this);
     }
     
     public void removeFavoritePizza(Pizza pizza) {
         favoritePizzas.remove(pizza);
-        pizza.getFavoritedByCustomers().remove(this);
+        pizza.getFavoritedByUsers().remove(this);
     }
 }
 
@@ -449,21 +642,25 @@ public class Pizza {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     
+    @Column(nullable = false)
     private String name;
+    
+    @Column(nullable = false, precision = 10, scale = 2)
     private BigDecimal price;
     
     @ManyToMany(mappedBy = "favoritePizzas")
-    private Set<Customer> favoritedByCustomers = new HashSet<>();
+    private Set<User> favoritedByUsers = new HashSet<>();
 }
 ```
 
 **Database Structure**:
 ```sql
-customers                pizzas                customer_favorite_pizzas (join table)
----------                ------                ---------------------------------
-id (PK)                  id (PK)               customer_id (FK) → customers.id
+users                    pizzas                user_favorite_pizzas (join table)
+-----                    ------                -----------------------------
+id (PK)                  id (PK)               user_id (FK) → users.id
 name                     name                  pizza_id (FK) → pizzas.id
-email                    price                 PRIMARY KEY (customer_id, pizza_id)
+email                    price                 PRIMARY KEY (user_id, pizza_id)
+role                     available
 ```
 
 **Key Points**:
@@ -476,8 +673,8 @@ email                    price                 PRIMARY KEY (customer_id, pizza_i
 If you need additional data in the join table, create a separate entity:
 
 ```java
-// Instead of Customer ↔ Pizza (favorites)
-// Use: Customer → PizzaRating ← Pizza
+// Instead of User ↔ Pizza (favorites)
+// Use: User → PizzaRating ← Pizza
 
 @Entity
 @Table(name = "pizza_ratings")
@@ -487,8 +684,8 @@ public class PizzaRating {
     private Long id;
     
     @ManyToOne
-    @JoinColumn(name = "customer_id")
-    private Customer customer;
+    @JoinColumn(name = "user_id")
+    private User user;
     
     @ManyToOne
     @JoinColumn(name = "pizza_id")
@@ -509,8 +706,8 @@ public class PizzaRating {
 When you load an entity, should related entities be loaded immediately?
 
 ```java
-Customer customer = customerRepository.findById(1L);
-// Are customer.orders loaded now, or later when accessed?
+User user = userRepository.findById(1L);
+// Are user.orders loaded now, or later when accessed?
 ```
 
 ### FetchType.EAGER
@@ -519,15 +716,16 @@ Related entities are loaded **immediately** with the parent entity.
 
 ```java
 @Entity
-public class Customer {
-    @OneToMany(mappedBy = "customer", fetch = FetchType.EAGER)
+@Table(name = "users")
+public class User {
+    @OneToMany(mappedBy = "user", fetch = FetchType.EAGER)
     private List<Order> orders;
 }
 
-// When you load customer, all orders are fetched immediately
-Customer customer = customerRepository.findById(1L);
-// SQL: SELECT * FROM customers WHERE id = 1
-//      SELECT * FROM orders WHERE customer_id = 1
+// When you load user, all orders are fetched immediately
+User user = userRepository.findById(1L);
+// SQL: SELECT * FROM users WHERE id = 1
+//      SELECT * FROM orders WHERE user_id = 1
 ```
 
 **Pros**:
@@ -545,18 +743,19 @@ Related entities are loaded **only when accessed** (on-demand).
 
 ```java
 @Entity
-public class Customer {
-    @OneToMany(mappedBy = "customer", fetch = FetchType.LAZY)  // Default for @OneToMany
+@Table(name = "users")
+public class User {
+    @OneToMany(mappedBy = "user", fetch = FetchType.LAZY)  // Default for @OneToMany
     private List<Order> orders;
 }
 
-// When you load customer, orders are NOT fetched
-Customer customer = customerRepository.findById(1L);
-// SQL: SELECT * FROM customers WHERE id = 1
+// When you load user, orders are NOT fetched
+User user = userRepository.findById(1L);
+// SQL: SELECT * FROM users WHERE id = 1
 
 // Orders are fetched when accessed
-List<Order> orders = customer.getOrders();  // NOW fetched
-// SQL: SELECT * FROM orders WHERE customer_id = 1
+List<Order> orders = user.getOrders();  // NOW fetched
+// SQL: SELECT * FROM orders WHERE user_id = 1
 ```
 
 **Pros**:
@@ -591,18 +790,10 @@ List<Order> orders = customer.getOrders();  // NOW fetched
    private Category category;
    ```
 
-3. **Override with JOIN FETCH in queries when needed**
+3. **Override with JOIN FETCH in queries when needed** (from PizzaStore project)
    ```java
-   @Query("SELECT c FROM Customer c JOIN FETCH c.orders WHERE c.id = :id")
-   Optional<Customer> findByIdWithOrders(@Param("id") Long id);
-   ```
-
-4. **Use DTOs to avoid lazy loading issues**
-   ```java
-   // In service layer (transaction active)
-   Customer customer = customerRepository.findById(id);
-   List<Order> orders = customer.getOrders();  // Trigger fetch
-   return mapper.toDTO(customer, orders);      // Convert to DTO
+   @Query("SELECT u FROM User u JOIN FETCH u.orders WHERE u.id = :id")
+   Optional<User> findByIdWithOrders(@Param("id") Long id);
    ```
 
 ---
@@ -614,9 +805,9 @@ List<Order> orders = customer.getOrders();  // NOW fetched
 Should operations on the parent entity cascade (propagate) to child entities?
 
 ```java
-Customer customer = customerRepository.findById(1L);
-customerRepository.delete(customer);
-// Should the customer's orders also be deleted?
+User user = userRepository.findById(1L);
+userRepository.delete(user);
+// Should the user's orders also be deleted?
 ```
 
 ### Cascade Types
@@ -638,19 +829,20 @@ When you save the parent, children are also saved.
 
 ```java
 @Entity
-public class Customer {
-    @OneToMany(mappedBy = "customer", cascade = CascadeType.PERSIST)
+@Table(name = "users")
+public class User {
+    @OneToMany(mappedBy = "user", cascade = CascadeType.PERSIST)
     private List<Order> orders;
 }
 
-// Create customer with orders
-Customer customer = new Customer("John");
-Order order1 = new Order("ORD-001");
-Order order2 = new Order("ORD-002");
-customer.addOrder(order1);
-customer.addOrder(order2);
+// Create user with orders
+User user = new User("John");
+Order order1 = new Order("ORD-001", user, OrderStatus.PENDING);
+Order order2 = new Order("ORD-002", user, OrderStatus.PENDING);
+user.addOrder(order1);
+user.addOrder(order2);
 
-customerRepository.save(customer);  // Also saves order1 and order2!
+userRepository.save(user);  // Also saves order1 and order2!
 ```
 
 ### CascadeType.REMOVE
@@ -659,23 +851,24 @@ When you delete the parent, children are also deleted.
 
 ```java
 @Entity
-public class Customer {
-    @OneToMany(mappedBy = "customer", cascade = CascadeType.REMOVE)
+@Table(name = "users")
+public class User {
+    @OneToMany(mappedBy = "user", cascade = CascadeType.REMOVE)
     private List<Order> orders;
 }
 
-Customer customer = customerRepository.findById(1L);
-customerRepository.delete(customer);  // Also deletes all customer's orders!
+User user = userRepository.findById(1L);
+userRepository.delete(user);  // Also deletes all user's orders!
 ```
 
 ⚠️ **Careful with REMOVE**: Can accidentally delete important data!
 
 ### CascadeType.ALL
 
-All operations cascade (PERSIST + MERGE + REMOVE + REFRESH + DETACH).
+All operations cascade (PERSIST + MERGE + REMOVE + REFRESH + DETACH). From PizzaStore project:
 
 ```java
-@OneToMany(mappedBy = "customer", cascade = CascadeType.ALL, orphanRemoval = true)
+@OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
 private List<Order> orders;
 ```
 
@@ -685,18 +878,19 @@ Delete child entities when they're removed from the collection.
 
 ```java
 @Entity
-public class Customer {
+@Table(name = "users")
+public class User {
     @OneToMany(
-        mappedBy = "customer", 
+        mappedBy = "user", 
         cascade = CascadeType.ALL, 
         orphanRemoval = true  // Delete orphaned orders
     )
     private List<Order> orders;
 }
 
-Customer customer = customerRepository.findById(1L);
-customer.getOrders().clear();  // Remove all orders from collection
-customerRepository.save(customer);  // Orders are DELETED from database!
+User user = userRepository.findById(1L);
+user.getOrders().clear();  // Remove all orders from collection
+userRepository.save(user);  // Orders are DELETED from database!
 ```
 
 **Difference from CascadeType.REMOVE**:
@@ -707,19 +901,19 @@ customerRepository.save(customer);  // Orders are DELETED from database!
 
 1. **Use CascadeType.ALL + orphanRemoval for parent-child relationships**
    ```java
-   @OneToMany(mappedBy = "customer", cascade = CascadeType.ALL, orphanRemoval = true)
+   @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
    private List<Order> orders;
    ```
 
 2. **Be careful with CascadeType.REMOVE**
    ```java
-   // ❌ Dangerous: Deleting order would delete customer!
+   // ❌ Dangerous: Deleting order would delete user!
    @ManyToOne(cascade = CascadeType.REMOVE)
-   private Customer customer;
+   private User user;
    
    // ✅ Better: No cascading on @ManyToOne
    @ManyToOne
-   private Customer customer;
+   private User user;
    ```
 
 3. **Don't cascade on @ManyToMany** (usually)
@@ -931,9 +1125,9 @@ public interface PizzaRepository extends JpaRepository<Pizza, Long> {
     @Query("SELECT p FROM Pizza p WHERE p.name LIKE %:keyword% OR p.description LIKE %:keyword%")
     List<Pizza> searchByKeyword(@Param("keyword") String keyword);
     
-    // JOIN FETCH to avoid N+1 problem
-    @Query("SELECT c FROM Customer c JOIN FETCH c.orders WHERE c.id = :id")
-    Optional<Customer> findByIdWithOrders(@Param("id") Long id);
+    // JOIN FETCH to avoid N+1 problem (from PizzaStore UserRepository)
+    @Query("SELECT u FROM User u JOIN FETCH u.orders WHERE u.id = :id")
+    Optional<User> findByIdWithOrders(@Param("id") Long id);
     
     // Projection (selecting specific fields)
     @Query("SELECT p.name, p.price FROM Pizza p WHERE p.price < :maxPrice")
@@ -1217,475 +1411,6 @@ spring.sql.init.mode=always  # Load data.sql on every startup
 
 ---
 
-## 🍕 PizzaStore: Adding Customer and Order
-
-Let's expand PizzaStore with Customer and Order entities.
-
-### Step 1: Create Customer Entity
-
-```java
-package be.vives.pizzastore.domain;
-
-import jakarta.persistence.*;
-import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
-
-@Entity
-@Table(name = "customers")
-public class Customer {
-    
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-    
-    @Column(nullable = false, length = 100)
-    private String name;
-    
-    @Column(nullable = false, unique = true, length = 100)
-    private String email;
-    
-    @Column(length = 20)
-    private String phone;
-    
-    @Column(length = 200)
-    private String address;
-    
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt;
-    
-    @Column(name = "updated_at")
-    private LocalDateTime updatedAt;
-    
-    @OneToMany(mappedBy = "customer", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<Order> orders = new ArrayList<>();
-    
-    @PrePersist
-    protected void onCreate() {
-        createdAt = LocalDateTime.now();
-        updatedAt = LocalDateTime.now();
-    }
-    
-    @PreUpdate
-    protected void onUpdate() {
-        updatedAt = LocalDateTime.now();
-    }
-    
-    // Constructors
-    public Customer() {}
-    
-    public Customer(String name, String email) {
-        this.name = name;
-        this.email = email;
-    }
-    
-    // Helper method to maintain bidirectional relationship
-    public void addOrder(Order order) {
-        orders.add(order);
-        order.setCustomer(this);
-    }
-    
-    public void removeOrder(Order order) {
-        orders.remove(order);
-        order.setCustomer(null);
-    }
-    
-    // Getters and Setters
-    public Long getId() { return id; }
-    public void setId(Long id) { this.id = id; }
-    
-    public String getName() { return name; }
-    public void setName(String name) { this.name = name; }
-    
-    public String getEmail() { return email; }
-    public void setEmail(String email) { this.email = email; }
-    
-    public String getPhone() { return phone; }
-    public void setPhone(String phone) { this.phone = phone; }
-    
-    public String getAddress() { return address; }
-    public void setAddress(String address) { this.address = address; }
-    
-    public LocalDateTime getCreatedAt() { return createdAt; }
-    public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
-    
-    public LocalDateTime getUpdatedAt() { return updatedAt; }
-    public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }
-    
-    public List<Order> getOrders() { return orders; }
-    public void setOrders(List<Order> orders) { this.orders = orders; }
-}
-```
-
-### Step 2: Create Order Entity
-
-```java
-package be.vives.pizzastore.domain;
-
-import jakarta.persistence.*;
-import java.math.BigDecimal;
-import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
-
-@Entity
-@Table(name = "orders")
-public class Order {
-    
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-    
-    @Column(name = "order_number", nullable = false, unique = true, length = 50)
-    private String orderNumber;
-    
-    @Column(name = "order_date", nullable = false)
-    private LocalDateTime orderDate;
-    
-    @Column(name = "total_amount", nullable = false, precision = 10, scale = 2)
-    private BigDecimal totalAmount;
-    
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 20)
-    private OrderStatus status;
-    
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "customer_id", nullable = false)
-    private Customer customer;
-    
-    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<OrderLine> orderLines = new ArrayList<>();
-    
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt;
-    
-    @Column(name = "updated_at")
-    private LocalDateTime updatedAt;
-    
-    @PrePersist
-    protected void onCreate() {
-        createdAt = LocalDateTime.now();
-        updatedAt = LocalDateTime.now();
-        if (orderDate == null) {
-            orderDate = LocalDateTime.now();
-        }
-    }
-    
-    @PreUpdate
-    protected void onUpdate() {
-        updatedAt = LocalDateTime.now();
-    }
-    
-    // Constructors
-    public Order() {}
-    
-    public Order(String orderNumber, Customer customer, OrderStatus status) {
-        this.orderNumber = orderNumber;
-        this.customer = customer;
-        this.status = status;
-        this.orderDate = LocalDateTime.now();
-        this.totalAmount = BigDecimal.ZERO;
-    }
-    
-    // Helper methods
-    public void addOrderLine(OrderLine orderLine) {
-        orderLines.add(orderLine);
-        orderLine.setOrder(this);
-        calculateTotalAmount();
-    }
-    
-    public void removeOrderLine(OrderLine orderLine) {
-        orderLines.remove(orderLine);
-        orderLine.setOrder(null);
-        calculateTotalAmount();
-    }
-    
-    public void calculateTotalAmount() {
-        totalAmount = orderLines.stream()
-            .map(OrderLine::getSubtotal)
-            .reduce(BigDecimal.ZERO, BigDecimal::add);
-    }
-    
-    // Getters and Setters
-    public Long getId() { return id; }
-    public void setId(Long id) { this.id = id; }
-    
-    public String getOrderNumber() { return orderNumber; }
-    public void setOrderNumber(String orderNumber) { this.orderNumber = orderNumber; }
-    
-    public LocalDateTime getOrderDate() { return orderDate; }
-    public void setOrderDate(LocalDateTime orderDate) { this.orderDate = orderDate; }
-    
-    public BigDecimal getTotalAmount() { return totalAmount; }
-    public void setTotalAmount(BigDecimal totalAmount) { this.totalAmount = totalAmount; }
-    
-    public OrderStatus getStatus() { return status; }
-    public void setStatus(OrderStatus status) { this.status = status; }
-    
-    public Customer getCustomer() { return customer; }
-    public void setCustomer(Customer customer) { this.customer = customer; }
-    
-    public List<OrderLine> getOrderLines() { return orderLines; }
-    public void setOrderLines(List<OrderLine> orderLines) { this.orderLines = orderLines; }
-    
-    public LocalDateTime getCreatedAt() { return createdAt; }
-    public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
-    
-    public LocalDateTime getUpdatedAt() { return updatedAt; }
-    public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }
-}
-```
-
-### Step 3: Create OrderStatus Enum
-
-```java
-package be.vives.pizzastore.domain;
-
-public enum OrderStatus {
-    PENDING,
-    CONFIRMED,
-    PREPARING,
-    READY,
-    DELIVERED,
-    CANCELLED
-}
-```
-
-### Step 4: Create OrderLine Entity
-
-```java
-package be.vives.pizzastore.domain;
-
-import jakarta.persistence.*;
-import java.math.BigDecimal;
-
-@Entity
-@Table(name = "order_lines")
-public class OrderLine {
-    
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-    
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "order_id", nullable = false)
-    private Order order;
-    
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "pizza_id", nullable = false)
-    private Pizza pizza;
-    
-    @Column(nullable = false)
-    private Integer quantity;
-    
-    @Column(name = "unit_price", nullable = false, precision = 10, scale = 2)
-    private BigDecimal unitPrice;
-    
-    @Column(nullable = false, precision = 10, scale = 2)
-    private BigDecimal subtotal;
-    
-    // Constructors
-    public OrderLine() {}
-    
-    public OrderLine(Pizza pizza, Integer quantity) {
-        this.pizza = pizza;
-        this.quantity = quantity;
-        this.unitPrice = pizza.getPrice();
-        this.subtotal = unitPrice.multiply(BigDecimal.valueOf(quantity));
-    }
-    
-    // Getters and Setters
-    public Long getId() { return id; }
-    public void setId(Long id) { this.id = id; }
-    
-    public Order getOrder() { return order; }
-    public void setOrder(Order order) { this.order = order; }
-    
-    public Pizza getPizza() { return pizza; }
-    public void setPizza(Pizza pizza) { this.pizza = pizza; }
-    
-    public Integer getQuantity() { return quantity; }
-    public void setQuantity(Integer quantity) { 
-        this.quantity = quantity;
-        calculateSubtotal();
-    }
-    
-    public BigDecimal getUnitPrice() { return unitPrice; }
-    public void setUnitPrice(BigDecimal unitPrice) { 
-        this.unitPrice = unitPrice;
-        calculateSubtotal();
-    }
-    
-    public BigDecimal getSubtotal() { return subtotal; }
-    public void setSubtotal(BigDecimal subtotal) { this.subtotal = subtotal; }
-    
-    private void calculateSubtotal() {
-        if (unitPrice != null && quantity != null) {
-            this.subtotal = unitPrice.multiply(BigDecimal.valueOf(quantity));
-        }
-    }
-}
-```
-
-### Step 5: Create Repositories
-
-```java
-package be.vives.pizzastore.repository;
-
-import be.vives.pizzastore.domain.Customer;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
-import org.springframework.stereotype.Repository;
-
-import java.util.Optional;
-
-@Repository
-public interface CustomerRepository extends JpaRepository<Customer, Long> {
-    
-    Optional<Customer> findByEmail(String email);
-    
-    boolean existsByEmail(String email);
-    
-    @Query("SELECT c FROM Customer c JOIN FETCH c.orders WHERE c.id = :id")
-    Optional<Customer> findByIdWithOrders(@Param("id") Long id);
-}
-```
-
-```java
-package be.vives.pizzastore.repository;
-
-import be.vives.pizzastore.domain.Order;
-import be.vives.pizzastore.domain.OrderStatus;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
-import org.springframework.stereotype.Repository;
-
-import java.util.List;
-import java.util.Optional;
-
-@Repository
-public interface OrderRepository extends JpaRepository<Order, Long> {
-    
-    List<Order> findByCustomerId(Long customerId);
-    
-    List<Order> findByStatus(OrderStatus status);
-    
-    Optional<Order> findByOrderNumber(String orderNumber);
-    
-    @Query("SELECT o FROM Order o JOIN FETCH o.orderLines ol JOIN FETCH ol.pizza WHERE o.id = :id")
-    Optional<Order> findByIdWithOrderLines(@Param("id") Long id);
-    
-    @Query("SELECT o FROM Order o JOIN FETCH o.customer WHERE o.customer.id = :customerId")
-    List<Order> findByCustomerIdWithCustomer(@Param("customerId") Long customerId);
-}
-```
-
-### Step 6: Test Relationships
-
-```java
-@SpringBootTest
-@Transactional
-class OrderRepositoryTest {
-    
-    @Autowired
-    private CustomerRepository customerRepository;
-    
-    @Autowired
-    private PizzaRepository pizzaRepository;
-    
-    @Autowired
-    private OrderRepository orderRepository;
-    
-    @Test
-    void shouldCreateOrderWithOrderLines() {
-        // Given
-        Customer customer = new Customer("John Doe", "john@example.com");
-        customerRepository.save(customer);
-        
-        Pizza margherita = new Pizza("Margherita", new BigDecimal("8.50"), "Classic");
-        Pizza pepperoni = new Pizza("Pepperoni", new BigDecimal("9.50"), "Spicy");
-        pizzaRepository.saveAll(List.of(margherita, pepperoni));
-        
-        // When
-        Order order = new Order("ORD-001", customer, OrderStatus.PENDING);
-        order.addOrderLine(new OrderLine(margherita, 2));
-        order.addOrderLine(new OrderLine(pepperoni, 1));
-        orderRepository.save(order);
-        
-        // Then
-        Order savedOrder = orderRepository.findById(order.getId()).orElseThrow();
-        assertThat(savedOrder.getOrderLines()).hasSize(2);
-        assertThat(savedOrder.getTotalAmount()).isEqualByComparingTo("26.50"); // 8.50*2 + 9.50*1
-    }
-}
-```
-
----
-
-## 💡 Tips & Best Practices
-
-### 1. Always Use Bidirectional Helper Methods
-
-```java
-public class Customer {
-    public void addOrder(Order order) {
-        orders.add(order);
-        order.setCustomer(this);  // Maintain both sides!
-    }
-}
-```
-
-### 2. Use @Transactional in Service Layer
-
-```java
-@Service
-@Transactional  // All methods are transactional
-public class OrderService {
-    // ...
-}
-```
-
-### 3. Be Careful with toString(), equals(), hashCode()
-
-Don't include bidirectional relationships:
-
-```java
-@Override
-public String toString() {
-    return "Order{id=" + id + ", orderNumber='" + orderNumber + "'}";
-    // Don't include customer or orderLines!
-}
-```
-
-### 4. Use JOIN FETCH to Avoid N+1 Problem
-
-```java
-// ❌ Bad: N+1 queries
-List<Order> orders = orderRepository.findAll();
-orders.forEach(order -> {
-    System.out.println(order.getCustomer().getName());  // Extra query for each order!
-});
-
-// ✅ Good: Single query with JOIN FETCH
-@Query("SELECT o FROM Order o JOIN FETCH o.customer")
-List<Order> findAllWithCustomer();
-```
-
-### 5. Use Proper Fetch Types
-
-```java
-// ✅ Good
-@ManyToOne(fetch = FetchType.LAZY)  // Always LAZY for @ManyToOne
-private Customer customer;
-
-@OneToMany(fetch = FetchType.LAZY)  // Always LAZY for collections
-private List<Order> orders;
-```
-
----
-
 ## 🎓 Summary
 
 ### What We Learned
@@ -1701,39 +1426,48 @@ private List<Order> orders;
    - `@Enumerated`, `@Transient`
    - Lifecycle callbacks: `@PrePersist`, `@PreUpdate`
 
-3. **Entity Relationships**
+3. **JPA Auditing**
+   - `@EntityListeners(AuditingEntityListener.class)` for automatic tracking
+   - `@CreatedDate`, `@CreatedBy`, `@LastModifiedDate`, `@LastModifiedBy`
+   - `@EnableJpaAuditing` to enable auditing globally
+   - Implement `AuditorAware` to track current user
+   - Automatic timestamps and user tracking
+
+4. **Entity Relationships**
    - `@OneToOne`: One-to-one relationship
    - `@OneToMany` / `@ManyToOne`: One-to-many relationship
    - `@ManyToMany`: Many-to-many relationship
    - Always maintain bidirectional relationships with helper methods
 
-4. **Fetch Types**
+5. **Fetch Types**
    - `LAZY`: Load on-demand (better performance)
    - `EAGER`: Load immediately (can cause issues)
    - Use LAZY by default, override with JOIN FETCH when needed
 
-5. **Cascade Types**
+6. **Cascade Types**
    - Control how operations propagate to related entities
    - Use `CascadeType.ALL` + `orphanRemoval = true` for parent-child
    - Be careful with `CascadeType.REMOVE`
 
-6. **Repository Interfaces**
+7. **Repository Interfaces**
    - `JpaRepository`: Most feature-rich (recommended)
    - `CrudRepository`: Basic CRUD
    - `PagingAndSortingRepository`: Adds pagination
 
-7. **Custom Queries**
+8. **Custom Queries**
    - Derived queries: Naming conventions generate queries
    - `@Query` with JPQL: Write explicit queries
    - Native SQL: Database-specific features
    - Pagination and sorting support
 
-8. **Best Practices**
+9. **Best Practices**
    - Use LAZY fetching by default
    - Use JOIN FETCH to avoid N+1 problems
    - Use DTOs to avoid lazy loading exceptions
    - Be careful with cascade types
    - Use bidirectional helper methods
+   - Enable JPA Auditing for automatic tracking
+   - Don't expose audit fields in API responses
 
 ---
 
@@ -1761,10 +1495,12 @@ A complete, runnable Spring Boot project demonstrating **all JPA relationships**
 
 The project includes:
 - ✅ **@OneToOne**: Pizza ↔ NutritionalInfo
-- ✅ **@ManyToOne** / **@OneToMany**: Customer → Orders
-- ✅ **@ManyToMany**: Customer ↔ Pizza (favorites)
-- ✅ Complete database schema with sample data
-- ✅ Custom queries with JOIN FETCH
+- ✅ **@ManyToOne** / **@OneToMany**: User → Orders, Order → OrderLines
+- ✅ **@ManyToMany**: User ↔ Pizza (favorites)
+- ✅ **JPA Auditing**: Automatic createdAt, updatedAt, createdBy, updatedBy tracking
+- ✅ **Enums**: OrderStatus, Role with @Enumerated(EnumType.STRING)
+- ✅ Complete database schema with comprehensive sample data (12 pizzas, 6 users, 10 orders)
+- ✅ Custom queries with JOIN FETCH to avoid N+1 problems
 - ✅ Bidirectional helper methods
 
 See the project README for detailed setup instructions and SQL queries to explore the relationships.
