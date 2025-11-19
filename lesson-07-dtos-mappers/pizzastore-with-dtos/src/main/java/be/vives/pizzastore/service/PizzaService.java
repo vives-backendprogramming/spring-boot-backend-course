@@ -10,10 +10,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
-import java.util.Optional;
 
 @Service
-@Transactional
+@Transactional(readOnly = true)
 public class PizzaService {
 
     private final PizzaRepository pizzaRepository;
@@ -24,36 +23,56 @@ public class PizzaService {
         this.pizzaMapper = pizzaMapper;
     }
 
-    public List<PizzaResponse> findAll() {
-        List<Pizza> pizzas = pizzaRepository.findAll();
-        return pizzaMapper.toResponseList(pizzas);
+    public List<PizzaResponse> getAllPizzas() {
+        return pizzaRepository.findAll()
+                .stream()
+                .map(pizzaMapper::toPizzaResponse)
+                .toList();
     }
 
-    public Optional<PizzaResponse> findById(Long id) {
-        return pizzaRepository.findById(id)
-                .map(pizzaMapper::toResponse);
+    public List<PizzaResponse> getAvailablePizzas() {
+        return pizzaRepository.findByAvailableTrue()
+                .stream()
+                .map(pizzaMapper::toPizzaResponse)
+                .toList();
     }
 
-    public PizzaResponse create(CreatePizzaRequest request) {
+    public PizzaResponse getPizzaById(Long id) {
+        Pizza pizza = pizzaRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Pizza not found with id: " + id));
+        return pizzaMapper.toPizzaResponse(pizza);
+    }
+
+    @Transactional
+    public PizzaResponse createPizza(CreatePizzaRequest request) {
         Pizza pizza = pizzaMapper.toEntity(request);
         Pizza savedPizza = pizzaRepository.save(pizza);
-        return pizzaMapper.toResponse(savedPizza);
+        return pizzaMapper.toPizzaResponse(savedPizza);
     }
 
-    public Optional<PizzaResponse> update(Long id, UpdatePizzaRequest request) {
-        return pizzaRepository.findById(id)
-                .map(pizza -> {
-                    pizzaMapper.updateEntity(request, pizza);
-                    Pizza updatedPizza = pizzaRepository.save(pizza);
-                    return pizzaMapper.toResponse(updatedPizza);
-                });
+    @Transactional
+    public PizzaResponse updatePizza(Long id, UpdatePizzaRequest request) {
+        Pizza pizza = pizzaRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Pizza not found with id: " + id));
+        
+        pizzaMapper.updateEntityFromRequest(request, pizza);
+        
+        Pizza updatedPizza = pizzaRepository.save(pizza);
+        return pizzaMapper.toPizzaResponse(updatedPizza);
     }
 
-    public boolean delete(Long id) {
-        if (pizzaRepository.existsById(id)) {
-            pizzaRepository.deleteById(id);
-            return true;
+    @Transactional
+    public void deletePizza(Long id) {
+        if (!pizzaRepository.existsById(id)) {
+            throw new RuntimeException("Pizza not found with id: " + id);
         }
-        return false;
+        pizzaRepository.deleteById(id);
+    }
+
+    public List<PizzaResponse> searchPizzas(String keyword) {
+        return pizzaRepository.findByNameContainingIgnoreCaseOrDescriptionContainingIgnoreCase(keyword, keyword)
+                .stream()
+                .map(pizzaMapper::toPizzaResponse)
+                .toList();
     }
 }

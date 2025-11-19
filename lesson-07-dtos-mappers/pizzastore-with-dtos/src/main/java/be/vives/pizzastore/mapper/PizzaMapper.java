@@ -4,22 +4,32 @@ import be.vives.pizzastore.domain.Pizza;
 import be.vives.pizzastore.dto.request.CreatePizzaRequest;
 import be.vives.pizzastore.dto.request.UpdatePizzaRequest;
 import be.vives.pizzastore.dto.response.PizzaResponse;
-import org.mapstruct.Mapper;
-import org.mapstruct.Mapping;
-import org.mapstruct.MappingTarget;
-
-import java.util.List;
+import be.vives.pizzastore.dto.response.PizzaSummaryResponse;
+import org.mapstruct.*;
 
 @Mapper(componentModel = "spring")
 public interface PizzaMapper {
 
-    PizzaResponse toResponse(Pizza pizza);
+    PizzaResponse toPizzaResponse(Pizza pizza);
 
-    List<PizzaResponse> toResponseList(List<Pizza> pizzas);
+    PizzaSummaryResponse toPizzaSummaryResponse(Pizza pizza);
 
     @Mapping(target = "id", ignore = true)
+    @Mapping(target = "createdAt", ignore = true)
+    @Mapping(target = "createdBy", ignore = true)
+    @Mapping(target = "updatedAt", ignore = true)
+    @Mapping(target = "updatedBy", ignore = true)
+    @Mapping(target = "nutritionalInfo", ignore = true)
+    @Mapping(target = "favoritedByUsers", ignore = true)
     Pizza toEntity(CreatePizzaRequest request);
 
     @Mapping(target = "id", ignore = true)
-    void updateEntity(UpdatePizzaRequest request, @MappingTarget Pizza pizza);
+    @Mapping(target = "createdAt", ignore = true)
+    @Mapping(target = "createdBy", ignore = true)
+    @Mapping(target = "updatedAt", ignore = true)
+    @Mapping(target = "updatedBy", ignore = true)
+    @Mapping(target = "nutritionalInfo", ignore = true)
+    @Mapping(target = "favoritedByUsers", ignore = true)
+    @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
+    void updateEntityFromRequest(UpdatePizzaRequest request, @MappingTarget Pizza pizza);
 }

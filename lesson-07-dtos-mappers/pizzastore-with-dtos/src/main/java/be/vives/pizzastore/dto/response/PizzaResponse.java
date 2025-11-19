@@ -1,12 +1,13 @@
 package be.vives.pizzastore.dto.response;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
 
 public record PizzaResponse(
         Long id,
         String name,
+        String description,
         BigDecimal price,
-        String description
+        String imageUrl,
+        boolean available
 ) {
 }

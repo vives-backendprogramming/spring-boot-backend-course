@@ -15,12 +15,13 @@
     <groupId>be.vives</groupId>
     <artifactId>pizzastore-with-dtos</artifactId>
     <version>1.0.0</version>
-    <name>PizzaStore with DTOs</name>
-    <description>PizzaStore application demonstrating DTOs and MapStruct</description>
+    <name>PizzaStore with DTOs and Mappers</name>
+    <description>PizzaStore application demonstrating DTOs, Mappers and Service Layer</description>
 
     <properties>
         <java.version>25</java.version>
-        <org.mapstruct.version>1.5.5.Final</org.mapstruct.version>
+        <mapstruct.version>1.6.3</mapstruct.version>
+        <lombok-mapstruct-binding.version>0.2.0</lombok-mapstruct-binding.version>
     </properties>
 
     <dependencies>
@@ -41,17 +42,18 @@
             <scope>runtime</scope>
         </dependency>
 
-        <!-- MapStruct -->
+        <!-- MapStruct for DTO mapping -->
         <dependency>
             <groupId>org.mapstruct</groupId>
             <artifactId>mapstruct</artifactId>
-            <version>${org.mapstruct.version}</version>
+            <version>${mapstruct.version}</version>
         </dependency>
 
-        <!-- Validation -->
+        <!-- Lombok (optional but recommended) -->
         <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-validation</artifactId>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
         </dependency>
 
         <!-- Spring Boot DevTools -->
@@ -75,11 +77,19 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <excludes>
+                        <exclude>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                        </exclude>
+                    </excludes>
+                </configuration>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.11.0</version>
+                <version>3.13.0</version>
                 <configuration>
                     <source>${java.version}</source>
                     <target>${java.version}</target>
@@ -87,7 +97,17 @@
                         <path>
                             <groupId>org.mapstruct</groupId>
                             <artifactId>mapstruct-processor</artifactId>
-                            <version>${org.mapstruct.version}</version>
+                            <version>${mapstruct.version}</version>
+                        </path>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                            <version>${lombok.version}</version>
+                        </path>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok-mapstruct-binding</artifactId>
+                            <version>${lombok-mapstruct-binding.version}</version>
                         </path>
                     </annotationProcessorPaths>
                 </configuration>

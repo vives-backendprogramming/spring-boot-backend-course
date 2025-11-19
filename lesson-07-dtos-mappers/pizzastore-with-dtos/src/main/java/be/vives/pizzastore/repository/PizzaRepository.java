@@ -24,6 +24,10 @@ public interface PizzaRepository extends JpaRepository<Pizza, Long> {
 
     List<Pizza> findByPriceBetween(BigDecimal minPrice, BigDecimal maxPrice);
 
+    List<Pizza> findByAvailableTrue();
+
+    List<Pizza> findByNameContainingIgnoreCaseOrDescriptionContainingIgnoreCase(String name, String description);
+
     // Custom query with JPQL
     @Query("SELECT p FROM Pizza p WHERE p.name LIKE %:keyword% OR p.description LIKE %:keyword%")
     List<Pizza> searchByKeyword(@Param("keyword") String keyword);
