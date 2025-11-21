@@ -14,6 +14,7 @@ By the end of this lesson, you will be able to:
 - Use pagination for large datasets
 - Implement proper Location headers for created resources
 - Handle soft deletes vs hard deletes
+- Upload and serve files (images) in a Spring Boot application
 - Apply all concepts from previous lessons in one complete API
 
 ---
@@ -28,8 +29,9 @@ By the end of this lesson, you will be able to:
 6. [DELETE: Hard vs Soft Delete](#delete-hard-vs-soft-delete)
 7. [Query Parameters & Filtering](#query-parameters--filtering)
 8. [Pagination & Sorting](#pagination--sorting)
-9. [Complete PizzaStore API](#complete-pizzastore-api)
-10. [Summary](#summary)
+9. [File Upload for Images](#file-upload-for-images)
+10. [Complete PizzaStore API](#complete-pizzastore-api)
+11. [Summary](#summary)
 
 ---
 
@@ -717,6 +719,106 @@ public Page<PizzaResponse> findAll(Pageable pageable) {
 
 ---
 
+## 📤 File Upload for Images
+
+Spring Boot provides built-in support for file uploads using `MultipartFile`. This is commonly used for uploading images, documents, or other files.
+
+### Configuration
+
+Configure file upload limits in `application.properties`:
+
+```properties
+# File Upload Configuration
+spring.servlet.multipart.enabled=true
+spring.servlet.multipart.max-file-size=5MB
+spring.servlet.multipart.max-request-size=5MB
+file.upload-dir=uploads/pizzas
+file.base-url=http://localhost:8080
+```
+
+### File Storage Service
+
+Create a service to handle file storage: `FileStorageService`
+
+### Controller Endpoint
+
+```java
+@PostMapping("/{id}/image")
+public ResponseEntity<PizzaResponse> uploadPizzaImage(
+        @PathVariable Long id,
+        @RequestParam("image") MultipartFile file) {
+    
+    try {
+        return pizzaService.uploadImage(id, file)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    } catch (IllegalArgumentException e) {
+        return ResponseEntity.badRequest().build();
+    }
+}
+```
+
+### Service Layer
+
+```java
+public Optional<PizzaResponse> uploadImage(Long id, MultipartFile file) {
+    return pizzaRepository.findById(id)
+            .map(pizza -> {
+                String imageUrl = fileStorageService.storeFile(file, id);
+                pizza.setImageUrl(imageUrl);
+                Pizza updatedPizza = pizzaRepository.save(pizza);
+                return pizzaMapper.toResponse(updatedPizza);
+            });
+}
+```
+
+### Serving Static Files
+
+Configure Spring MVC to serve uploaded files:
+
+```java
+@Configuration
+public class WebConfig implements WebMvcConfigurer {
+
+    @Value("${file.upload-dir}")
+    private String uploadDir;
+
+    @Override
+    public void addResourceHandlers(ResourceHandlerRegistry registry) {
+        String uploadPath = Paths.get(uploadDir)
+            .toAbsolutePath().toUri().toString();
+        
+        registry.addResourceHandler("/uploads/pizzas/**")
+                .addResourceLocations(uploadPath);
+    }
+}
+```
+
+### Usage Example
+
+Upload a pizza image using curl or Postman:
+
+```bash
+# Upload image for pizza with ID 1
+curl -X POST http://localhost:8080/api/pizzas/1/image \
+  -F "image=@/path/to/pizza.jpg"
+```
+
+**Response:**
+```json
+{
+  "id": 1,
+  "name": "Margherita",
+  "price": 8.50,
+  "imageUrl": "http://localhost:8080/uploads/pizzas/1-20240115143022.jpg",
+  "available": true
+}
+```
+
+The image is now accessible at the returned URL and will be served by Spring Boot.
+
+---
+
 ## 🍕 Complete PizzaStore API
 
 A complete REST API for the PizzaStore with all concepts applied.
@@ -732,6 +834,7 @@ POST   /api/pizzas              - Create new pizza
 PUT    /api/pizzas/{id}         - Update pizza (full)
 PATCH  /api/pizzas/{id}         - Update pizza (partial)
 DELETE /api/pizzas/{id}         - Delete pizza
+POST   /api/pizzas/{id}/image   - Upload pizza image
 ```
 
 #### Customer API
@@ -754,87 +857,6 @@ GET    /api/orders/{id}         - Get single order (with order lines)
 POST   /api/orders              - Create new order
 PUT    /api/orders/{id}/status  - Update order status
 DELETE /api/orders/{id}         - Cancel order
-```
-
-### Complete Example: Order API
-
-```java
-@RestController
-@RequestMapping("/api/orders")
-public class OrderController {
-    
-    private final OrderService orderService;
-    
-    public OrderController(OrderService orderService) {
-        this.orderService = orderService;
-    }
-    
-    // List all orders with optional filtering
-    @GetMapping
-    public ResponseEntity<Page<OrderResponse>> getOrders(
-            @RequestParam(required = false) Long customerId,
-            @RequestParam(required = false) OrderStatus status,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size) {
-        
-        Pageable pageable = PageRequest.of(page, size, Sort.by("orderDate").descending());
-        Page<OrderResponse> orders;
-        
-        if (customerId != null) {
-            orders = orderService.findByCustomerId(customerId, pageable);
-        } else if (status != null) {
-            orders = orderService.findByStatus(status, pageable);
-        } else {
-            orders = orderService.findAll(pageable);
-        }
-        
-        return ResponseEntity.ok(orders);
-    }
-    
-    // Get single order with all details
-    @GetMapping("/{id}")
-    public ResponseEntity<OrderResponse> getOrder(@PathVariable Long id) {
-        return orderService.findByIdWithDetails(id)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
-    }
-    
-    // Create new order
-    @PostMapping
-    public ResponseEntity<OrderResponse> createOrder(
-            @RequestBody CreateOrderRequest request) {
-        
-        OrderResponse created = orderService.create(request);
-        
-        URI location = ServletUriComponentsBuilder
-                .fromCurrentRequest()
-                .path("/{id}")
-                .buildAndExpand(created.id())
-                .toUri();
-        
-        return ResponseEntity.created(location).body(created);
-    }
-    
-    // Update order status
-    @PatchMapping("/{id}/status")
-    public ResponseEntity<OrderResponse> updateOrderStatus(
-            @PathVariable Long id,
-            @RequestBody UpdateOrderStatusRequest request) {
-        
-        return orderService.updateStatus(id, request.status())
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
-    }
-    
-    // Cancel order (soft delete)
-    @DeleteMapping("/{id}")
-    public ResponseEntity<Void> cancelOrder(@PathVariable Long id) {
-        if (orderService.cancel(id)) {
-            return ResponseEntity.noContent().build();
-        }
-        return ResponseEntity.notFound().build();
-    }
-}
 ```
 
 ---
@@ -959,6 +981,7 @@ The project includes:
 - ✅ Pagination and sorting
 - ✅ Query parameters and filtering
 - ✅ Proper HTTP status codes and Location headers
+- ✅ File upload for pizza images
 - ✅ application.properties configuration
 - ✅ Logging configuration
 - ✅ Sample data with all relationships

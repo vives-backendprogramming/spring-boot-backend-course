@@ -1,6 +1,10 @@
 package be.vives.pizzastore.domain;
 
 import jakarta.persistence.*;
+import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.annotation.LastModifiedDate;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
+
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -8,8 +12,9 @@ import java.util.List;
 import java.util.Set;
 
 @Entity
-@Table(name = "customers")
-public class Customer {
+@Table(name = "users")
+@EntityListeners(AuditingEntityListener.class)
+public class User {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -21,54 +26,45 @@ public class Customer {
     @Column(nullable = false, unique = true, length = 100)
     private String email;
 
+    @Column(length = 255)
+    private String password;
+
     @Column(length = 20)
     private String phone;
 
     @Column(length = 200)
     private String address;
 
-    @Column(nullable = false)
-    private String password;
-
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private Role role = Role.CUSTOMER;
 
+    @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
+    @LastModifiedDate
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
-    @PrePersist
-    protected void onCreate() {
-        createdAt = LocalDateTime.now();
-        updatedAt = LocalDateTime.now();
-    }
-
-    @PreUpdate
-    protected void onUpdate() {
-        updatedAt = LocalDateTime.now();
-    }
-
-    // @OneToMany: Customer has many Orders
-    @OneToMany(mappedBy = "customer", cascade = CascadeType.ALL, orphanRemoval = true)
+    // @OneToMany: User has many Orders
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<Order> orders = new ArrayList<>();
 
-    // @ManyToMany: Customer can favorite many Pizzas
+    // @ManyToMany: User can favorite many Pizzas
     @ManyToMany
     @JoinTable(
-            name = "customer_favorite_pizzas",
-            joinColumns = @JoinColumn(name = "customer_id"),
+            name = "user_favorite_pizzas",
+            joinColumns = @JoinColumn(name = "user_id"),
             inverseJoinColumns = @JoinColumn(name = "pizza_id")
     )
     private Set<Pizza> favoritePizzas = new HashSet<>();
 
     // Constructors
-    public Customer() {
+    public User() {
     }
 
-    public Customer(String name, String email) {
+    public User(String name, String email) {
         this.name = name;
         this.email = email;
     }
@@ -76,22 +72,22 @@ public class Customer {
     // Helper methods for bidirectional relationships
     public void addOrder(Order order) {
         orders.add(order);
-        order.setCustomer(this);
+        order.setUser(this);
     }
 
     public void removeOrder(Order order) {
         orders.remove(order);
-        order.setCustomer(null);
+        order.setUser(null);
     }
 
     public void addFavoritePizza(Pizza pizza) {
         favoritePizzas.add(pizza);
-        pizza.getFavoritedByCustomers().add(this);
+        pizza.getFavoritedByUsers().add(this);
     }
 
     public void removeFavoritePizza(Pizza pizza) {
         favoritePizzas.remove(pizza);
-        pizza.getFavoritedByCustomers().remove(this);
+        pizza.getFavoritedByUsers().remove(this);
     }
 
     // Getters and Setters
@@ -119,6 +115,14 @@ public class Customer {
         this.email = email;
     }
 
+    public String getPassword() {
+        return password;
+    }
+
+    public void setPassword(String password) {
+        this.password = password;
+    }
+
     public String getPhone() {
         return phone;
     }
@@ -135,20 +139,12 @@ public class Customer {
         this.address = address;
     }
 
-    public List<Order> getOrders() {
-        return orders;
+    public Role getRole() {
+        return role;
     }
 
-    public void setOrders(List<Order> orders) {
-        this.orders = orders;
-    }
-
-    public Set<Pizza> getFavoritePizzas() {
-        return favoritePizzas;
-    }
-
-    public void setFavoritePizzas(Set<Pizza> favoritePizzas) {
-        this.favoritePizzas = favoritePizzas;
+    public void setRole(Role role) {
+        this.role = role;
     }
 
     public LocalDateTime getCreatedAt() {
@@ -167,25 +163,25 @@ public class Customer {
         this.updatedAt = updatedAt;
     }
 
-    public String getPassword() {
-        return password;
+    public List<Order> getOrders() {
+        return orders;
     }
 
-    public void setPassword(String password) {
-        this.password = password;
+    public void setOrders(List<Order> orders) {
+        this.orders = orders;
     }
 
-    public Role getRole() {
-        return role;
+    public Set<Pizza> getFavoritePizzas() {
+        return favoritePizzas;
     }
 
-    public void setRole(Role role) {
-        this.role = role;
+    public void setFavoritePizzas(Set<Pizza> favoritePizzas) {
+        this.favoritePizzas = favoritePizzas;
     }
 
     @Override
     public String toString() {
-        return "Customer{" +
+        return "User{" +
                 "id=" + id +
                 ", name='" + name + '\'' +
                 ", email='" + email + '\'' +

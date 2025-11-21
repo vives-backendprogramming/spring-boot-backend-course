@@ -14,6 +14,10 @@ public record CreatePizzaRequest(
         @DecimalMin(value = "0.01", message = "Price must be positive")
         BigDecimal price,
 
-        String description
+        String description,
+
+        Boolean available,
+
+        NutritionalInfoRequest nutritionalInfo
 ) {
 }

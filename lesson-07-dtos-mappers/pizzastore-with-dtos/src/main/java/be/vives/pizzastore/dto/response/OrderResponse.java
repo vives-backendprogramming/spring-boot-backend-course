@@ -9,11 +9,10 @@ import java.util.List;
 public record OrderResponse(
         Long id,
         String orderNumber,
-        Long customerId,
-        String customerName,
-        List<OrderLineResponse> orderLines,
-        BigDecimal totalAmount,
         OrderStatus status,
-        LocalDateTime orderDate
+        BigDecimal totalAmount,
+        LocalDateTime orderDate,
+        UserSummaryResponse user,
+        List<OrderLineResponse> orderLines
 ) {
 }
