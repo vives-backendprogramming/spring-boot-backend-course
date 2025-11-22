@@ -18,18 +18,18 @@ By the end of this lesson, you will be able to:
 
 ## 📚 Table of Contents
 
-1. [The Problem: Why Not Expose Entities?](#the-problem-why-not-expose-entities)
-2. [What Are DTOs?](#what-are-dtos)
-3. [Request vs Response DTOs](#request-vs-response-dtos)
-4. [Java Records for DTOs](#java-records-for-dtos)
-5. [Mapping Strategies](#mapping-strategies)
-6. [MapStruct: The Best Choice](#mapstruct-the-best-choice)
-7. [Service Layer Pattern](#service-layer-pattern)
-8. [Project Structure with DTOs](#project-structure-with-dtos)
-9. [PizzaStore: Complete Implementation](#pizzastore-complete-implementation)
-10. [Best Practices](#best-practices)
-11. [Common Pitfalls](#common-pitfalls)
-12. [Summary](#summary)
+1. [The Problem: Why Not Expose Entities?](#-the-problem-why-not-expose-entities)
+2. [What Are DTOs?](#-what-are-dtos)
+3. [Request vs Response DTOs](#-request-vs-response-dtos)
+4. [Java Records for DTOs](#-java-records-for-dtos)
+5. [Mapping Strategies](#️-mapping-strategies)
+6. [MapStruct: The Best Choice](#-mapstruct-the-best-choice)
+7. [Service Layer Pattern](#-service-layer-pattern)
+8. [Project Structure with DTOs](#-project-structure-with-dtos)
+9. [Best Practices](#-best-practices)
+10. [Common Pitfalls](#️-common-pitfalls)
+11. [Summary](#-summary)
+12. [Further Reading](#-further-reading)
 
 ---
 
@@ -39,22 +39,22 @@ By the end of this lesson, you will be able to:
 
 ```java
 @RestController
-@RequestMapping("/api/users")
-public class UserController {
+@RequestMapping("/api/customers")
+public class CustomerController {
     
     @Autowired
-    private UserRepository userRepository;
+    private CustomerRepository customerRepository;
     
     // ❌ BAD: Returning entity directly
     @GetMapping("/{id}")
-    public User getUser(@PathVariable Long id) {
-        return userRepository.findById(id).orElse(null);
+    public Customer getCustomer(@PathVariable Long id) {
+        return customerRepository.findById(id).orElse(null);
     }
     
     // ❌ BAD: Accepting entity directly
     @PostMapping
-    public User createUser(@RequestBody User user) {
-        return userRepository.save(user);
+    public Customer createCustomer(@RequestBody Customer customer) {
+        return customerRepository.save(customer);
     }
 }
 ```
@@ -67,8 +67,8 @@ Entities often contain sensitive data that should never be exposed:
 
 ```java
 @Entity
-@Table(name = "users")
-public class User {
+@Table(name = "customers")
+public class Customer {
     private Long id;
     private String name;
     private String email;
@@ -82,7 +82,7 @@ public class User {
     private LocalDateTime updatedAt;   // ❌ Internal data exposed!
     private String updatedBy;          // ❌ Internal data exposed!
     
-    @OneToMany(mappedBy = "user")
+    @OneToMany(mappedBy = "customer")
     private List<Order> orders;        // ❌ Can cause circular references!
 }
 ```
@@ -102,7 +102,7 @@ public class Order {
     private Long id;
     
     @ManyToOne
-    private User user;              // User → Order → User → Order → ...
+    private Customer customer;              // Customer → Order → Customer → Order → ...
     
     @OneToMany(mappedBy = "order")
     private List<OrderLine> orderLines;  // Order → OrderLine → Order → ...
@@ -181,11 +181,11 @@ GET /api/pizzas/1
 
 Different operations need different data:
 
-| Operation | Needs | Example |
-|-----------|-------|---------|
-| **Create** | Data to create entity | Name, description, price |
-| **Update** | Data to update entity | Name, description (ID not needed) |
-| **Response** | Data to return | ID, name, description, price, timestamps |
+| Operation | Needs | Example                                                     |
+|-----------|-------|-------------------------------------------------------------|
+| **Create** | Data to create entity | Name, description, price                   |
+| **Update** | Data to update entity | Name, description, (ID not needed)         |
+| **Response** | Data to return | ID, name, description, price, timestamps, calculated fields |
 
 ### Example: Pizza DTOs
 
@@ -431,10 +431,9 @@ import org.mapstruct.*;
 public interface PizzaMapper {
 
     // Entity → Response DTO
-    PizzaResponse toPizzaResponse(Pizza pizza);
+    PizzaResponse toResponse(Pizza pizza);
     
-    // Entity → Summary Response (for nested objects)
-    PizzaSummaryResponse toPizzaSummaryResponse(Pizza pizza);
+    List<PizzaResponse> toResponseList(List<Pizza> pizzas);
 
     // Request DTO → Entity
     @Mapping(target = "id", ignore = true)
@@ -443,7 +442,7 @@ public interface PizzaMapper {
     @Mapping(target = "updatedAt", ignore = true)
     @Mapping(target = "updatedBy", ignore = true)
     @Mapping(target = "nutritionalInfo", ignore = true)
-    @Mapping(target = "favoritedByUsers", ignore = true)
+    @Mapping(target = "favoritedByCustomers", ignore = true)
     Pizza toEntity(CreatePizzaRequest request);
 
     // Update existing entity from Request DTO
@@ -453,9 +452,8 @@ public interface PizzaMapper {
     @Mapping(target = "updatedAt", ignore = true)
     @Mapping(target = "updatedBy", ignore = true)
     @Mapping(target = "nutritionalInfo", ignore = true)
-    @Mapping(target = "favoritedByUsers", ignore = true)
-    @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
-    void updateEntityFromRequest(UpdatePizzaRequest request, @MappingTarget Pizza pizza);
+    @Mapping(target = "favoritedByCustomers", ignore = true)
+    void updateEntity(UpdatePizzaRequest request, @MappingTarget Pizza pizza);
 }
 ```
 
@@ -790,7 +788,7 @@ src/main/java/be/vives/pizzastore/
 │   ├── Pizza.java
 │   ├── Order.java
 │   ├── OrderLine.java
-│   ├── User.java
+│   ├── Customer.java
 │   ├── NutritionalInfo.java
 │   ├── OrderStatus.java         # Enum
 │   └── Role.java                # Enum
@@ -798,491 +796,38 @@ src/main/java/be/vives/pizzastore/
 ├── repository/                  # Spring Data JPA Repositories
 │   ├── PizzaRepository.java
 │   ├── OrderRepository.java
-│   └── UserRepository.java
+│   └── CustomerRepository.java
 │
 ├── dto/                         # Data Transfer Objects
 │   ├── request/                 # Request DTOs (incoming)
 │   │   ├── CreatePizzaRequest.java
 │   │   ├── UpdatePizzaRequest.java
+│   │   ├── CreateCustomerRequest.java
+│   │   ├── UpdateCustomerRequest.java
 │   │   ├── CreateOrderRequest.java
-│   │   └── OrderLineRequest.java
+│   │   ├── UpdateOrderStatusRequest.java
+│   │   ├── OrderLineRequest.java
+│   │   └── NutritionalInfoRequest.java
 │   │
 │   └── response/                # Response DTOs (outgoing)
 │       ├── PizzaResponse.java
 │       ├── PizzaSummaryResponse.java
 │       ├── OrderResponse.java
 │       ├── OrderLineResponse.java
-│       ├── UserResponse.java
-│       └── UserSummaryResponse.java
+│       ├── CustomerResponse.java
+│       └── NutritionalInfoResponse.java
 │
 ├── mapper/                      # MapStruct Mappers
 │   ├── PizzaMapper.java
 │   ├── OrderMapper.java
-│   └── UserMapper.java
+│   └── CustomerMapper.java
 │
 ├── service/                     # Service Layer
 │   ├── PizzaService.java
 │   ├── OrderService.java
-│   └── UserService.java
+│   └── CustomerService.java
 │
 └── PizzaStoreApplication.java   # Main application class
-```
-
----
-
-## 🍕 PizzaStore: Complete Implementation
-
-### Runnable Project
-
-A complete, runnable Spring Boot project is available in:
-
-**`pizzastore-with-dtos/`**
-
-This project builds upon Lesson 6 (JPA) by adding:
-- ✅ Request DTOs (Create, Update)
-- ✅ Response DTOs (Full, Summary)
-- ✅ MapStruct Mappers
-- ✅ Service Layer with business logic
-- ✅ Sample data (12 pizzas, 6 users, 10 orders)
-
-**Note:** This project does **not yet** include Controllers. Those will be added in Lessons 8-9.
-
-### Domain Model (from Lesson 6)
-
-#### Pizza Entity
-
-```java
-@Entity
-@Table(name = "pizzas")
-@EntityListeners(AuditingEntityListener.class)
-public class Pizza {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-
-    @Column(nullable = false, length = 100)
-    private String name;
-
-    @Column(length = 1000)
-    private String description;
-
-    @Column(nullable = false, precision = 10, scale = 2)
-    private BigDecimal price;
-
-    @Column(name = "image_url")
-    private String imageUrl;
-
-    @Column(nullable = false)
-    private boolean available = true;
-
-    @CreatedDate
-    @Column(nullable = false, updatable = false)
-    private LocalDateTime createdAt;
-
-    @CreatedBy
-    @Column(length = 100, updatable = false)
-    private String createdBy;
-
-    @LastModifiedDate
-    private LocalDateTime updatedAt;
-
-    @LastModifiedBy
-    @Column(length = 100)
-    private String updatedBy;
-
-    @OneToOne(mappedBy = "pizza", cascade = CascadeType.ALL, orphanRemoval = true)
-    private NutritionalInfo nutritionalInfo;
-
-    @ManyToMany(mappedBy = "favoritePizzas")
-    private Set<User> favoritedByUsers = new HashSet<>();
-
-    // Getters and setters...
-}
-```
-
-#### User Entity
-
-```java
-@Entity
-@Table(name = "users")
-@EntityListeners(AuditingEntityListener.class)
-public class User {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-
-    @Column(nullable = false, length = 100)
-    private String name;
-
-    @Column(nullable = false, unique = true, length = 100)
-    private String email;
-
-    @Column(length = 255)
-    private String password;
-
-    @Column(length = 20)
-    private String phone;
-
-    @Column(length = 200)
-    private String address;
-
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private Role role;
-
-    @CreatedDate
-    @Column(nullable = false, updatable = false)
-    private LocalDateTime createdAt;
-
-    @LastModifiedDate
-    private LocalDateTime updatedAt;
-
-    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL)
-    private List<Order> orders = new ArrayList<>();
-
-    @ManyToMany
-    @JoinTable(
-        name = "user_favorite_pizzas",
-        joinColumns = @JoinColumn(name = "user_id"),
-        inverseJoinColumns = @JoinColumn(name = "pizza_id")
-    )
-    private Set<Pizza> favoritePizzas = new HashSet<>();
-
-    // Getters and setters...
-}
-```
-
-#### Order Entity
-
-```java
-@Entity
-@Table(name = "orders")
-@EntityListeners(AuditingEntityListener.class)
-public class Order {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-
-    @Column(nullable = false, unique = true, length = 50)
-    private String orderNumber;
-
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id", nullable = false)
-    private User user;
-
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private OrderStatus status;
-
-    @Column(nullable = false, precision = 10, scale = 2)
-    private BigDecimal totalAmount;
-
-    @Column(nullable = false)
-    private LocalDateTime orderDate;
-
-    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<OrderLine> orderLines = new ArrayList<>();
-
-    @CreatedDate
-    @Column(nullable = false, updatable = false)
-    private LocalDateTime createdAt;
-
-    @LastModifiedDate
-    private LocalDateTime updatedAt;
-
-    // Getters and setters...
-}
-```
-
-### DTOs
-
-#### Pizza DTOs
-
-```java
-// Create Request
-public record CreatePizzaRequest(
-        String name,
-        String description,
-        BigDecimal price,
-        String imageUrl,
-        boolean available
-) {}
-
-// Update Request
-public record UpdatePizzaRequest(
-        String name,
-        String description,
-        BigDecimal price,
-        String imageUrl,
-        Boolean available
-) {}
-
-// Full Response
-public record PizzaResponse(
-        Long id,
-        String name,
-        String description,
-        BigDecimal price,
-        String imageUrl,
-        boolean available
-) {}
-
-// Summary Response (for nested objects)
-public record PizzaSummaryResponse(
-        Long id,
-        String name,
-        BigDecimal price
-) {}
-```
-
-#### Order DTOs
-
-```java
-// Create Request
-public record CreateOrderRequest(
-        Long userId,
-        List<OrderLineRequest> orderLines
-) {}
-
-public record OrderLineRequest(
-        Long pizzaId,
-        int quantity
-) {}
-
-// Response
-public record OrderResponse(
-        Long id,
-        String orderNumber,
-        OrderStatus status,
-        BigDecimal totalAmount,
-        LocalDateTime orderDate,
-        UserSummaryResponse user,
-        List<OrderLineResponse> orderLines
-) {}
-
-public record OrderLineResponse(
-        Long id,
-        PizzaSummaryResponse pizza,
-        int quantity,
-        BigDecimal unitPrice,
-        BigDecimal subtotal
-) {}
-```
-
-#### User DTOs
-
-```java
-// Full Response
-public record UserResponse(
-        Long id,
-        String name,
-        String email,
-        String phone,
-        String address,
-        Role role
-) {}
-
-// Summary Response (for nested objects)
-public record UserSummaryResponse(
-        Long id,
-        String name,
-        String email
-) {}
-```
-
-**Note:** Response DTOs **never** include:
-- Passwords
-- Audit fields (`createdAt`, `createdBy`, `updatedAt`, `updatedBy`)
-
-### Mappers
-
-#### PizzaMapper
-
-```java
-@Mapper(componentModel = "spring")
-public interface PizzaMapper {
-
-    PizzaResponse toPizzaResponse(Pizza pizza);
-
-    PizzaSummaryResponse toPizzaSummaryResponse(Pizza pizza);
-
-    @Mapping(target = "id", ignore = true)
-    @Mapping(target = "createdAt", ignore = true)
-    @Mapping(target = "createdBy", ignore = true)
-    @Mapping(target = "updatedAt", ignore = true)
-    @Mapping(target = "updatedBy", ignore = true)
-    @Mapping(target = "nutritionalInfo", ignore = true)
-    @Mapping(target = "favoritedByUsers", ignore = true)
-    Pizza toEntity(CreatePizzaRequest request);
-
-    @Mapping(target = "id", ignore = true)
-    @Mapping(target = "createdAt", ignore = true)
-    @Mapping(target = "createdBy", ignore = true)
-    @Mapping(target = "updatedAt", ignore = true)
-    @Mapping(target = "updatedBy", ignore = true)
-    @Mapping(target = "nutritionalInfo", ignore = true)
-    @Mapping(target = "favoritedByUsers", ignore = true)
-    @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
-    void updateEntityFromRequest(UpdatePizzaRequest request, @MappingTarget Pizza pizza);
-}
-```
-
-#### OrderMapper
-
-```java
-@Mapper(componentModel = "spring", uses = {UserMapper.class, PizzaMapper.class})
-public interface OrderMapper {
-
-    OrderResponse toOrderResponse(Order order);
-
-    List<OrderResponse> toResponseList(List<Order> orders);
-
-    OrderLineResponse toOrderLineResponse(OrderLine orderLine);
-
-    List<OrderLineResponse> toOrderLineResponseList(List<OrderLine> orderLines);
-}
-```
-
-**Note:** `uses = {UserMapper.class, PizzaMapper.class}` tells MapStruct to use these mappers for nested objects.
-
-#### UserMapper
-
-```java
-@Mapper(componentModel = "spring")
-public interface UserMapper {
-
-    @Mapping(target = "password", ignore = true)
-    UserResponse toUserResponse(User user);
-
-    UserSummaryResponse toUserSummaryResponse(User user);
-}
-```
-
-### Services
-
-#### PizzaService
-
-See [Service Layer Pattern](#service-layer-pattern) section above for complete implementation.
-
-#### OrderService
-
-```java
-@Service
-@Transactional(readOnly = true)
-public class OrderService {
-
-    private final OrderRepository orderRepository;
-    private final UserRepository userRepository;
-    private final PizzaRepository pizzaRepository;
-    private final OrderMapper orderMapper;
-
-    public OrderService(OrderRepository orderRepository,
-                       UserRepository userRepository,
-                       PizzaRepository pizzaRepository,
-                       OrderMapper orderMapper) {
-        this.orderRepository = orderRepository;
-        this.userRepository = userRepository;
-        this.pizzaRepository = pizzaRepository;
-        this.orderMapper = orderMapper;
-    }
-
-    public List<OrderResponse> getAllOrders() {
-        return orderRepository.findAll()
-                .stream()
-                .map(orderMapper::toOrderResponse)
-                .toList();
-    }
-
-    public OrderResponse getOrderById(Long id) {
-        Order order = orderRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Order not found with id: " + id));
-        return orderMapper.toOrderResponse(order);
-    }
-
-    public List<OrderResponse> getOrdersByUserId(Long userId) {
-        return orderRepository.findByUserId(userId)
-                .stream()
-                .map(orderMapper::toOrderResponse)
-                .toList();
-    }
-
-    @Transactional
-    public OrderResponse createOrder(CreateOrderRequest request) {
-        // 1. Find user
-        User user = userRepository.findById(request.userId())
-                .orElseThrow(() -> new RuntimeException("User not found"));
-
-        // 2. Create order
-        Order order = new Order();
-        order.setUser(user);
-        order.setOrderNumber("ORD-" + System.currentTimeMillis());
-        order.setStatus(OrderStatus.PENDING);
-        order.setOrderDate(LocalDateTime.now());
-
-        // 3. Create order lines
-        BigDecimal totalAmount = BigDecimal.ZERO;
-        for (OrderLineRequest lineRequest : request.orderLines()) {
-            Pizza pizza = pizzaRepository.findById(lineRequest.pizzaId())
-                    .orElseThrow(() -> new RuntimeException("Pizza not found"));
-
-            OrderLine orderLine = new OrderLine();
-            orderLine.setOrder(order);
-            orderLine.setPizza(pizza);
-            orderLine.setQuantity(lineRequest.quantity());
-            orderLine.setUnitPrice(pizza.getPrice());
-            orderLine.setSubtotal(pizza.getPrice().multiply(BigDecimal.valueOf(lineRequest.quantity())));
-
-            order.getOrderLines().add(orderLine);
-            totalAmount = totalAmount.add(orderLine.getSubtotal());
-        }
-
-        order.setTotalAmount(totalAmount);
-
-        // 4. Save and return
-        Order savedOrder = orderRepository.save(order);
-        return orderMapper.toOrderResponse(savedOrder);
-    }
-
-    @Transactional
-    public OrderResponse updateOrderStatus(Long id, OrderStatus newStatus) {
-        Order order = orderRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Order not found"));
-        
-        order.setStatus(newStatus);
-        
-        Order updatedOrder = orderRepository.save(order);
-        return orderMapper.toOrderResponse(updatedOrder);
-    }
-}
-```
-
-### Sample Data
-
-The project includes sample data in `data.sql`:
-
-- **12 Pizzas**: Margherita, Pepperoni, Quattro Formaggi, Hawaiian, etc.
-- **6 Users**: Mix of customers and admins
-- **10 Orders**: Various orders in different statuses
-
-### How to Run
-
-```bash
-cd pizzastore-with-dtos
-
-# Build (generates MapStruct implementations)
-mvn clean compile
-
-# Run
-mvn spring-boot:run
-
-# Access H2 Console
-# URL: http://localhost:8080/h2-console
-# JDBC URL: jdbc:h2:mem:pizzastore
-# Username: sa
-# Password: (empty)
 ```
 
 ---
@@ -1668,4 +1213,3 @@ In **Lesson 9 (Complete REST API)** we'll:
 
 ---
 
-**Next Lesson:** [Lesson 8 - REST Principles](../lesson-08-rest-principles/README.md)

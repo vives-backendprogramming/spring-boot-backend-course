@@ -557,10 +557,15 @@ public class Customer {
     @OneToMany(mappedBy = "customer", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<Order> orders = new ArrayList<>();
     
-    // Helper method
+    // Helper methods for bidirectional relationships
     public void addOrder(Order order) {
         orders.add(order);
         order.setCustomer(this);
+    }
+    
+    public void removeOrder(Order order) {
+        orders.remove(order);
+        order.setCustomer(null);
     }
 }
 
@@ -584,6 +589,22 @@ public class Order {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private OrderStatus status;  // PENDING, CONFIRMED, PREPARING, READY, DELIVERED, CANCELLED
+    
+    @CreatedDate
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private LocalDateTime createdAt;
+    
+    @CreatedBy
+    @Column(name = "created_by", updatable = false)
+    private String createdBy;
+    
+    @LastModifiedDate
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
+    
+    @LastModifiedBy
+    @Column(name = "updated_by")
+    private String updatedBy;
     
     // Many orders → one customer
     @ManyToOne(fetch = FetchType.LAZY)
@@ -651,6 +672,7 @@ public class Customer {
 
 @Entity
 @Table(name = "pizzas")
+@EntityListeners(AuditingEntityListener.class)
 public class Pizza {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -661,6 +683,31 @@ public class Pizza {
     
     @Column(nullable = false, precision = 10, scale = 2)
     private BigDecimal price;
+    
+    @Column(length = 1000)
+    private String description;
+    
+    @Column(name = "image_url")
+    private String imageUrl;
+    
+    @Column(nullable = false)
+    private Boolean available = true;
+    
+    @CreatedDate
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private LocalDateTime createdAt;
+    
+    @CreatedBy
+    @Column(name = "created_by", updatable = false)
+    private String createdBy;
+    
+    @LastModifiedDate
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
+    
+    @LastModifiedBy
+    @Column(name = "updated_by")
+    private String updatedBy;
     
     @ManyToMany(mappedBy = "favoritePizzas")
     private Set<Customer> favoritedByCustomers = new HashSet<>();
