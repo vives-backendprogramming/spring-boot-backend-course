@@ -131,7 +131,9 @@ Content-Type: application/json
   "name": "Margherita",
   "price": 8.50,
   "description": "Classic tomato and mozzarella",
-  "createdAt": "2024-11-05T10:30:00"
+  "imageUrl": null,
+  "available": true,
+  "nutritionalInfo": null
 }
 ```
 
@@ -168,7 +170,11 @@ Content-Type: application/json
 {
   "id": 1,
   "name": "Margherita",
-  ...
+  "price": 8.50,
+  "description": "Classic tomato and mozzarella",
+  "imageUrl": null,
+  "available": true,
+  "nutritionalInfo": null
 }
 ```
 
@@ -215,6 +221,7 @@ public ResponseEntity<OrderResponse> createOrder(
   "customerName": "John Doe",
   "orderLines": [
     {
+      "id": 1,
       "pizzaId": 1,
       "pizzaName": "Margherita",
       "quantity": 2,
@@ -222,6 +229,7 @@ public ResponseEntity<OrderResponse> createOrder(
       "subtotal": 17.00
     },
     {
+      "id": 2,
       "pizzaId": 2,
       "pizzaName": "Pepperoni",
       "quantity": 1,
@@ -258,12 +266,20 @@ Content-Type: application/json
   {
     "id": 1,
     "name": "Margherita",
-    "price": 8.50
+    "price": 8.50,
+    "description": "Classic tomato and mozzarella",
+    "imageUrl": null,
+    "available": true,
+    "nutritionalInfo": null
   },
   {
     "id": 2,
     "name": "Pepperoni",
-    "price": 9.50
+    "price": 9.50,
+    "description": "Spicy pepperoni with cheese",
+    "imageUrl": null,
+    "available": true,
+    "nutritionalInfo": null
   }
 ]
 ```
@@ -287,7 +303,11 @@ Content-Type: application/json
 {
   "id": 1,
   "name": "Margherita",
-  "price": 8.50
+  "price": 8.50,
+  "description": "Classic tomato and mozzarella",
+  "imageUrl": null,
+  "available": true,
+  "nutritionalInfo": null
 }
 ```
 
@@ -302,32 +322,46 @@ Filter resources using query parameters:
 
 ```java
 @GetMapping
-public ResponseEntity<List<PizzaResponse>> getPizzas(
+public ResponseEntity<?> getPizzas(
+        @RequestParam(required = false) BigDecimal minPrice,
         @RequestParam(required = false) BigDecimal maxPrice,
-        @RequestParam(required = false) String name) {
+        @RequestParam(required = false) String name,
+        Pageable pageable) {
     
+    // If filtering by price range
+    if (minPrice != null && maxPrice != null) {
+        List<PizzaResponse> pizzas = pizzaService.findByPriceBetween(minPrice, maxPrice);
+        return ResponseEntity.ok(pizzas);
+    }
+    
+    // If filtering by max price
     if (maxPrice != null) {
         List<PizzaResponse> pizzas = pizzaService.findByPriceLessThan(maxPrice);
         return ResponseEntity.ok(pizzas);
     }
     
+    // If filtering by name
     if (name != null) {
         List<PizzaResponse> pizzas = pizzaService.findByNameContaining(name);
         return ResponseEntity.ok(pizzas);
     }
     
-    List<PizzaResponse> pizzas = pizzaService.findAll();
-    return ResponseEntity.ok(pizzas);
+    // Default: return paginated pizzas
+    Page<PizzaResponse> pizzaPage = pizzaService.findAll(pageable);
+    return ResponseEntity.ok(pizzaPage);
 }
 ```
 
 **Usage**:
 ```bash
-# All pizzas
+# All pizzas (paginated)
 GET /api/pizzas
 
 # Pizzas under €10
 GET /api/pizzas?maxPrice=10.00
+
+# Pizzas between €8 and €12
+GET /api/pizzas?minPrice=8.00&maxPrice=12.00
 
 # Pizzas containing "Margherita"
 GET /api/pizzas?name=Margherita
@@ -335,44 +369,72 @@ GET /api/pizzas?name=Margherita
 
 ### Read with Pagination
 
-For large datasets, use pagination:
+For large datasets, use pagination. Spring Data's `Pageable` parameter automatically handles pagination and sorting from query parameters:
 
 ```java
 @GetMapping
-public ResponseEntity<Page<PizzaResponse>> getPizzas(
-        @RequestParam(defaultValue = "0") int page,
-        @RequestParam(defaultValue = "10") int size,
-        @RequestParam(defaultValue = "id") String sortBy) {
+public ResponseEntity<?> getPizzas(
+        @RequestParam(required = false) BigDecimal minPrice,
+        @RequestParam(required = false) BigDecimal maxPrice,
+        @RequestParam(required = false) String name,
+        Pageable pageable) {
     
-    Pageable pageable = PageRequest.of(page, size, Sort.by(sortBy));
+    // Apply filters if present, otherwise return paginated results
+    if (minPrice != null && maxPrice != null) {
+        List<PizzaResponse> pizzas = pizzaService.findByPriceBetween(minPrice, maxPrice);
+        return ResponseEntity.ok(pizzas);
+    }
+    
+    // Default: return paginated pizzas
     Page<PizzaResponse> pizzaPage = pizzaService.findAll(pageable);
-    
     return ResponseEntity.ok(pizzaPage);
 }
 ```
 
 **Usage**:
 ```bash
-# First page (10 items)
+# First page (20 items by default)
+GET /api/pizzas?page=0
+
+# First page with 10 items
 GET /api/pizzas?page=0&size=10
 
-# Second page, sorted by price
-GET /api/pizzas?page=1&size=10&sortBy=price
+# Second page, sorted by price ascending
+GET /api/pizzas?page=1&size=10&sort=price,asc
+
+# Sorted by name descending
+GET /api/pizzas?sort=name,desc
 ```
 
 **Response**:
 ```json
 {
   "content": [
-    { "id": 1, "name": "Margherita", "price": 8.50 },
-    { "id": 2, "name": "Pepperoni", "price": 9.50 }
+    {
+      "id": 1,
+      "name": "Margherita",
+      "price": 8.50,
+      "description": "Classic tomato and mozzarella",
+      "imageUrl": null,
+      "available": true,
+      "nutritionalInfo": null
+    },
+    {
+      "id": 2,
+      "name": "Pepperoni",
+      "price": 9.50,
+      "description": "Spicy pepperoni with cheese",
+      "imageUrl": null,
+      "available": true,
+      "nutritionalInfo": null
+    }
   ],
   "pageable": {
     "pageNumber": 0,
     "pageSize": 10
   },
-  "totalPages": 5,
-  "totalElements": 47,
+  "totalPages": 2,
+  "totalElements": 12,
   "first": true,
   "last": false
 }
@@ -398,57 +460,60 @@ public ResponseEntity<PizzaResponse> updatePizza(
 }
 ```
 
-**Request**:
+**Request** (UpdatePizzaRequest):
 ```json
 {
   "name": "Margherita Deluxe",
   "price": 9.50,
-  "description": "Premium mozzarella and fresh basil"
+  "description": "Premium mozzarella and fresh basil",
+  "available": true,
+  "nutritionalInfo": {
+    "calories": 250,
+    "protein": 12.5,
+    "carbohydrates": 30.0,
+    "fat": 8.5
+  }
 }
 ```
 
-**All fields** must be present. Missing fields would be set to null/default values.
+With PUT, you typically provide all updateable fields. Missing optional fields would be set to null.
 
 ### PATCH: Partial Update
 
 PATCH updates **only specified** fields. Other fields remain unchanged.
 
+In our PizzaStore API, we use PATCH for updating order status:
+
 ```java
-@PatchMapping("/{id}")
-public ResponseEntity<PizzaResponse> partialUpdatePizza(
+@PatchMapping("/{id}/status")
+public ResponseEntity<OrderResponse> updateOrderStatus(
         @PathVariable Long id,
-        @RequestBody Map<String, Object> updates) {
+        @RequestBody UpdateOrderStatusRequest request) {
     
-    return pizzaService.partialUpdate(id, updates)
+    return orderService.updateStatus(id, request.status())
             .map(ResponseEntity::ok)
             .orElse(ResponseEntity.notFound().build());
 }
 ```
 
-**Request** (only update price):
+**Request** (UpdateOrderStatusRequest):
 ```json
 {
-  "price": 9.50
+  "status": "PREPARING"
 }
 ```
 
-The `name` and `description` fields remain unchanged.
+Only the `status` field is updated. Other order fields remain unchanged.
 
 ### Implementation: Partial Update Service
 
 ```java
-public Optional<PizzaResponse> partialUpdate(Long id, Map<String, Object> updates) {
-    return pizzaRepository.findById(id)
-            .map(pizza -> {
-                updates.forEach((key, value) -> {
-                    switch (key) {
-                        case "name" -> pizza.setName((String) value);
-                        case "price" -> pizza.setPrice(new BigDecimal(value.toString()));
-                        case "description" -> pizza.setDescription((String) value);
-                    }
-                });
-                Pizza updated = pizzaRepository.save(pizza);
-                return pizzaMapper.toResponse(updated);
+public Optional<OrderResponse> updateStatus(Long id, OrderStatus newStatus) {
+    return orderRepository.findById(id)
+            .map(order -> {
+                order.setStatus(newStatus);
+                Order updated = orderRepository.save(order);
+                return orderMapper.toResponse(updated);
             });
 }
 ```
@@ -504,40 +569,35 @@ public boolean delete(Long id) {
 
 ### Soft Delete
 
-Marks the resource as deleted without actually removing it.
+Marks the resource as deleted without actually removing it. In the PizzaStore API, we use soft delete for orders by changing their status to CANCELLED:
 
-**Add `deleted` field to entity**:
 ```java
-@Entity
-public class Pizza {
-    // ... other fields
-    
-    @Column(nullable = false)
-    private boolean deleted = false;
-    
-    @Column(name = "deleted_at")
-    private LocalDateTime deletedAt;
+@DeleteMapping("/{id}")
+public ResponseEntity<Void> cancelOrder(@PathVariable Long id) {
+    if (orderService.cancel(id)) {
+        return ResponseEntity.noContent().build();
+    }
+    return ResponseEntity.notFound().build();
 }
 ```
 
 **Soft delete implementation**:
 ```java
-public boolean softDelete(Long id) {
-    return pizzaRepository.findById(id)
-            .map(pizza -> {
-                pizza.setDeleted(true);
-                pizza.setDeletedAt(LocalDateTime.now());
-                pizzaRepository.save(pizza);
+public boolean cancel(Long id) {
+    return orderRepository.findById(id)
+            .map(order -> {
+                order.setStatus(OrderStatus.CANCELLED);
+                orderRepository.save(order);
                 return true;
             })
             .orElse(false);
 }
 ```
 
-**Exclude deleted resources**:
+**Filter cancelled orders when listing**:
 ```java
-@Query("SELECT p FROM Pizza p WHERE p.deleted = false")
-List<Pizza> findAllActive();
+@Query("SELECT o FROM Order o WHERE o.status <> 'CANCELLED'")
+Page<Order> findAllActive(Pageable pageable);
 ```
 
 ### When to Use Hard vs Soft Delete
@@ -561,22 +621,33 @@ List<Pizza> findAllActive();
 
 ```java
 @GetMapping
-public ResponseEntity<List<PizzaResponse>> getPizzas(
+public ResponseEntity<?> getPizzas(
         @RequestParam(required = false) BigDecimal minPrice,
         @RequestParam(required = false) BigDecimal maxPrice,
-        @RequestParam(required = false) String name) {
+        @RequestParam(required = false) String name,
+        Pageable pageable) {
     
-    List<PizzaResponse> pizzas;
-    
+    // If filtering by price range
     if (minPrice != null && maxPrice != null) {
-        pizzas = pizzaService.findByPriceBetween(minPrice, maxPrice);
-    } else if (name != null) {
-        pizzas = pizzaService.findByNameContaining(name);
-    } else {
-        pizzas = pizzaService.findAll();
+        List<PizzaResponse> pizzas = pizzaService.findByPriceBetween(minPrice, maxPrice);
+        return ResponseEntity.ok(pizzas);
     }
     
-    return ResponseEntity.ok(pizzas);
+    // If filtering by max price
+    if (maxPrice != null) {
+        List<PizzaResponse> pizzas = pizzaService.findByPriceLessThan(maxPrice);
+        return ResponseEntity.ok(pizzas);
+    }
+    
+    // If filtering by name
+    if (name != null) {
+        List<PizzaResponse> pizzas = pizzaService.findByNameContaining(name);
+        return ResponseEntity.ok(pizzas);
+    }
+    
+    // Default: return paginated pizzas
+    Page<PizzaResponse> pizzaPage = pizzaService.findAll(pageable);
+    return ResponseEntity.ok(pizzaPage);
 }
 ```
 
@@ -584,6 +655,9 @@ public ResponseEntity<List<PizzaResponse>> getPizzas(
 ```bash
 # Pizzas between €8 and €12
 GET /api/pizzas?minPrice=8.00&maxPrice=12.00
+
+# Pizzas under €10
+GET /api/pizzas?maxPrice=10.00
 
 # Pizzas with "quattro" in name
 GET /api/pizzas?name=quattro
@@ -632,50 +706,52 @@ public ResponseEntity<List<PizzaResponse>> getPizzas(
 
 ## 📄 Pagination & Sorting
 
-### Basic Pagination
+### Basic Pagination with Spring Data Pageable
+
+Spring Data provides a `Pageable` parameter that automatically handles pagination and sorting from query parameters:
 
 ```java
 @GetMapping
-public ResponseEntity<Page<PizzaResponse>> getPizzas(
-        @RequestParam(defaultValue = "0") int page,
-        @RequestParam(defaultValue = "10") int size) {
+public ResponseEntity<?> getPizzas(
+        @RequestParam(required = false) BigDecimal minPrice,
+        @RequestParam(required = false) BigDecimal maxPrice,
+        @RequestParam(required = false) String name,
+        Pageable pageable) {
     
-    Pageable pageable = PageRequest.of(page, size);
+    // Apply filters if present
+    if (minPrice != null && maxPrice != null) {
+        List<PizzaResponse> pizzas = pizzaService.findByPriceBetween(minPrice, maxPrice);
+        return ResponseEntity.ok(pizzas);
+    }
+    
+    // Default: return paginated pizzas
     Page<PizzaResponse> pizzaPage = pizzaService.findAll(pageable);
-    
-    return ResponseEntity.ok(pizzaPage);
-}
-```
-
-### Pagination with Sorting
-
-```java
-@GetMapping
-public ResponseEntity<Page<PizzaResponse>> getPizzas(
-        @RequestParam(defaultValue = "0") int page,
-        @RequestParam(defaultValue = "10") int size,
-        @RequestParam(defaultValue = "id") String sortBy,
-        @RequestParam(defaultValue = "asc") String direction) {
-    
-    Sort sort = direction.equalsIgnoreCase("desc")
-            ? Sort.by(sortBy).descending()
-            : Sort.by(sortBy).ascending();
-    
-    Pageable pageable = PageRequest.of(page, size, sort);
-    Page<PizzaResponse> pizzaPage = pizzaService.findAll(pageable);
-    
     return ResponseEntity.ok(pizzaPage);
 }
 ```
 
 **Usage**:
 ```bash
-# Page 0, 10 items, sorted by price ascending
-GET /api/pizzas?page=0&size=10&sortBy=price&direction=asc
+# First page with default size (20)
+GET /api/pizzas?page=0
+
+# Page 0, 10 items
+GET /api/pizzas?page=0&size=10
+
+# Sorted by price ascending
+GET /api/pizzas?sort=price,asc
 
 # Page 1, 20 items, sorted by name descending
-GET /api/pizzas?page=1&size=20&sortBy=name&direction=desc
+GET /api/pizzas?page=1&size=20&sort=name,desc
+
+# Multiple sort criteria
+GET /api/pizzas?sort=available,desc&sort=price,asc
 ```
+
+The `Pageable` parameter automatically parses:
+- `page`: Page number (0-indexed)
+- `size`: Number of items per page
+- `sort`: Sorting criteria (format: `field,direction`)
 
 ### Service Layer Implementation
 
@@ -688,9 +764,21 @@ public Page<PizzaResponse> findAll(Pageable pageable) {
 
 ### Response Structure
 
+When using `Page<T>`, Spring automatically returns a paginated response:
+
 ```json
 {
-  "content": [ /* array of pizzas */ ],
+  "content": [
+    {
+      "id": 1,
+      "name": "Margherita",
+      "price": 8.50,
+      "description": "Classic tomato and mozzarella",
+      "imageUrl": null,
+      "available": true,
+      "nutritionalInfo": null
+    }
+  ],
   "pageable": {
     "pageNumber": 0,
     "pageSize": 10,
@@ -699,8 +787,8 @@ public Page<PizzaResponse> findAll(Pageable pageable) {
       "unsorted": false
     }
   },
-  "totalPages": 5,
-  "totalElements": 47,
+  "totalPages": 2,
+  "totalElements": 12,
   "first": true,
   "last": false,
   "number": 0,
@@ -710,12 +798,14 @@ public Page<PizzaResponse> findAll(Pageable pageable) {
 ```
 
 **Key fields**:
-- `content`: Array of resources
-- `totalElements`: Total number of items
+- `content`: Array of resources on this page
+- `totalElements`: Total number of items across all pages
 - `totalPages`: Total number of pages
 - `first`: Is this the first page?
 - `last`: Is this the last page?
-- `number`: Current page number
+- `number`: Current page number (0-indexed)
+- `size`: Requested page size
+- `numberOfElements`: Actual number of items on this page
 
 ---
 
@@ -748,12 +838,18 @@ public ResponseEntity<PizzaResponse> uploadPizzaImage(
         @PathVariable Long id,
         @RequestParam("image") MultipartFile file) {
     
+    log.debug("POST /api/pizzas/{}/image", id);
+    
     try {
         return pizzaService.uploadImage(id, file)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     } catch (IllegalArgumentException e) {
+        log.warn("Invalid file upload: {}", e.getMessage());
         return ResponseEntity.badRequest().build();
+    } catch (RuntimeException e) {
+        log.error("Error uploading file: {}", e.getMessage());
+        return ResponseEntity.internalServerError().build();
     }
 }
 ```
@@ -827,37 +923,49 @@ A complete REST API for the PizzaStore with all concepts applied.
 
 #### Pizza API
 ```
-GET    /api/pizzas              - List all pizzas (with pagination)
+GET    /api/pizzas              - List all pizzas (paginated, with optional filters)
 GET    /api/pizzas/{id}         - Get single pizza
-GET    /api/pizzas/search       - Search pizzas
 POST   /api/pizzas              - Create new pizza
-PUT    /api/pizzas/{id}         - Update pizza (full)
-PATCH  /api/pizzas/{id}         - Update pizza (partial)
+PUT    /api/pizzas/{id}         - Update pizza
 DELETE /api/pizzas/{id}         - Delete pizza
 POST   /api/pizzas/{id}/image   - Upload pizza image
 ```
 
+**Query Parameters for GET /api/pizzas:**
+- `minPrice` & `maxPrice`: Filter by price range
+- `name`: Search by name (contains)
+- `page`: Page number (0-indexed)
+- `size`: Items per page
+- `sort`: Sort criteria (e.g., `price,asc`)
+
 #### Customer API
 ```
-GET    /api/customers           - List all customers
+GET    /api/customers           - List all customers (paginated)
 GET    /api/customers/{id}      - Get single customer
 GET    /api/customers/{id}/orders - Get customer's orders
 GET    /api/customers/{id}/favorites - Get customer's favorite pizzas
 POST   /api/customers           - Create new customer
 PUT    /api/customers/{id}      - Update customer
 DELETE /api/customers/{id}      - Delete customer
-POST   /api/customers/{id}/favorites/{pizzaId} - Add favorite
-DELETE /api/customers/{id}/favorites/{pizzaId} - Remove favorite
+POST   /api/customers/{id}/favorites/{pizzaId} - Add favorite pizza
+DELETE /api/customers/{id}/favorites/{pizzaId} - Remove favorite pizza
 ```
 
 #### Order API
 ```
-GET    /api/orders              - List all orders (with filtering)
-GET    /api/orders/{id}         - Get single order (with order lines)
+GET    /api/orders              - List all orders (paginated, with optional filters)
+GET    /api/orders/{id}         - Get single order with order lines
 POST   /api/orders              - Create new order
-PUT    /api/orders/{id}/status  - Update order status
-DELETE /api/orders/{id}         - Cancel order
+PATCH  /api/orders/{id}/status  - Update order status
+DELETE /api/orders/{id}         - Cancel order (soft delete)
 ```
+
+**Query Parameters for GET /api/orders:**
+- `customerId`: Filter by customer
+- `status`: Filter by order status
+- `page`: Page number (0-indexed)
+- `size`: Items per page
+- `sort`: Sort criteria
 
 ---
 
@@ -891,7 +999,19 @@ return ResponseEntity
 
 ### 5. Implement Pagination
 ```java
-Page<PizzaResponse> findAll(Pageable pageable);
+@GetMapping
+public ResponseEntity<?> getPizzas(Pageable pageable) {
+    Page<PizzaResponse> pizzaPage = pizzaService.findAll(pageable);
+    return ResponseEntity.ok(pizzaPage);
+}
+```
+
+Service layer:
+```java
+public Page<PizzaResponse> findAll(Pageable pageable) {
+    Page<Pizza> pizzaPage = pizzaRepository.findAll(pageable);
+    return pizzaPage.map(pizzaMapper::toResponse);
+}
 ```
 
 ### 6. Use Query Parameters for Filtering
