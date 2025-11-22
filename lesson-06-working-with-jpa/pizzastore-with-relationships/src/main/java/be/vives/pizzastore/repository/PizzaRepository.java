@@ -1,5 +1,6 @@
 package be.vives.pizzastore.repository;
 
+import be.vives.pizzastore.domain.Customer;
 import be.vives.pizzastore.domain.Pizza;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -10,7 +11,6 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 
-@Repository
 public interface PizzaRepository extends JpaRepository<Pizza, Long> {
 
     // Derived query methods
@@ -31,4 +31,19 @@ public interface PizzaRepository extends JpaRepository<Pizza, Long> {
     // Query with JOIN FETCH to load nutritional info eagerly
     @Query("SELECT p FROM Pizza p LEFT JOIN FETCH p.nutritionalInfo WHERE p.id = :id")
     Optional<Pizza> findByIdWithNutritionalInfo(@Param("id") Long id);
+
+    @Query("SELECT p FROM Pizza p WHERE p.price < :maxPrice")
+    List<Pizza> findCheapPizzas(@Param("maxPrice") BigDecimal maxPrice);
+
+    // JOIN FETCH to avoid N+1 problem (from PizzaStore CustomerRepository)
+    @Query("SELECT c FROM Customer c JOIN FETCH c.orders WHERE c.id = :id")
+    Optional<Customer> findByIdWithOrders(@Param("id") Long id);
+
+    // Projection (selecting specific fields)
+    @Query("SELECT p.name, p.price FROM Pizza p WHERE p.price < :maxPrice")
+    List<Object[]> findCheapPizzaNames(@Param("maxPrice") BigDecimal maxPrice);
+
+    // Count query
+    @Query("SELECT COUNT(p) FROM Pizza p WHERE p.price > :minPrice")
+    long countExpensivePizzas(@Param("minPrice") BigDecimal minPrice);
 }

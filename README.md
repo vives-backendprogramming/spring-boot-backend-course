@@ -17,7 +17,7 @@ The course consists of 11 comprehensive lessons, each building upon the previous
 3. **Getting Started with Spring Boot** - Introduction to Spring Boot
 4. **Spring Boot Fundamentals** - Auto-configuration, starters, and first applications
 5. **Spring MVC & REST APIs** - Building web applications and REST endpoints
-6. **Working with JPA** - Data persistence and entity relationships
+6. **Working with Spring Data JPA** - Data persistence and entity relationships
 7. **DTOs & Mappers** - Proper API design with Data Transfer Objects
 8. **REST Principles** - HTTP methods, status codes, and CORS
 9. **Building a Complete REST API** - Full CRUD operations with best practices
