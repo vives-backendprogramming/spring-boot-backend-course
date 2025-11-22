@@ -103,8 +103,8 @@ public Cart getCart(@PathVariable Long userId, @RequestHeader("Authorization") S
 
 ```java
 @GetMapping("/{id}")
-public ResponseEntity<Pizza> getPizza(@PathVariable Long id) {
-    Pizza pizza = pizzaService.findById(id);
+public ResponseEntity<PizzaResponse> getPizza(@PathVariable Long id) {
+    PizzaResponse pizza = pizzaService.findById(id);
     
     return ResponseEntity.ok()
         .cacheControl(CacheControl.maxAge(1, TimeUnit.HOURS))
@@ -222,19 +222,19 @@ GET /api/customers?search=john&city=Brussels
 ```java
 // Get collection
 @GetMapping("/api/pizzas")
-public List<Pizza> getAllPizzas() {
+public List<PizzaResponse> getAllPizzas() {
     return pizzaService.findAll();
 }
 
 // Get single resource
 @GetMapping("/api/pizzas/{id}")
-public Pizza getPizzaById(@PathVariable Long id) {
+public PizzaResponse getPizzaById(@PathVariable Long id) {
     return pizzaService.findById(id);
 }
 
 // Get with filtering
 @GetMapping("/api/pizzas")
-public List<Pizza> getPizzas(
+public List<PizzaResponse> getPizzas(
     @RequestParam(required = false) String name,
     @RequestParam(required = false) Boolean available
 ) {
@@ -242,9 +242,9 @@ public List<Pizza> getPizzas(
 }
 
 // Get nested resource
-@GetMapping("/api/orders/{orderId}/items")
-public List<OrderItem> getOrderItems(@PathVariable Long orderId) {
-    return orderService.getOrderItems(orderId);
+@GetMapping("/api/orders/{orderId}/lines")
+public List<OrderLineResponse> getOrderLines(@PathVariable Long orderId) {
+    return orderService.getOrderLines(orderId);
 }
 ```
 
@@ -269,14 +269,14 @@ public List<OrderItem> getOrderItems(@PathVariable Long orderId) {
 
 ```java
 @PostMapping("/api/pizzas")
-public ResponseEntity<Pizza> createPizza(@Valid @RequestBody PizzaCreateRequest request) {
-    Pizza created = pizzaService.create(request);
+public ResponseEntity<PizzaResponse> createPizza(@Valid @RequestBody CreatePizzaRequest request) {
+    PizzaResponse created = pizzaService.create(request);
     
     // Build Location URI
     URI location = ServletUriComponentsBuilder
         .fromCurrentRequest()
         .path("/{id}")
-        .buildAndExpand(created.getId())
+        .buildAndExpand(created.id())
         .toUri();
     
     // Return 201 Created with Location header
@@ -294,8 +294,15 @@ Content-Type: application/json
 
 {
   "name": "BBQ Chicken",
+  "price": 13.99,
   "description": "BBQ sauce with grilled chicken",
-  "price": 13.99
+  "available": true,
+  "nutritionalInfo": {
+    "calories": 850,
+    "protein": 45.5,
+    "carbs": 78.2,
+    "fat": 32.1
+  }
 }
 ```
 
@@ -303,15 +310,21 @@ Content-Type: application/json
 
 ```
 HTTP/1.1 201 Created
-Location: http://localhost:8080/api/pizzas/8
+Location: http://localhost:8080/api/pizzas/13
 Content-Type: application/json
 
 {
-  "id": 8,
+  "id": 13,
   "name": "BBQ Chicken",
-  "description": "BBQ sauce with grilled chicken",
   "price": 13.99,
-  "available": true
+  "description": "BBQ sauce with grilled chicken",
+  "available": true,
+  "nutritionalInfo": {
+    "calories": 850,
+    "protein": 45.5,
+    "carbs": 78.2,
+    "fat": 32.1
+  }
 }
 ```
 
@@ -336,11 +349,11 @@ Content-Type: application/json
 
 ```java
 @PutMapping("/api/pizzas/{id}")
-public ResponseEntity<Pizza> updatePizza(
+public ResponseEntity<PizzaResponse> updatePizza(
     @PathVariable Long id,
-    @Valid @RequestBody PizzaUpdateRequest request
+    @Valid @RequestBody UpdatePizzaRequest request
 ) {
-    Pizza updated = pizzaService.update(id, request);
+    PizzaResponse updated = pizzaService.update(id, request);
     return ResponseEntity.ok(updated);
 }
 ```
@@ -352,10 +365,15 @@ public ResponseEntity<Pizza> updatePizza(
 PUT /api/pizzas/1
 {
   "name": "Margherita Special",
-  "description": "Classic with extra cheese",
   "price": 9.99,
+  "description": "Classic with extra cheese",
   "available": true,
-  "imageUrl": "margherita-special.jpg"
+  "nutritionalInfo": {
+    "calories": 720,
+    "protein": 28.0,
+    "carbs": 85.0,
+    "fat": 25.5
+  }
 }
 
 // PATCH: Update specific fields only
@@ -388,27 +406,27 @@ PATCH /api/pizzas/1
 
 ```java
 @PatchMapping("/api/pizzas/{id}")
-public ResponseEntity<Pizza> patchPizza(
+public ResponseEntity<PizzaResponse> patchPizza(
     @PathVariable Long id,
     @RequestBody Map<String, Object> updates
 ) {
-    Pizza patched = pizzaService.partialUpdate(id, updates);
+    PizzaResponse patched = pizzaService.partialUpdate(id, updates);
     return ResponseEntity.ok(patched);
 }
 
 // Or with specific operations
 @PatchMapping("/api/pizzas/{id}/price")
-public ResponseEntity<Pizza> updatePrice(
+public ResponseEntity<PizzaResponse> updatePrice(
     @PathVariable Long id,
     @RequestBody BigDecimal newPrice
 ) {
-    Pizza updated = pizzaService.updatePrice(id, newPrice);
+    PizzaResponse updated = pizzaService.updatePrice(id, newPrice);
     return ResponseEntity.ok(updated);
 }
 
 @PatchMapping("/api/pizzas/{id}/availability")
-public ResponseEntity<Pizza> toggleAvailability(@PathVariable Long id) {
-    Pizza updated = pizzaService.toggleAvailability(id);
+public ResponseEntity<PizzaResponse> toggleAvailability(@PathVariable Long id) {
+    PizzaResponse updated = pizzaService.toggleAvailability(id);
     return ResponseEntity.ok(updated);
 }
 ```
@@ -485,21 +503,21 @@ public ResponseEntity<Void> deletePizza(@PathVariable Long id) {
 
 ### Example: Comprehensive Error Responses
 
-```java
+```json
 // 400 Bad Request
 {
-  "timestamp": "2024-01-15T10:30:00",
+  "timestamp": "2025-01-15T10:30:00",
   "status": 400,
   "error": "Bad Request",
   "message": "Validation failed",
   "errors": [
     {
       "field": "name",
-      "message": "Name is required"
+      "message": "Pizza name is required"
     },
     {
       "field": "price",
-      "message": "Price must be greater than 0"
+      "message": "Price must be positive"
     }
   ],
   "path": "/api/pizzas"
@@ -507,7 +525,7 @@ public ResponseEntity<Void> deletePizza(@PathVariable Long id) {
 
 // 404 Not Found
 {
-  "timestamp": "2024-01-15T10:30:00",
+  "timestamp": "2025-01-15T10:30:00",
   "status": 404,
   "error": "Not Found",
   "message": "Pizza not found with id: 999",
@@ -516,7 +534,7 @@ public ResponseEntity<Void> deletePizza(@PathVariable Long id) {
 
 // 409 Conflict
 {
-  "timestamp": "2024-01-15T10:30:00",
+  "timestamp": "2025-01-15T10:30:00",
   "status": 409,
   "error": "Conflict",
   "message": "Pizza with name 'Margherita' already exists",
@@ -650,6 +668,16 @@ Resources include links to related resources
 {
   "id": 1,
   "name": "Margherita",
+  "price": 8.99,
+  "description": "Classic tomato and mozzarella",
+  "imageUrl": "margherita.jpg",
+  "available": true,
+  "nutritionalInfo": {
+    "calories": 720,
+    "protein": 28.0,
+    "carbs": 85.0,
+    "fat": 25.5
+  },
   "_links": {
     "self": { "href": "/api/pizzas/1" },
     "orders": { "href": "/api/pizzas/1/orders" }
