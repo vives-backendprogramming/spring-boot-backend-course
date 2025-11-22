@@ -26,10 +26,12 @@ By the end of this lesson, you will be able to:
 4. [Validating Request Bodies](#validating-request-bodies)
 5. [Custom Validators](#custom-validators)
 6. [Exception Handling with @ControllerAdvice](#exception-handling-with-controlleradvice)
-7. [Creating Error Response Objects](#creating-error-response-objects)
-8. [HTTP Status Codes for Errors](#http-status-codes-for-errors)
+7. [HTTP Status Codes for Errors](#http-status-codes-for-errors)
+8. [Business Rules and Custom Exceptions](#business-rules-and-custom-exceptions)
 9. [Complete PizzaStore with Validation](#complete-pizzastore-with-validation)
-10. [Summary](#summary)
+10. [Best Practices](#best-practices)
+11. [Summary](#summary)
+12. [Runnable Project](#runnable-project)
 
 ---
 
@@ -131,9 +133,11 @@ public record CreateCustomerRequest(
     @Size(min = 2, max = 100, message = "Name must be between 2 and 100 characters")
     String name,
     
-    @NotBlank(message = "Phone is required")
-    @Size(min = 10, max = 20, message = "Phone must be between 10 and 20 characters")
-    String phone
+    @Size(max = 20, message = "Phone must not exceed 20 characters")
+    String phone,
+    
+    @Size(max = 200, message = "Address must not exceed 200 characters")
+    String address
 ) {}
 ```
 
@@ -164,8 +168,9 @@ public record CreateCustomerRequest(
     @Email(message = "Email must be valid")
     String email,
     
-    @Pattern(regexp = "^\\+32[0-9]{9}$", message = "Phone must be Belgian format (+32xxxxxxxxx)")
-    String phone
+    @NotBlank(message = "Password is required")
+    @Size(min = 8, message = "Password must be at least 8 characters")
+    String password
 ) {}
 ```
 
@@ -179,8 +184,20 @@ public record CreateOrderRequest(
     @NotEmpty(message = "Order must contain at least one pizza")
     @Size(min = 1, max = 20, message = "Order can contain between 1 and 20 pizzas")
     List<OrderLineRequest> orderLines
-) {}
+) {
+    public record OrderLineRequest(
+            Long pizzaId,
+            Integer quantity
+    ) {
+    }
+}
 ```
+
+**Note**: In this example, validation annotations are not applied. To add validation:
+- Add `@NotNull(message = "Customer ID is required")` to `customerId`
+- Add `@NotEmpty(message = "Order must contain at least one item")` to `orderLines`
+- Add `@Valid` to `orderLines` to validate nested objects
+- Add `@NotNull` and `@Min(1)` to quantity field
 
 ---
 
@@ -191,27 +208,42 @@ public record CreateOrderRequest(
 ```java
 package be.vives.pizzastore.dto.request;
 
-import jakarta.validation.constraints.*;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+
 import java.math.BigDecimal;
 
 public record CreatePizzaRequest(
-    @NotBlank(message = "Name is required")
-    @Size(min = 2, max = 100, message = "Name must be between 2 and 100 characters")
-    String name,
-    
-    @NotNull(message = "Price is required")
-    @DecimalMin(value = "0.01", message = "Price must be at least €0.01")
-    @DecimalMax(value = "100.00", message = "Price cannot exceed €100.00")
-    BigDecimal price,
-    
-    @NotBlank(message = "Description is required")
-    @Size(min = 10, max = 500, message = "Description must be between 10 and 500 characters")
-    String description
+
+        @NotBlank(message = "Pizza name is required")
+        String name,
+
+        @NotNull(message = "Price is required")
+        @DecimalMin(value = "0.01", message = "Price must be positive")
+        BigDecimal price,
+
+        String description,
+
+        Boolean available,
+
+        NutritionalInfoRequest nutritionalInfo
 ) {
 }
 ```
 
-### Step 2: Add @Valid to Controller
+**NutritionalInfoRequest** (nested DTO, no validation):
+```java
+public record NutritionalInfoRequest(
+        Integer calories,
+        BigDecimal protein,
+        BigDecimal carbohydrates,
+        BigDecimal fat
+) {
+}
+```
+
+### Step 2: Use in Controller (without @Valid)
 
 ```java
 @RestController
@@ -219,27 +251,28 @@ public record CreatePizzaRequest(
 public class PizzaController {
 
     @PostMapping
-    public ResponseEntity<PizzaResponse> createPizza(
-            @Valid @RequestBody CreatePizzaRequest request) {
-        
+    public ResponseEntity<PizzaResponse> createPizza(@RequestBody CreatePizzaRequest request) {
+        log.debug("POST /api/pizzas - {}", request);
+
         PizzaResponse created = pizzaService.create(request);
-        
+
         URI location = ServletUriComponentsBuilder
                 .fromCurrentRequest()
                 .path("/{id}")
                 .buildAndExpand(created.id())
                 .toUri();
-        
+
         return ResponseEntity.created(location).body(created);
     }
 }
 ```
 
-**Key Points:**
-- `@Valid` triggers validation
-- Validation happens **before** method execution
-- If validation fails, method is **never called**
-- Spring automatically returns 400 Bad Request
+**⚠️ Important Note:**
+- This example shows validation annotations on the DTO
+- To **activate** validation, add `@Valid` before `@RequestBody`: `@Valid @RequestBody CreatePizzaRequest request`
+- Without `@Valid`, validation annotations are ignored
+- With `@Valid`, validation happens **before** method execution
+- If validation fails, method is **never called** and Spring returns 400 Bad Request
 
 ### What Happens on Validation Failure?
 
@@ -354,23 +387,29 @@ Create a global exception handler to return consistent error responses.
 ```java
 package be.vives.pizzastore.dto.response;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import java.time.LocalDateTime;
 import java.util.List;
 
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public record ErrorResponse(
-    LocalDateTime timestamp,
-    int status,
-    String error,
-    String message,
-    String path,
-    List<ValidationError> validationErrors
+        LocalDateTime timestamp,
+        int status,
+        String error,
+        String message,
+        String path,
+        List<ValidationError> validationErrors
 ) {
     public record ValidationError(
-        String field,
-        String message
+            String field,
+            String message
     ) {}
 }
 ```
+
+**Key Points:**
+- `@JsonInclude(JsonInclude.Include.NON_NULL)` excludes null fields from JSON response
+- `validationErrors` will be null for non-validation errors
 
 ### Create Global Exception Handler
 
@@ -400,7 +439,7 @@ public class GlobalExceptionHandler {
             MethodArgumentNotValidException ex,
             WebRequest request) {
 
-        log.warn("Validation failed: {}", ex.getMessage());
+        log.warn("Validation failed for request: {}", request.getDescription(false));
 
         List<ErrorResponse.ValidationError> validationErrors = ex.getBindingResult()
                 .getFieldErrors()
@@ -416,7 +455,7 @@ public class GlobalExceptionHandler {
                 HttpStatus.BAD_REQUEST.value(),
                 "Bad Request",
                 "Validation failed",
-                request.getDescription(false).replace("uri=", ""),
+                extractPath(request),
                 validationErrors
         );
 
@@ -437,12 +476,54 @@ public class GlobalExceptionHandler {
                 HttpStatus.NOT_FOUND.value(),
                 "Not Found",
                 ex.getMessage(),
-                request.getDescription(false).replace("uri=", ""),
+                extractPath(request),
                 null
         );
 
         return ResponseEntity
                 .status(HttpStatus.NOT_FOUND)
+                .body(errorResponse);
+    }
+
+    @ExceptionHandler(DuplicateResourceException.class)
+    public ResponseEntity<ErrorResponse> handleDuplicateResourceException(
+            DuplicateResourceException ex,
+            WebRequest request) {
+
+        log.warn("Duplicate resource: {}", ex.getMessage());
+
+        ErrorResponse errorResponse = new ErrorResponse(
+                LocalDateTime.now(),
+                HttpStatus.CONFLICT.value(),
+                "Conflict",
+                ex.getMessage(),
+                extractPath(request),
+                null
+        );
+
+        return ResponseEntity
+                .status(HttpStatus.CONFLICT)
+                .body(errorResponse);
+    }
+
+    @ExceptionHandler(BusinessException.class)
+    public ResponseEntity<ErrorResponse> handleBusinessException(
+            BusinessException ex,
+            WebRequest request) {
+
+        log.warn("Business logic error: {}", ex.getMessage());
+
+        ErrorResponse errorResponse = new ErrorResponse(
+                LocalDateTime.now(),
+                HttpStatus.UNPROCESSABLE_ENTITY.value(),
+                "Unprocessable Entity",
+                ex.getMessage(),
+                extractPath(request),
+                null
+        );
+
+        return ResponseEntity
+                .status(HttpStatus.UNPROCESSABLE_ENTITY)
                 .body(errorResponse);
     }
 
@@ -457,8 +538,8 @@ public class GlobalExceptionHandler {
                 LocalDateTime.now(),
                 HttpStatus.INTERNAL_SERVER_ERROR.value(),
                 "Internal Server Error",
-                "An unexpected error occurred",
-                request.getDescription(false).replace("uri=", ""),
+                "An unexpected error occurred. Please contact support if the problem persists.",
+                extractPath(request),
                 null
         );
 
@@ -466,8 +547,19 @@ public class GlobalExceptionHandler {
                 .status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(errorResponse);
     }
+
+    private String extractPath(WebRequest request) {
+        return request.getDescription(false).replace("uri=", "");
+    }
 }
 ```
+
+**Key Points:**
+- `@RestControllerAdvice` makes this a global exception handler
+- Each `@ExceptionHandler` handles a specific exception type
+- Returns appropriate HTTP status codes (400, 404, 409, 422, 500)
+- Logs errors at appropriate levels (warn vs error)
+- Helper method `extractPath()` cleans up the request path
 
 ### Create Custom Exception
 
@@ -507,6 +599,34 @@ public class PizzaService {
         Pizza updated = pizzaRepository.save(pizza);
         
         return pizzaMapper.toResponse(updated);
+    }
+}
+```
+
+### Exception Hierarchy
+
+The project uses a custom exception hierarchy:
+
+```java
+PizzaStoreException (base)
+├── ResourceNotFoundException (404)
+├── DuplicateResourceException (409)
+└── BusinessException (422)
+```
+
+All custom exceptions extend from `PizzaStoreException`:
+
+```java
+package be.vives.pizzastore.exception;
+
+public class PizzaStoreException extends RuntimeException {
+
+    public PizzaStoreException(String message) {
+        super(message);
+    }
+
+    public PizzaStoreException(String message, Throwable cause) {
+        super(message, cause);
     }
 }
 ```
@@ -576,149 +696,165 @@ Use appropriate status codes for different error types:
 
 ---
 
-## 🍕 Complete PizzaStore with Validation
+## 🎯 Business Rules and Custom Exceptions
 
-### Validated DTOs
+Beyond basic validation, your application needs to enforce business rules. These are domain-specific constraints that go beyond simple data validation.
 
-#### CreatePizzaRequest
+### Types of Business Rules
 
-```java
-public record CreatePizzaRequest(
-    @NotBlank(message = "Name is required")
-    @Size(min = 2, max = 100, message = "Name must be between 2 and 100 characters")
-    String name,
-    
-    @NotNull(message = "Price is required")
-    @DecimalMin(value = "0.01", message = "Price must be at least €0.01")
-    @DecimalMax(value = "100.00", message = "Price cannot exceed €100.00")
-    BigDecimal price,
-    
-    @NotBlank(message = "Description is required")
-    @Size(min = 10, max = 500, message = "Description must be between 10 and 500 characters")
-    String description
-) {}
-```
+1. **Resource existence** - Verify referenced entities exist
+2. **State validation** - Check if an operation is allowed in current state
+3. **Duplicate prevention** - Ensure uniqueness constraints
+4. **Domain constraints** - Business-specific rules
 
-#### CreateCustomerRequest
+### Business Exception Hierarchy
 
 ```java
-public record CreateCustomerRequest(
-    @NotBlank(message = "Name is required")
-    @Size(min = 2, max = 100, message = "Name must be between 2 and 100 characters")
-    String name,
-    
-    @NotBlank(message = "Email is required")
-    @Email(message = "Email must be valid")
-    String email,
-    
-    @NotBlank(message = "Phone is required")
-    @Pattern(regexp = "^\\+32[0-9]{9}$", message = "Phone must be Belgian format (+32xxxxxxxxx)")
-    String phone,
-    
-    @NotBlank(message = "Address is required")
-    @Size(min = 10, max = 200, message = "Address must be between 10 and 200 characters")
-    String address
-) {}
-```
+package be.vives.pizzastore.exception;
 
-#### CreateOrderRequest
-
-```java
-public record CreateOrderRequest(
-    @NotNull(message = "Customer ID is required")
-    @Positive(message = "Customer ID must be positive")
-    Long customerId,
-    
-    @NotEmpty(message = "Order must contain at least one pizza")
-    @Size(min = 1, max = 20, message = "Order can contain between 1 and 20 pizzas")
-    @Valid
-    List<OrderLineRequest> orderLines
-) {
-    public record OrderLineRequest(
-        @NotNull(message = "Pizza ID is required")
-        @Positive(message = "Pizza ID must be positive")
-        Long pizzaId,
-        
-        @NotNull(message = "Quantity is required")
-        @Min(value = 1, message = "Quantity must be at least 1")
-        @Max(value = 50, message = "Quantity cannot exceed 50")
-        Integer quantity
-    ) {}
-}
-```
-
-### Exception Classes
-
-```java
-// Base exception
-public class PizzaStoreException extends RuntimeException {
-    public PizzaStoreException(String message) {
-        super(message);
-    }
-}
-
-// Resource not found
-public class ResourceNotFoundException extends PizzaStoreException {
-    public ResourceNotFoundException(String resourceName, Long id) {
-        super(String.format("%s with id %d not found", resourceName, id));
-    }
-}
-
-// Duplicate resource
-public class DuplicateResourceException extends PizzaStoreException {
-    public DuplicateResourceException(String message) {
-        super(message);
-    }
-}
-
-// Business logic error
 public class BusinessException extends PizzaStoreException {
+
     public BusinessException(String message) {
         super(message);
     }
 }
 ```
 
-### Service with Validation
+This exception returns **422 Unprocessable Entity** - the request is valid but cannot be processed due to business logic.
+
+### Example 1: Cannot Order Unavailable Pizzas
+
+In `OrderService.create()`:
 
 ```java
-@Service
-@Transactional
-public class CustomerService {
-    
-    public CustomerResponse create(CreateCustomerRequest request) {
-        // Check for duplicate email
-        if (customerRepository.existsByEmail(request.email())) {
-            throw new DuplicateResourceException(
-                "Customer with email " + request.email() + " already exists"
-            );
+public OrderResponse create(CreateOrderRequest request) {
+    log.debug("Creating new order for customer: {}", request.customerId());
+
+    Customer customer = customerRepository.findById(request.customerId()).orElse(null);
+    if (customer == null) {
+        throw new BusinessException("Customer with id " + request.customerId() + " not found");
+    }
+
+    String orderNumber = generateOrderNumber();
+    Order order = new Order(orderNumber, customer, OrderStatus.PENDING);
+
+    for (CreateOrderRequest.OrderLineRequest lineRequest : request.orderLines()) {
+        Pizza pizza = pizzaRepository.findById(lineRequest.pizzaId()).orElse(null);
+        if (pizza == null) {
+            throw new BusinessException("Pizza with id " + lineRequest.pizzaId() + " not found");
         }
         
-        Customer customer = customerMapper.toEntity(request);
-        Customer saved = customerRepository.save(customer);
-        
-        return customerMapper.toResponse(saved);
-    }
-    
-    public CustomerResponse update(Long id, UpdateCustomerRequest request) {
-        Customer customer = customerRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Customer", id));
-        
-        // Check email uniqueness if changed
-        if (!customer.getEmail().equals(request.email()) &&
-            customerRepository.existsByEmail(request.email())) {
-            throw new DuplicateResourceException(
-                "Customer with email " + request.email() + " already exists"
-            );
+        // Business rule: Cannot order unavailable pizzas
+        if (!pizza.getAvailable()) {
+            throw new BusinessException("Pizza '" + pizza.getName() + "' is currently not available");
         }
-        
-        customerMapper.updateEntity(request, customer);
-        Customer updated = customerRepository.save(customer);
-        
-        return customerMapper.toResponse(updated);
+
+        OrderLine orderLine = new OrderLine(pizza, lineRequest.quantity());
+        order.addOrderLine(orderLine);
     }
+
+    Order savedOrder = orderRepository.save(order);
+    log.info("Created order with id: {} and number: {}", savedOrder.getId(), savedOrder.getOrderNumber());
+
+    return orderMapper.toResponse(savedOrder);
 }
 ```
+
+**Response when trying to order unavailable pizza:**
+```json
+{
+  "timestamp": "2024-11-05T19:30:00",
+  "status": 422,
+  "error": "Unprocessable Entity",
+  "message": "Pizza 'Hawaiian Supreme' is currently not available",
+  "path": "/api/orders"
+}
+```
+
+### Example 2: Cannot Cancel Delivered Orders
+
+In `OrderService.cancel()`:
+
+```java
+public void cancel(Long id) {
+    log.debug("Cancelling order with id: {}", id);
+    Order order = orderRepository.findById(id).orElse(null);
+    if (order == null) {
+        throw new BusinessException("Order with id " + id + " not found");
+    }
+    
+    // Business rule: Cannot cancel delivered orders
+    if (order.getStatus() == OrderStatus.DELIVERED) {
+        throw new BusinessException("Cannot cancel order with status " + order.getStatus());
+    }
+    
+    // Business rule: Cannot cancel already cancelled orders
+    if (order.getStatus() == OrderStatus.CANCELLED) {
+        throw new BusinessException("Order is already cancelled");
+    }
+    
+    order.setStatus(OrderStatus.CANCELLED);
+    orderRepository.save(order);
+    log.info("Cancelled order with id: {}", id);
+}
+```
+
+**Response when trying to cancel a delivered order:**
+```json
+{
+  "timestamp": "2024-11-05T19:30:00",
+  "status": 422,
+  "error": "Unprocessable Entity",
+  "message": "Cannot cancel order with status DELIVERED",
+  "path": "/api/orders/5"
+}
+```
+
+### When to Use Which Exception?
+
+| Exception Type | HTTP Status | Use Case | Example |
+|---------------|-------------|----------|---------|
+| `BusinessException` | 422 | Business logic prevents operation | Cannot order unavailable pizza |
+| `ResourceNotFoundException` | 404 | Entity not found | Pizza with id 999 not found |
+| `DuplicateResourceException` | 409 | Unique constraint violated | Email already exists |
+| Validation Exception | 400 | Invalid input data | Price must be positive |
+
+### Mixing Exceptions and ResponseEntity
+
+You can use both approaches in your controllers:
+
+**Approach 1: Throw exception (recommended for business logic)**
+```java
+@PostMapping
+public ResponseEntity<OrderResponse> createOrder(@RequestBody CreateOrderRequest request) {
+    // Service throws BusinessException if pizza unavailable
+    OrderResponse created = orderService.create(request);
+    
+    URI location = ServletUriComponentsBuilder
+            .fromCurrentRequest()
+            .path("/{id}")
+            .buildAndExpand(created.id())
+            .toUri();
+    
+    return ResponseEntity.created(location).body(created);
+}
+```
+
+**Approach 2: Return ResponseEntity.notFound() (simple cases)**
+```java
+@GetMapping("/{id}")
+public ResponseEntity<OrderResponse> getOrder(@PathVariable Long id) {
+    OrderResponse order = orderService.findById(id);
+    if (order == null) {
+        return ResponseEntity.notFound().build();
+    }
+    return ResponseEntity.ok(order);
+}
+```
+
+**Both approaches are valid:**
+- Use exceptions for **business logic violations** that need descriptive error messages
+- Use `ResponseEntity.notFound()` for **simple resource lookups** where 404 is self-explanatory
 
 ---
 
@@ -818,17 +954,63 @@ A complete, production-ready Spring Boot project with **validation and exception
 
 **`pizzastore-with-validation/`**
 
-The project includes:
-- ✅ All DTOs validated with Bean Validation
-- ✅ Custom validators (ValidPizzaName, etc.)
-- ✅ Global exception handler
-- ✅ Consistent error responses
-- ✅ Custom exceptions (ResourceNotFoundException, etc.)
-- ✅ Proper HTTP status codes
-- ✅ Complete logging
-- ✅ All CRUD operations from Lesson 8 + validation
+### Project Structure
 
-See the project README for setup instructions and testing examples.
+The project includes:
+
+#### ✅ Validation
+- Request DTOs with Bean Validation annotations (`@NotBlank`, `@NotNull`, `@Email`, `@Size`, `@DecimalMin`)
+- `CreatePizzaRequest`, `UpdatePizzaRequest` - Pizza creation/update validation
+- `CreateCustomerRequest`, `UpdateCustomerRequest` - Customer validation with email, password rules
+- `CreateOrderRequest` - Order creation structure (validation can be added)
+
+#### ✅ Exception Handling
+- **Global Exception Handler** (`@RestControllerAdvice`) for consistent error responses
+- **Custom Exceptions**:
+  - `PizzaStoreException` - Base exception
+  - `ResourceNotFoundException` - 404 errors
+  - `DuplicateResourceException` - 409 Conflict errors
+  - `BusinessException` - 422 Unprocessable Entity errors
+- **ErrorResponse DTO** - Consistent error structure with field-level validation errors
+
+#### ✅ Complete REST API
+- Full CRUD operations for Pizzas, Customers, Orders
+- Pagination support with `Pageable`
+- Query parameters for filtering (price range, name search)
+- File upload for pizza images
+- Relationships: Orders → OrderLines → Pizza, Customer favorites
+
+### How to Run
+
+```bash
+cd pizzastore-with-validation
+mvn spring-boot:run
+```
+
+The application will start on `http://localhost:8080`
+
+### Test the API
+
+**Get all pizzas:**
+```bash
+curl http://localhost:8080/api/pizzas
+```
+
+**Create a pizza (will validate):**
+```bash
+curl -X POST http://localhost:8080/api/pizzas \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Margherita","price":8.50,"description":"Classic pizza"}'
+```
+
+**Trigger validation error:**
+```bash
+curl -X POST http://localhost:8080/api/pizzas \
+  -H "Content-Type: application/json" \
+  -d '{"name":"","price":-5}'
+```
+
+See the project README for more testing examples.
 
 ---
 

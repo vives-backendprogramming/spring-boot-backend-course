@@ -13,10 +13,9 @@
     </parent>
 
     <groupId>be.vives</groupId>
-    <artifactId>pizzastore-complete-api</artifactId>
+    <artifactId>pizzastore-with-validation</artifactId>
     <version>1.0.0</version>
-    <name>PizzaStore Complete REST API</name>
-    <description>Complete REST API demonstrating all concepts from lessons 1-7</description>
+    <name>PizzaStore with validation</name>
 
     <properties>
         <java.version>25</java.version>

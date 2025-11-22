@@ -44,9 +44,8 @@ public class CustomerController {
     @GetMapping("/{id}")
     public ResponseEntity<CustomerResponse> getCustomer(@PathVariable Long id) {
         log.debug("GET /api/customers/{}", id);
-        return customerService.findById(id)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+        CustomerResponse customer = customerService.findById(id);
+        return ResponseEntity.ok(customer);
     }
 
     @GetMapping("/{id}/orders")
@@ -90,19 +89,16 @@ public class CustomerController {
 
         log.debug("PUT /api/customers/{} - {}", id, request);
 
-        return customerService.update(id, request)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+        CustomerResponse updated = customerService.update(id, request);
+        return ResponseEntity.ok(updated);
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteCustomer(@PathVariable Long id) {
         log.debug("DELETE /api/customers/{}", id);
 
-        if (customerService.delete(id)) {
-            return ResponseEntity.noContent().build();
-        }
-        return ResponseEntity.notFound().build();
+        customerService.delete(id);
+        return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/{customerId}/favorites/{pizzaId}")
@@ -112,10 +108,8 @@ public class CustomerController {
 
         log.debug("POST /api/customers/{}/favorites/{}", customerId, pizzaId);
 
-        if (customerService.addFavoritePizza(customerId, pizzaId)) {
-            return ResponseEntity.ok().build();
-        }
-        return ResponseEntity.notFound().build();
+        customerService.addFavoritePizza(customerId, pizzaId);
+        return ResponseEntity.ok().build();
     }
 
     @DeleteMapping("/{customerId}/favorites/{pizzaId}")
@@ -125,9 +119,7 @@ public class CustomerController {
 
         log.debug("DELETE /api/customers/{}/favorites/{}", customerId, pizzaId);
 
-        if (customerService.removeFavoritePizza(customerId, pizzaId)) {
-            return ResponseEntity.noContent().build();
-        }
-        return ResponseEntity.notFound().build();
+        customerService.removeFavoritePizza(customerId, pizzaId);
+        return ResponseEntity.noContent().build();
     }
 }
