@@ -1278,6 +1278,46 @@ In **Lesson 9 (Complete REST API)** we'll:
 
 ---
 
+## 🚀 Runnable Project
+
+A complete, runnable Spring Boot project demonstrating **DTOs, MapStruct, and Service Layer** from this lesson is available in:
+
+**`pizzastore-with-dtos/`**
+
+The project includes:
+- ✅ **Request DTOs**: PizzaRequest, OrderRequest, OrderLineRequest for incoming data
+- ✅ **Response DTOs**: PizzaResponse, OrderResponse, OrderLineResponse for outgoing data
+- ✅ **Summary DTOs**: CustomerSummary, PizzaSummary for nested objects
+- ✅ **MapStruct Mappers**: Automatic, type-safe entity-DTO conversion
+- ✅ **Service Layer**: PizzaService, OrderService, CustomerService with business logic
+- ✅ **Transaction Management**: @Transactional annotations on service methods
+- ✅ **No Audit Fields**: createdAt, updatedAt, createdBy, updatedBy are never exposed in responses
+- ✅ Complete domain model with JPA relationships (from Lesson 6)
+- ✅ Comprehensive sample data (12 pizzas, 6 customers, 10 orders)
+
+### How to Run
+
+```bash
+cd pizzastore-with-dtos
+mvn clean install
+mvn spring-boot:run
+```
+
+The application starts on `http://localhost:8080` with H2 in-memory database.
+
+### Verify the Service Layer
+
+Once running, you can test the service layer by temporarily adding a simple test endpoint or by checking the logs during startup. The sample data is automatically loaded via `data.sql`.
+
+You can also access the H2 console at `http://localhost:8080/h2-console`:
+- JDBC URL: `jdbc:h2:mem:pizzastore`
+- Username: `sa`
+- Password: *(leave empty)*
+
+See the project README for more details on testing the service methods.
+
+---
+
 ## 🎓 Further Reading
 
 - [MapStruct Documentation](https://mapstruct.org/)
