@@ -10,7 +10,6 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 
-@Repository
 public interface PizzaRepository extends JpaRepository<Pizza, Long> {
 
     // Derived query methods
