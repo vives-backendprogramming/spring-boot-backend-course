@@ -12,6 +12,8 @@ import be.vives.pizzastore.repository.CustomerRepository;
 import be.vives.pizzastore.repository.PizzaRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -40,10 +42,10 @@ public class CustomerService {
         this.pizzaMapper = pizzaMapper;
     }
 
-    public List<CustomerResponse> findAll() {
-        log.debug("Finding all customers");
-        List<Customer> customers = customerRepository.findAll();
-        return customerMapper.toResponseList(customers);
+    public Page<CustomerResponse> findAll(Pageable pageable) {
+        log.debug("Finding all customers with pagination: {}", pageable);
+        Page<Customer> customerPage = customerRepository.findAll(pageable);
+        return customerPage.map(customerMapper::toResponse);
     }
 
     public Optional<CustomerResponse> findById(Long id) {

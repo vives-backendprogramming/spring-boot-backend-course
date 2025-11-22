@@ -14,8 +14,6 @@ public record OrderResponse(
         List<OrderLineResponse> orderLines,
         BigDecimal totalAmount,
         OrderStatus status,
-        LocalDateTime orderDate,
-        LocalDateTime createdAt,
-        LocalDateTime updatedAt
+        LocalDateTime orderDate
 ) {
 }

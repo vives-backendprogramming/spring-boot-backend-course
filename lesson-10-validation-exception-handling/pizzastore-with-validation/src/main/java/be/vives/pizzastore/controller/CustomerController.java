@@ -35,9 +35,9 @@ public class CustomerController {
     }
 
     @GetMapping
-    public ResponseEntity<List<CustomerResponse>> getAllCustomers() {
+    public ResponseEntity<Page<CustomerResponse>> getAllCustomers(Pageable pageable) {
         log.debug("GET /api/customers");
-        List<CustomerResponse> customers = customerService.findAll();
+        Page<CustomerResponse> customers = customerService.findAll(pageable);
         return ResponseEntity.ok(customers);
     }
 
