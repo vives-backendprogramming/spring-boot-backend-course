@@ -22,12 +22,12 @@ By the end of this lesson, you will be able to:
 2. [What Are DTOs?](#-what-are-dtos)
 3. [Request vs Response DTOs](#-request-vs-response-dtos)
 4. [Java Records for DTOs](#-java-records-for-dtos)
-5. [Mapping Strategies](#️-mapping-strategies)
+5. [Mapping Strategies](#-mapping-strategies)
 6. [MapStruct: The Best Choice](#-mapstruct-the-best-choice)
 7. [Service Layer Pattern](#-service-layer-pattern)
 8. [Project Structure with DTOs](#-project-structure-with-dtos)
 9. [Best Practices](#-best-practices)
-10. [Common Pitfalls](#️-common-pitfalls)
+10. [Common Pitfalls](#-common-pitfalls)
 11. [Summary](#-summary)
 12. [Further Reading](#-further-reading)
 
@@ -194,14 +194,24 @@ Different operations need different data:
 ```java
 package be.vives.pizzastore.dto.request;
 
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import java.math.BigDecimal;
 
 public record CreatePizzaRequest(
+        @NotBlank(message = "Pizza name is required")
         String name,
-        String description,
+
+        @NotNull(message = "Price is required")
+        @DecimalMin(value = "0.01", message = "Price must be positive")
         BigDecimal price,
-        String imageUrl,
-        boolean available
+
+        String description,
+
+        Boolean available,
+
+        NutritionalInfoRequest nutritionalInfo
 ) {
 }
 ```
@@ -216,14 +226,20 @@ public record CreatePizzaRequest(
 ```java
 package be.vives.pizzastore.dto.request;
 
+import jakarta.validation.constraints.DecimalMin;
 import java.math.BigDecimal;
 
 public record UpdatePizzaRequest(
         String name,
-        String description,
+
+        @DecimalMin(value = "0.01", message = "Price must be positive")
         BigDecimal price,
-        String imageUrl,
-        Boolean available  // Note: Boolean (nullable) for partial updates
+
+        String description,
+
+        Boolean available,  // Note: Boolean (nullable) for partial updates
+
+        NutritionalInfoRequest nutritionalInfo
 ) {
 }
 ```
@@ -243,10 +259,11 @@ import java.math.BigDecimal;
 public record PizzaResponse(
         Long id,
         String name,
-        String description,
         BigDecimal price,
+        String description,
         String imageUrl,
-        boolean available
+        Boolean available,
+        NutritionalInfoResponse nutritionalInfo
 ) {
 }
 ```
@@ -315,7 +332,7 @@ public PizzaResponse createPizza(@RequestBody CreatePizzaRequest request) {
     Pizza pizza = pizzaMapper.toEntity(request);
     Pizza saved = pizzaRepository.save(pizza);
     // Jackson serializes PizzaResponse → JSON
-    return pizzaMapper.toPizzaResponse(saved);
+    return pizzaMapper.toResponse(saved);
 }
 ```
 
@@ -328,24 +345,44 @@ public PizzaResponse createPizza(@RequestBody CreatePizzaRequest request) {
 #### 1. **Manual Mapping** ❌
 
 ```java
-public PizzaResponse toPizzaResponse(Pizza pizza) {
+public PizzaResponse toResponse(Pizza pizza) {
+    NutritionalInfoResponse nutritionalInfo = null;
+    if (pizza.getNutritionalInfo() != null) {
+        nutritionalInfo = new NutritionalInfoResponse(
+            pizza.getNutritionalInfo().getCalories(),
+            pizza.getNutritionalInfo().getProtein(),
+            pizza.getNutritionalInfo().getCarbohydrates(),
+            pizza.getNutritionalInfo().getFat()
+        );
+    }
+    
     return new PizzaResponse(
         pizza.getId(),
         pizza.getName(),
-        pizza.getDescription(),
         pizza.getPrice(),
+        pizza.getDescription(),
         pizza.getImageUrl(),
-        pizza.isAvailable()
+        pizza.getAvailable(),
+        nutritionalInfo
     );
 }
 
 public Pizza toEntity(CreatePizzaRequest request) {
     Pizza pizza = new Pizza();
     pizza.setName(request.name());
-    pizza.setDescription(request.description());
     pizza.setPrice(request.price());
-    pizza.setImageUrl(request.imageUrl());
+    pizza.setDescription(request.description());
     pizza.setAvailable(request.available());
+    
+    if (request.nutritionalInfo() != null) {
+        NutritionalInfo nutritionalInfo = new NutritionalInfo();
+        nutritionalInfo.setCalories(request.nutritionalInfo().calories());
+        nutritionalInfo.setProtein(request.nutritionalInfo().protein());
+        nutritionalInfo.setCarbohydrates(request.nutritionalInfo().carbohydrates());
+        nutritionalInfo.setFat(request.nutritionalInfo().fat());
+        pizza.setNutritionalInfo(nutritionalInfo);
+    }
+    
     return pizza;
 }
 ```
@@ -362,7 +399,7 @@ MapStruct generates mapping code at **compile time**.
 ```java
 @Mapper(componentModel = "spring")
 public interface PizzaMapper {
-    PizzaResponse toPizzaResponse(Pizza pizza);
+    PizzaResponse toResponse(Pizza pizza);
     Pizza toEntity(CreatePizzaRequest request);
 }
 ```
@@ -424,8 +461,9 @@ import be.vives.pizzastore.domain.Pizza;
 import be.vives.pizzastore.dto.request.CreatePizzaRequest;
 import be.vives.pizzastore.dto.request.UpdatePizzaRequest;
 import be.vives.pizzastore.dto.response.PizzaResponse;
-import be.vives.pizzastore.dto.response.PizzaSummaryResponse;
 import org.mapstruct.*;
+
+import java.util.List;
 
 @Mapper(componentModel = "spring")
 public interface PizzaMapper {
@@ -441,7 +479,6 @@ public interface PizzaMapper {
     @Mapping(target = "createdBy", ignore = true)
     @Mapping(target = "updatedAt", ignore = true)
     @Mapping(target = "updatedBy", ignore = true)
-    @Mapping(target = "nutritionalInfo", ignore = true)
     @Mapping(target = "favoritedByCustomers", ignore = true)
     Pizza toEntity(CreatePizzaRequest request);
 
@@ -451,7 +488,6 @@ public interface PizzaMapper {
     @Mapping(target = "createdBy", ignore = true)
     @Mapping(target = "updatedAt", ignore = true)
     @Mapping(target = "updatedBy", ignore = true)
-    @Mapping(target = "nutritionalInfo", ignore = true)
     @Mapping(target = "favoritedByCustomers", ignore = true)
     void updateEntity(UpdatePizzaRequest request, @MappingTarget Pizza pizza);
 }
@@ -486,9 +522,9 @@ public class PizzaService {
 Maps fields explicitly:
 
 ```java
-@Mapping(source = "user.id", target = "userId")
-@Mapping(source = "user.name", target = "userName")
-OrderResponse toOrderResponse(Order order);
+@Mapping(source = "customer.id", target = "customerId")
+@Mapping(source = "customer.name", target = "customerName")
+OrderResponse toResponse(Order order);
 ```
 
 - `source`: Field in source object (Entity)
@@ -511,7 +547,7 @@ For partial updates:
 
 ```java
 @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
-void updateEntityFromRequest(UpdatePizzaRequest request, @MappingTarget Pizza pizza);
+void updateEntity(UpdatePizzaRequest request, @MappingTarget Pizza pizza);
 ```
 
 - `IGNORE`: Don't update if DTO field is `null`
@@ -522,11 +558,11 @@ void updateEntityFromRequest(UpdatePizzaRequest request, @MappingTarget Pizza pi
 Updates an existing object instead of creating a new one:
 
 ```java
-void updateEntityFromRequest(UpdatePizzaRequest request, @MappingTarget Pizza pizza);
+void updateEntity(UpdatePizzaRequest request, @MappingTarget Pizza pizza);
 
 // Usage:
 Pizza existing = pizzaRepository.findById(id).orElseThrow();
-pizzaMapper.updateEntityFromRequest(updateRequest, existing);
+pizzaMapper.updateEntity(updateRequest, existing);
 // existing is now updated with values from updateRequest
 ```
 
@@ -535,13 +571,17 @@ pizzaMapper.updateEntityFromRequest(updateRequest, existing);
 When a DTO contains nested objects, MapStruct can use other mappers:
 
 ```java
-@Mapper(componentModel = "spring", uses = {UserMapper.class, PizzaMapper.class})
+@Mapper(componentModel = "spring")
 public interface OrderMapper {
 
-    OrderResponse toOrderResponse(Order order);
+    @Mapping(source = "customer.id", target = "customerId")
+    @Mapping(source = "customer.name", target = "customerName")
+    OrderResponse toResponse(Order order);
     
     List<OrderResponse> toResponseList(List<Order> orders);
 
+    @Mapping(source = "pizza.id", target = "pizzaId")
+    @Mapping(source = "pizza.name", target = "pizzaName")
     OrderLineResponse toOrderLineResponse(OrderLine orderLine);
 
     List<OrderLineResponse> toOrderLineResponseList(List<OrderLine> orderLines);
@@ -551,22 +591,26 @@ public interface OrderMapper {
 **How it works:**
 
 ```java
-// Order entity has a User
+// Order entity has a Customer
 @Entity
 public class Order {
     @ManyToOne
-    private User user;
+    private Customer customer;
     // ...
 }
 
-// OrderResponse DTO has a UserSummaryResponse
+// OrderResponse DTO flattens the customer data
 public record OrderResponse(
     Long id,
-    UserSummaryResponse user,  // Nested DTO
-    // ...
+    Long customerId,
+    String customerName,
+    List<OrderLineResponse> orderLines,
+    BigDecimal totalAmount,
+    OrderStatus status,
+    LocalDateTime orderDate
 ) {}
 
-// MapStruct automatically uses UserMapper.toSummaryResponse()
+// MapStruct automatically maps customer.id → customerId
 ```
 
 ### Summary DTOs for Nested Objects
@@ -578,10 +622,11 @@ To avoid circular references, use summary DTOs:
 public record PizzaResponse(
         Long id,
         String name,
-        String description,
         BigDecimal price,
+        String description,
         String imageUrl,
-        boolean available
+        Boolean available,
+        NutritionalInfoResponse nutritionalInfo
 ) {}
 
 // Summary for nested objects (only essential fields)
@@ -595,10 +640,11 @@ public record PizzaSummaryResponse(
 **Usage:**
 
 ```java
-// OrderLineResponse contains PizzaSummaryResponse
+// OrderLineResponse flattens pizza data (alternative approach)
 public record OrderLineResponse(
         Long id,
-        PizzaSummaryResponse pizza,  // ← Summary, not full Pizza
+        Long pizzaId,
+        String pizzaName,
         int quantity,
         BigDecimal unitPrice,
         BigDecimal subtotal
@@ -650,14 +696,22 @@ import be.vives.pizzastore.dto.request.UpdatePizzaRequest;
 import be.vives.pizzastore.dto.response.PizzaResponse;
 import be.vives.pizzastore.mapper.PizzaMapper;
 import be.vives.pizzastore.repository.PizzaRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.List;
+import java.util.Optional;
 
 @Service
-@Transactional(readOnly = true)  // All methods read-only by default
+@Transactional
 public class PizzaService {
+
+    private static final Logger log = LoggerFactory.getLogger(PizzaService.class);
 
     private final PizzaRepository pizzaRepository;
     private final PizzaMapper pizzaMapper;
@@ -668,67 +722,78 @@ public class PizzaService {
         this.pizzaMapper = pizzaMapper;
     }
 
-    // Read operation - returns DTO
-    public List<PizzaResponse> getAllPizzas() {
-        return pizzaRepository.findAll()
-                .stream()
-                .map(pizzaMapper::toPizzaResponse)
-                .toList();
+    // Read operations with pagination
+    public Page<PizzaResponse> findAll(Pageable pageable) {
+        log.debug("Finding pizzas with pagination: {}", pageable);
+        Page<Pizza> pizzaPage = pizzaRepository.findAll(pageable);
+        return pizzaPage.map(pizzaMapper::toResponse);
     }
 
-    public List<PizzaResponse> getAvailablePizzas() {
-        return pizzaRepository.findByAvailableTrue()
-                .stream()
-                .map(pizzaMapper::toPizzaResponse)
-                .toList();
+    public Optional<PizzaResponse> findById(Long id) {
+        log.debug("Finding pizza with id: {}", id);
+        return pizzaRepository.findById(id)
+                .map(pizzaMapper::toResponse);
     }
 
-    public PizzaResponse getPizzaById(Long id) {
-        Pizza pizza = pizzaRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Pizza not found with id: " + id));
-        return pizzaMapper.toPizzaResponse(pizza);
+    public List<PizzaResponse> findByPriceLessThan(BigDecimal maxPrice) {
+        log.debug("Finding pizzas with price less than: {}", maxPrice);
+        List<Pizza> pizzas = pizzaRepository.findByPriceLessThan(maxPrice);
+        return pizzaMapper.toResponseList(pizzas);
     }
 
-    // Write operation - needs its own transaction
-    @Transactional
-    public PizzaResponse createPizza(CreatePizzaRequest request) {
-        // 1. Map DTO → Entity
+    public List<PizzaResponse> findByPriceBetween(BigDecimal minPrice, BigDecimal maxPrice) {
+        log.debug("Finding pizzas with price between {} and {}", minPrice, maxPrice);
+        List<Pizza> pizzas = pizzaRepository.findByPriceBetween(minPrice, maxPrice);
+        return pizzaMapper.toResponseList(pizzas);
+    }
+
+    public List<PizzaResponse> findByNameContaining(String name) {
+        log.debug("Finding pizzas with name containing: {}", name);
+        List<Pizza> pizzas = pizzaRepository.findByNameContainingIgnoreCase(name);
+        return pizzaMapper.toResponseList(pizzas);
+    }
+
+    // Write operations
+    public PizzaResponse create(CreatePizzaRequest request) {
+        log.debug("Creating new pizza: {}", request.name());
         Pizza pizza = pizzaMapper.toEntity(request);
         
-        // 2. Save entity
-        Pizza savedPizza = pizzaRepository.save(pizza);
-        
-        // 3. Map Entity → DTO and return
-        return pizzaMapper.toPizzaResponse(savedPizza);
-    }
-
-    @Transactional
-    public PizzaResponse updatePizza(Long id, UpdatePizzaRequest request) {
-        // 1. Find existing entity
-        Pizza pizza = pizzaRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Pizza not found with id: " + id));
-        
-        // 2. Update entity from DTO (only non-null fields)
-        pizzaMapper.updateEntityFromRequest(request, pizza);
-        
-        // 3. Save and return
-        Pizza updatedPizza = pizzaRepository.save(pizza);
-        return pizzaMapper.toPizzaResponse(updatedPizza);
-    }
-
-    @Transactional
-    public void deletePizza(Long id) {
-        if (!pizzaRepository.existsById(id)) {
-            throw new RuntimeException("Pizza not found with id: " + id);
+        // Set bidirectional relationship for NutritionalInfo
+        if (pizza.getNutritionalInfo() != null) {
+            pizza.getNutritionalInfo().setPizza(pizza);
         }
-        pizzaRepository.deleteById(id);
+        
+        Pizza savedPizza = pizzaRepository.save(pizza);
+        log.info("Created pizza with id: {}", savedPizza.getId());
+        return pizzaMapper.toResponse(savedPizza);
     }
 
-    public List<PizzaResponse> searchPizzas(String keyword) {
-        return pizzaRepository.findByNameContainingIgnoreCaseOrDescriptionContainingIgnoreCase(keyword, keyword)
-                .stream()
-                .map(pizzaMapper::toPizzaResponse)
-                .toList();
+    public Optional<PizzaResponse> update(Long id, UpdatePizzaRequest request) {
+        log.debug("Updating pizza with id: {}", id);
+        return pizzaRepository.findById(id)
+                .map(pizza -> {
+                    pizzaMapper.updateEntity(request, pizza);
+
+                    // Set bidirectional relationship for NutritionalInfo
+                    if (pizza.getNutritionalInfo() != null) {
+                        pizza.getNutritionalInfo().setPizza(pizza);
+                    }
+
+                    Pizza updatedPizza = pizzaRepository.save(pizza);
+                    log.info("Updated pizza with id: {}", id);
+                    return pizzaMapper.toResponse(updatedPizza);
+                });
+    }
+
+    public boolean delete(Long id) {
+        log.debug("Deleting pizza with id: {}", id);
+        if (pizzaRepository.existsById(id)) {
+            pizzaRepository.deleteById(id);
+            log.info("Deleted pizza with id: {}", id);
+            return true;
+        }
+        log.warn("Pizza with id {} not found for deletion", id);
+        return false;
     }
 }
 ```
@@ -756,15 +821,14 @@ public PizzaService(PizzaRepository pizzaRepository, PizzaMapper pizzaMapper) {
 
 ```java
 @Service
-@Transactional(readOnly = true)  // Default for all methods
+@Transactional  // All methods are transactional
 public class PizzaService {
     
-    // Read method - uses default read-only transaction
-    public PizzaResponse getPizzaById(Long id) { ... }
+    // Read method - uses transaction
+    public Optional<PizzaResponse> findById(Long id) { ... }
     
-    // Write method - overrides with read-write transaction
-    @Transactional
-    public PizzaResponse createPizza(CreatePizzaRequest request) { ... }
+    // Write method - uses transaction
+    public PizzaResponse create(CreatePizzaRequest request) { ... }
 }
 ```
 
@@ -772,10 +836,10 @@ public class PizzaService {
 
 ```java
 // ❌ NEVER return entities from service
-public Pizza getPizza(Long id) { ... }
+public Pizza findById(Long id) { ... }
 
 // ✅ ALWAYS return DTOs
-public PizzaResponse getPizza(Long id) { ... }
+public Optional<PizzaResponse> findById(Long id) { ... }
 ```
 
 ---
@@ -933,16 +997,16 @@ public record OrderResponse(
 // ✅ GOOD
 @Service
 public class PizzaService {
-    public PizzaResponse getPizza(Long id) {
-        Pizza pizza = repository.findById(id).orElseThrow();
-        return mapper.toPizzaResponse(pizza);
+    public Optional<PizzaResponse> findById(Long id) {
+        return repository.findById(id)
+                .map(mapper::toResponse);
     }
 }
 
 // ❌ BAD
 @Service
 public class PizzaService {
-    public Pizza getPizza(Long id) {
+    public Pizza findById(Long id) {
         return repository.findById(id).orElseThrow();  // Never return entity!
     }
 }
@@ -989,8 +1053,10 @@ public Pizza getPizza(@PathVariable Long id) {
 
 // ✅ ALWAYS RETURN DTOs
 @GetMapping("/{id}")
-public PizzaResponse getPizza(@PathVariable Long id) {
-    return pizzaService.getPizzaById(id);
+public ResponseEntity<PizzaResponse> getPizza(@PathVariable Long id) {
+    return pizzaService.findById(id)
+            .map(ResponseEntity::ok)
+            .orElse(ResponseEntity.notFound().build());
 }
 ```
 
@@ -1000,23 +1066,24 @@ public PizzaResponse getPizza(@PathVariable Long id) {
 // ❌ BAD: No transaction
 @Service
 public class PizzaService {
-    public PizzaResponse updatePizza(Long id, UpdatePizzaRequest request) {
+    public Optional<PizzaResponse> update(Long id, UpdatePizzaRequest request) {
         Pizza pizza = repository.findById(id).orElseThrow();
-        mapper.updateEntityFromRequest(request, pizza);
-        return mapper.toPizzaResponse(pizza);  // Changes might not be saved!
+        mapper.updateEntity(request, pizza);
+        return Optional.of(mapper.toResponse(pizza));  // Changes might not be saved!
     }
 }
 
 // ✅ GOOD: Explicit transaction
 @Service
-@Transactional(readOnly = true)
+@Transactional
 public class PizzaService {
-    @Transactional  // Write transaction
-    public PizzaResponse updatePizza(Long id, UpdatePizzaRequest request) {
-        Pizza pizza = repository.findById(id).orElseThrow();
-        mapper.updateEntityFromRequest(request, pizza);
-        // Changes automatically saved when transaction commits
-        return mapper.toPizzaResponse(pizza);
+    public Optional<PizzaResponse> update(Long id, UpdatePizzaRequest request) {
+        return repository.findById(id)
+                .map(pizza -> {
+                    mapper.updateEntity(request, pizza);
+                    // Changes automatically saved when transaction commits
+                    return mapper.toResponse(pizza);
+                });
     }
 }
 ```
@@ -1047,7 +1114,7 @@ public interface PizzaMapper {
 
 ```java
 // ❌ DANGER: Password exposed in response
-public record UserResponse(
+public record CustomerResponse(
         Long id,
         String name,
         String email,
@@ -1055,17 +1122,20 @@ public record UserResponse(
 ) {}
 
 // ✅ SAFE: Password never included
-public record UserResponse(
+public record CustomerResponse(
         Long id,
         String name,
-        String email
+        String email,
+        String phone,
+        String address,
+        String role
 ) {}
 
 // And in mapper:
 @Mapper(componentModel = "spring")
-public interface UserMapper {
-    @Mapping(target = "password", ignore = true)  // Extra safety
-    UserResponse toUserResponse(User user);
+public interface CustomerMapper {
+    @Mapping(target = "password", ignore = true)  // Extra safety when creating
+    Customer toEntity(CreateCustomerRequest request);
 }
 ```
 
@@ -1073,7 +1143,7 @@ public interface UserMapper {
 
 ```java
 // ❌ BAD: Circular reference
-public record UserResponse(
+public record CustomerResponse(
         Long id,
         String name,
         List<OrderResponse> orders
@@ -1081,15 +1151,19 @@ public record UserResponse(
 
 public record OrderResponse(
         Long id,
-        UserResponse user,           // ← Circular! User → Order → User → ...
+        CustomerResponse customer,    // ← Circular! Customer → Order → Customer → ...
         List<OrderLineResponse> orderLines
 ) {}
 
-// ✅ GOOD: Use Summary DTO
+// ✅ GOOD: Flatten customer data or use IDs
 public record OrderResponse(
         Long id,
-        UserSummaryResponse user,    // ← Summary, no orders
-        List<OrderLineResponse> orderLines
+        Long customerId,             // ← Just the ID
+        String customerName,         // ← Just the name
+        List<OrderLineResponse> orderLines,
+        BigDecimal totalAmount,
+        OrderStatus status,
+        LocalDateTime orderDate
 ) {}
 ```
 
@@ -1099,17 +1173,17 @@ public record OrderResponse(
 // ❌ BAD: Null values overwrite existing data
 @Mapper(componentModel = "spring")
 public interface PizzaMapper {
-    void updateEntityFromRequest(UpdatePizzaRequest request, @MappingTarget Pizza pizza);
+    void updateEntity(UpdatePizzaRequest request, @MappingTarget Pizza pizza);
 }
 
 // Request: { "name": "New Name", "description": null }
 // Result: description is set to null (data loss!)
 
-// ✅ GOOD: Ignore null values
+// ✅ GOOD: Ignore null values (MapStruct default behavior for Records)
 @Mapper(componentModel = "spring")
 public interface PizzaMapper {
     @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
-    void updateEntityFromRequest(UpdatePizzaRequest request, @MappingTarget Pizza pizza);
+    void updateEntity(UpdatePizzaRequest request, @MappingTarget Pizza pizza);
 }
 
 // Request: { "name": "New Name", "description": null }
