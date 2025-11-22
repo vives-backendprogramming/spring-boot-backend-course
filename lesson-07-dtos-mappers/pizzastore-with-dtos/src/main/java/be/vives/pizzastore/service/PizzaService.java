@@ -6,14 +6,23 @@ import be.vives.pizzastore.dto.request.UpdatePizzaRequest;
 import be.vives.pizzastore.dto.response.PizzaResponse;
 import be.vives.pizzastore.mapper.PizzaMapper;
 import be.vives.pizzastore.repository.PizzaRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.math.BigDecimal;
 import java.util.List;
+import java.util.Optional;
 
 @Service
-@Transactional(readOnly = true)
+@Transactional
 public class PizzaService {
+
+    private static final Logger log = LoggerFactory.getLogger(PizzaService.class);
 
     private final PizzaRepository pizzaRepository;
     private final PizzaMapper pizzaMapper;
@@ -23,56 +32,76 @@ public class PizzaService {
         this.pizzaMapper = pizzaMapper;
     }
 
-    public List<PizzaResponse> getAllPizzas() {
-        return pizzaRepository.findAll()
-                .stream()
-                .map(pizzaMapper::toPizzaResponse)
-                .toList();
+    public Page<PizzaResponse> findAll(Pageable pageable) {
+        log.debug("Finding pizzas with pagination: {}", pageable);
+        Page<Pizza> pizzaPage = pizzaRepository.findAll(pageable);
+        return pizzaPage.map(pizzaMapper::toResponse);
     }
 
-    public List<PizzaResponse> getAvailablePizzas() {
-        return pizzaRepository.findByAvailableTrue()
-                .stream()
-                .map(pizzaMapper::toPizzaResponse)
-                .toList();
+    public Optional<PizzaResponse> findById(Long id) {
+        log.debug("Finding pizza with id: {}", id);
+        return pizzaRepository.findById(id)
+                .map(pizzaMapper::toResponse);
     }
 
-    public PizzaResponse getPizzaById(Long id) {
-        Pizza pizza = pizzaRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Pizza not found with id: " + id));
-        return pizzaMapper.toPizzaResponse(pizza);
+    public List<PizzaResponse> findByPriceLessThan(BigDecimal maxPrice) {
+        log.debug("Finding pizzas with price less than: {}", maxPrice);
+        List<Pizza> pizzas = pizzaRepository.findByPriceLessThan(maxPrice);
+        return pizzaMapper.toResponseList(pizzas);
     }
 
-    @Transactional
-    public PizzaResponse createPizza(CreatePizzaRequest request) {
+    public List<PizzaResponse> findByPriceBetween(BigDecimal minPrice, BigDecimal maxPrice) {
+        log.debug("Finding pizzas with price between {} and {}", minPrice, maxPrice);
+        List<Pizza> pizzas = pizzaRepository.findByPriceBetween(minPrice, maxPrice);
+        return pizzaMapper.toResponseList(pizzas);
+    }
+
+    public List<PizzaResponse> findByNameContaining(String name) {
+        log.debug("Finding pizzas with name containing: {}", name);
+        List<Pizza> pizzas = pizzaRepository.findByNameContainingIgnoreCase(name);
+        return pizzaMapper.toResponseList(pizzas);
+    }
+
+    public PizzaResponse create(CreatePizzaRequest request) {
+        log.debug("Creating new pizza: {}", request.name());
         Pizza pizza = pizzaMapper.toEntity(request);
-        Pizza savedPizza = pizzaRepository.save(pizza);
-        return pizzaMapper.toPizzaResponse(savedPizza);
-    }
-
-    @Transactional
-    public PizzaResponse updatePizza(Long id, UpdatePizzaRequest request) {
-        Pizza pizza = pizzaRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Pizza not found with id: " + id));
         
-        pizzaMapper.updateEntityFromRequest(request, pizza);
-        
-        Pizza updatedPizza = pizzaRepository.save(pizza);
-        return pizzaMapper.toPizzaResponse(updatedPizza);
-    }
-
-    @Transactional
-    public void deletePizza(Long id) {
-        if (!pizzaRepository.existsById(id)) {
-            throw new RuntimeException("Pizza not found with id: " + id);
+        // Set bidirectional relationship for NutritionalInfo
+        if (pizza.getNutritionalInfo() != null) {
+            pizza.getNutritionalInfo().setPizza(pizza);
         }
-        pizzaRepository.deleteById(id);
+        
+        Pizza savedPizza = pizzaRepository.save(pizza);
+        log.info("Created pizza with id: {}", savedPizza.getId());
+        return pizzaMapper.toResponse(savedPizza);
     }
 
-    public List<PizzaResponse> searchPizzas(String keyword) {
-        return pizzaRepository.findByNameContainingIgnoreCaseOrDescriptionContainingIgnoreCase(keyword, keyword)
-                .stream()
-                .map(pizzaMapper::toPizzaResponse)
-                .toList();
+    public Optional<PizzaResponse> update(Long id, UpdatePizzaRequest request) {
+        log.debug("Updating pizza with id: {}", id);
+        return pizzaRepository.findById(id)
+                .map(pizza -> {
+                    pizzaMapper.updateEntity(request, pizza);
+
+                    // Set bidirectional relationship for NutritionalInfo
+                    if (pizza.getNutritionalInfo() != null) {
+                        pizza.getNutritionalInfo().setPizza(pizza);
+                    }
+
+                    Pizza updatedPizza = pizzaRepository.save(pizza);
+                    log.info("Updated pizza with id: {}", id);
+                    return pizzaMapper.toResponse(updatedPizza);
+                });
     }
+
+    public boolean delete(Long id) {
+        log.debug("Deleting pizza with id: {}", id);
+        if (pizzaRepository.existsById(id)) {
+            pizzaRepository.deleteById(id);
+            log.info("Deleted pizza with id: {}", id);
+            return true;
+        }
+        log.warn("Pizza with id {} not found for deletion", id);
+        return false;
+    }
+
 }

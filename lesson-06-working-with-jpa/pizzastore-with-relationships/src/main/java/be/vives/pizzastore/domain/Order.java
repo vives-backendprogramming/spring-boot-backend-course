@@ -39,7 +39,7 @@ public class Order {
     private LocalDateTime createdAt;
 
     @CreatedBy
-    @Column(name = "created_by", length = 100)
+    @Column(name = "created_by", updatable = false)
     private String createdBy;
 
     @LastModifiedDate
@@ -47,13 +47,13 @@ public class Order {
     private LocalDateTime updatedAt;
 
     @LastModifiedBy
-    @Column(name = "updated_by", length = 100)
+    @Column(name = "updated_by")
     private String updatedBy;
 
-    // @ManyToOne: Many Orders belong to one User
+    // @ManyToOne: Many Orders belong to one Customer
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id", nullable = false)
-    private User user;
+    @JoinColumn(name = "customer_id", nullable = false)
+    private Customer customer;
 
     // @OneToMany: Order has many OrderLines
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
@@ -63,9 +63,9 @@ public class Order {
     public Order() {
     }
 
-    public Order(String orderNumber, User user, OrderStatus status) {
+    public Order(String orderNumber, Customer customer, OrderStatus status) {
         this.orderNumber = orderNumber;
-        this.user = user;
+        this.customer = customer;
         this.status = status;
         this.orderDate = LocalDateTime.now();
         this.totalAmount = BigDecimal.ZERO;
@@ -131,20 +131,28 @@ public class Order {
         this.status = status;
     }
 
+    public Customer getCustomer() {
+        return customer;
+    }
+
+    public void setCustomer(Customer customer) {
+        this.customer = customer;
+    }
+
+    public List<OrderLine> getOrderLines() {
+        return orderLines;
+    }
+
+    public void setOrderLines(List<OrderLine> orderLines) {
+        this.orderLines = orderLines;
+    }
+
     public LocalDateTime getCreatedAt() {
         return createdAt;
     }
 
     public void setCreatedAt(LocalDateTime createdAt) {
         this.createdAt = createdAt;
-    }
-
-    public String getCreatedBy() {
-        return createdBy;
-    }
-
-    public void setCreatedBy(String createdBy) {
-        this.createdBy = createdBy;
     }
 
     public LocalDateTime getUpdatedAt() {
@@ -155,28 +163,20 @@ public class Order {
         this.updatedAt = updatedAt;
     }
 
+    public String getCreatedBy() {
+        return createdBy;
+    }
+
+    public void setCreatedBy(String createdBy) {
+        this.createdBy = createdBy;
+    }
+
     public String getUpdatedBy() {
         return updatedBy;
     }
 
     public void setUpdatedBy(String updatedBy) {
         this.updatedBy = updatedBy;
-    }
-
-    public User getUser() {
-        return user;
-    }
-
-    public void setUser(User user) {
-        this.user = user;
-    }
-
-    public List<OrderLine> getOrderLines() {
-        return orderLines;
-    }
-
-    public void setOrderLines(List<OrderLine> orderLines) {
-        this.orderLines = orderLines;
     }
 
     @Override

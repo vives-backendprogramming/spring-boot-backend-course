@@ -3,7 +3,6 @@ package be.vives.pizzastore.domain;
 import jakarta.persistence.*;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
-import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -12,9 +11,8 @@ import java.util.List;
 import java.util.Set;
 
 @Entity
-@Table(name = "users")
-@EntityListeners(AuditingEntityListener.class)
-public class User {
+@Table(name = "customers")
+public class Customer {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -26,7 +24,7 @@ public class User {
     @Column(nullable = false, unique = true, length = 100)
     private String email;
 
-    @Column(length = 255)
+    @Column(nullable = false)
     private String password;
 
     @Column(length = 20)
@@ -47,24 +45,24 @@ public class User {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
-    // @OneToMany: User has many Orders
-    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
+    // @OneToMany: Customer has many Orders
+    @OneToMany(mappedBy = "customer", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<Order> orders = new ArrayList<>();
 
-    // @ManyToMany: User can favorite many Pizzas
+    // @ManyToMany: Customer can favorite many Pizzas
     @ManyToMany
     @JoinTable(
-            name = "user_favorite_pizzas",
-            joinColumns = @JoinColumn(name = "user_id"),
+            name = "customer_favorite_pizzas",
+            joinColumns = @JoinColumn(name = "customer_id"),
             inverseJoinColumns = @JoinColumn(name = "pizza_id")
     )
     private Set<Pizza> favoritePizzas = new HashSet<>();
 
     // Constructors
-    public User() {
+    public Customer() {
     }
 
-    public User(String name, String email) {
+    public Customer(String name, String email) {
         this.name = name;
         this.email = email;
     }
@@ -72,22 +70,22 @@ public class User {
     // Helper methods for bidirectional relationships
     public void addOrder(Order order) {
         orders.add(order);
-        order.setUser(this);
+        order.setCustomer(this);
     }
 
     public void removeOrder(Order order) {
         orders.remove(order);
-        order.setUser(null);
+        order.setCustomer(null);
     }
 
     public void addFavoritePizza(Pizza pizza) {
         favoritePizzas.add(pizza);
-        pizza.getFavoritedByUsers().add(this);
+        pizza.getFavoritedByCustomers().add(this);
     }
 
     public void removeFavoritePizza(Pizza pizza) {
         favoritePizzas.remove(pizza);
-        pizza.getFavoritedByUsers().remove(this);
+        pizza.getFavoritedByCustomers().remove(this);
     }
 
     // Getters and Setters
@@ -115,14 +113,6 @@ public class User {
         this.email = email;
     }
 
-    public String getPassword() {
-        return password;
-    }
-
-    public void setPassword(String password) {
-        this.password = password;
-    }
-
     public String getPhone() {
         return phone;
     }
@@ -137,30 +127,6 @@ public class User {
 
     public void setAddress(String address) {
         this.address = address;
-    }
-
-    public Role getRole() {
-        return role;
-    }
-
-    public void setRole(Role role) {
-        this.role = role;
-    }
-
-    public LocalDateTime getCreatedAt() {
-        return createdAt;
-    }
-
-    public void setCreatedAt(LocalDateTime createdAt) {
-        this.createdAt = createdAt;
-    }
-
-    public LocalDateTime getUpdatedAt() {
-        return updatedAt;
-    }
-
-    public void setUpdatedAt(LocalDateTime updatedAt) {
-        this.updatedAt = updatedAt;
     }
 
     public List<Order> getOrders() {
@@ -179,9 +145,41 @@ public class User {
         this.favoritePizzas = favoritePizzas;
     }
 
+    public LocalDateTime getCreatedAt() {
+        return createdAt;
+    }
+
+    public void setCreatedAt(LocalDateTime createdAt) {
+        this.createdAt = createdAt;
+    }
+
+    public LocalDateTime getUpdatedAt() {
+        return updatedAt;
+    }
+
+    public void setUpdatedAt(LocalDateTime updatedAt) {
+        this.updatedAt = updatedAt;
+    }
+
+    public String getPassword() {
+        return password;
+    }
+
+    public void setPassword(String password) {
+        this.password = password;
+    }
+
+    public Role getRole() {
+        return role;
+    }
+
+    public void setRole(Role role) {
+        this.role = role;
+    }
+
     @Override
     public String toString() {
-        return "User{" +
+        return "Customer{" +
                 "id=" + id +
                 ", name='" + name + '\'' +
                 ", email='" + email + '\'' +

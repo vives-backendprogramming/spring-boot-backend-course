@@ -191,7 +191,7 @@ private Role role;
 - `spring-boot-starter-security`
 - `jjwt-api`, `jjwt-impl`, `jjwt-jackson` (for JWT)
 
-**Use case:** Traditional web/mobile applications where you manage all user data.
+**Use case:** Traditional web/mobile applications where you manage all customer data.
 
 ---
 
@@ -206,7 +206,7 @@ This is an **advanced, optional method** that demonstrates modern SSO (Single Si
 3. User authenticates at Dex (you don't see the password)
 4. Dex returns an OIDC token to your application
 5. Application validates token via OIDC discovery (calls Dex to verify)
-6. On first login, user profile is auto-created from OIDC claims
+6. On first login, customer profile is auto-created from OIDC claims
 7. Client includes OIDC token in `Authorization: Bearer <token>` header
 
 **What Dex manages:**
@@ -489,7 +489,7 @@ All error responses follow a consistent format:
   "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
   "type": "Bearer",
   "expiresIn": 3600,
-  "user": {
+  "customer": {
     "id": 1,
     "email": "customer@example.com",
     "name": "John Doe",
@@ -1644,7 +1644,7 @@ jwt:
 **Implementation highlights:**
 - Password hashing with BCryptPasswordEncoder (strength 12)
 - Token expiration: 1 hour (access token), 7 days (refresh token)
-- Token contains: user ID, email, role
+- Token contains: customer ID, email, role
 - Custom `JwtAuthenticationFilter` to validate tokens
 - Store tokens client-side (localStorage or secure HTTP-only cookies)
 
@@ -1742,7 +1742,7 @@ Customer customer = customerRepository.findBySub(sub)
 - Integration tests: Repository layer
 - API tests: Controller endpoints with MockMvc
 - Security tests: Authorization rules
-- E2E tests: Full user flows
+- E2E tests: Full customer flows
 
 ### Performance Optimization
 

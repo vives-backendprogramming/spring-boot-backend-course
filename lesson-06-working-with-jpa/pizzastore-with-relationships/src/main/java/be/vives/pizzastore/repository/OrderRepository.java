@@ -13,7 +13,7 @@ import java.util.Optional;
 @Repository
 public interface OrderRepository extends JpaRepository<Order, Long> {
 
-    List<Order> findByUserId(Long userId);
+    List<Order> findByCustomerId(Long customerId);
 
     List<Order> findByStatus(OrderStatus status);
 
@@ -23,6 +23,6 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     @Query("SELECT o FROM Order o JOIN FETCH o.orderLines ol JOIN FETCH ol.pizza WHERE o.id = :id")
     Optional<Order> findByIdWithOrderLines(@Param("id") Long id);
 
-    @Query("SELECT o FROM Order o JOIN FETCH o.user WHERE o.user.id = :userId")
-    List<Order> findByUserIdWithUser(@Param("userId") Long userId);
+    @Query("SELECT o FROM Order o JOIN FETCH o.customer WHERE o.customer.id = :customerId")
+    List<Order> findByCustomerIdWithCustomer(@Param("customerId") Long customerId);
 }

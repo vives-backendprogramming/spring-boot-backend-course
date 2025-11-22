@@ -34,14 +34,14 @@ public class Pizza {
     private String imageUrl;
 
     @Column(nullable = false)
-    private boolean available = true;
+    private Boolean available = true;
 
     @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
     @CreatedBy
-    @Column(name = "created_by", length = 100)
+    @Column(name = "created_by", updatable = false)
     private String createdBy;
 
     @LastModifiedDate
@@ -49,16 +49,16 @@ public class Pizza {
     private LocalDateTime updatedAt;
 
     @LastModifiedBy
-    @Column(name = "updated_by", length = 100)
+    @Column(name = "updated_by")
     private String updatedBy;
 
     // @OneToOne: Pizza has one NutritionalInfo
     @OneToOne(mappedBy = "pizza", cascade = CascadeType.ALL, orphanRemoval = true)
     private NutritionalInfo nutritionalInfo;
 
-    // @ManyToMany: Pizza can be favorited by many Users
+    // @ManyToMany: Pizza can be favorited by many Customers
     @ManyToMany(mappedBy = "favoritePizzas")
-    private Set<User> favoritedByUsers = new HashSet<>();
+    private Set<Customer> favoritedByCustomers = new HashSet<>();
 
     // Constructors
     public Pizza() {
@@ -103,6 +103,22 @@ public class Pizza {
         this.description = description;
     }
 
+    public NutritionalInfo getNutritionalInfo() {
+        return nutritionalInfo;
+    }
+
+    public void setNutritionalInfo(NutritionalInfo nutritionalInfo) {
+        this.nutritionalInfo = nutritionalInfo;
+    }
+
+    public Set<Customer> getFavoritedByCustomers() {
+        return favoritedByCustomers;
+    }
+
+    public void setFavoritedByCustomers(Set<Customer> favoritedByCustomers) {
+        this.favoritedByCustomers = favoritedByCustomers;
+    }
+
     public String getImageUrl() {
         return imageUrl;
     }
@@ -111,11 +127,11 @@ public class Pizza {
         this.imageUrl = imageUrl;
     }
 
-    public boolean isAvailable() {
+    public Boolean getAvailable() {
         return available;
     }
 
-    public void setAvailable(boolean available) {
+    public void setAvailable(Boolean available) {
         this.available = available;
     }
 
@@ -149,22 +165,6 @@ public class Pizza {
 
     public void setUpdatedBy(String updatedBy) {
         this.updatedBy = updatedBy;
-    }
-
-    public NutritionalInfo getNutritionalInfo() {
-        return nutritionalInfo;
-    }
-
-    public void setNutritionalInfo(NutritionalInfo nutritionalInfo) {
-        this.nutritionalInfo = nutritionalInfo;
-    }
-
-    public Set<User> getFavoritedByUsers() {
-        return favoritedByUsers;
-    }
-
-    public void setFavoritedByUsers(Set<User> favoritedByUsers) {
-        this.favoritedByUsers = favoritedByUsers;
     }
 
     @Override

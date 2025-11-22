@@ -2,125 +2,125 @@ package be.vives.pizzastore.service;
 
 import be.vives.pizzastore.domain.*;
 import be.vives.pizzastore.dto.request.CreateOrderRequest;
-import be.vives.pizzastore.dto.request.OrderLineRequest;
 import be.vives.pizzastore.dto.response.OrderResponse;
 import be.vives.pizzastore.mapper.OrderMapper;
+import be.vives.pizzastore.repository.CustomerRepository;
 import be.vives.pizzastore.repository.OrderRepository;
 import be.vives.pizzastore.repository.PizzaRepository;
-import be.vives.pizzastore.repository.UserRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
+import java.util.Optional;
 
 @Service
-@Transactional(readOnly = true)
+@Transactional
 public class OrderService {
 
+    private static final Logger log = LoggerFactory.getLogger(OrderService.class);
+
     private final OrderRepository orderRepository;
-    private final UserRepository userRepository;
+    private final CustomerRepository customerRepository;
     private final PizzaRepository pizzaRepository;
     private final OrderMapper orderMapper;
 
     public OrderService(OrderRepository orderRepository,
-                        UserRepository userRepository,
+                        CustomerRepository customerRepository,
                         PizzaRepository pizzaRepository,
                         OrderMapper orderMapper) {
         this.orderRepository = orderRepository;
-        this.userRepository = userRepository;
+        this.customerRepository = customerRepository;
         this.pizzaRepository = pizzaRepository;
         this.orderMapper = orderMapper;
     }
 
-    public List<OrderResponse> getAllOrders() {
-        return orderRepository.findAll()
+    public Page<OrderResponse> findAll(Pageable pageable) {
+        log.debug("Finding all orders with pagination: {}", pageable);
+        Page<Order> orderPage = orderRepository.findAll(pageable);
+        return orderPage.map(orderMapper::toResponse);
+    }
+
+    public Page<OrderResponse> findByCustomerId(Long customerId, Pageable pageable) {
+        log.debug("Finding orders for customer: {}", customerId);
+        Page<Order> orderPage = orderRepository.findAll(pageable);
+        Page<Order> filteredOrders = orderPage
+                .map(order -> order.getCustomer().getId().equals(customerId) ? order : null)
+                .map(order -> order);
+        return filteredOrders.map(orderMapper::toResponse);
+    }
+
+    public Page<OrderResponse> findByStatus(OrderStatus status, Pageable pageable) {
+        log.debug("Finding orders with status: {}", status);
+        List<Order> orders = orderRepository.findByStatus(status);
+        return orderMapper.toResponseList(orders)
                 .stream()
-                .map(orderMapper::toOrderResponse)
-                .toList();
+                .collect(java.util.stream.Collectors.collectingAndThen(
+                        java.util.stream.Collectors.toList(),
+                        list -> new org.springframework.data.domain.PageImpl<>(
+                                list, pageable, list.size()
+                        )
+                ));
     }
 
-    public OrderResponse getOrderById(Long id) {
-        Order order = orderRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Order not found with id: " + id));
-        return orderMapper.toOrderResponse(order);
+    public Optional<OrderResponse> findById(Long id) {
+        log.debug("Finding order with id: {}", id);
+        return orderRepository.findByIdWithOrderLines(id)
+                .map(orderMapper::toResponse);
     }
 
-    public List<OrderResponse> getOrdersByUserId(Long userId) {
-        return orderRepository.findByUserId(userId)
-                .stream()
-                .map(orderMapper::toOrderResponse)
-                .toList();
-    }
+    public OrderResponse create(CreateOrderRequest request) {
+        log.debug("Creating new order for customer: {}", request.customerId());
 
-    @Transactional
-    public OrderResponse createOrder(CreateOrderRequest request) {
-        User user = userRepository.findById(request.userId())
-                .orElseThrow(() -> new RuntimeException("User not found with id: " + request.userId()));
+        Customer customer = customerRepository.findById(request.customerId())
+                .orElseThrow(() -> new RuntimeException("Customer not found: " + request.customerId()));
 
-        Order order = new Order();
-        order.setUser(user);
-        order.setOrderNumber(generateOrderNumber());
-        order.setStatus(OrderStatus.PENDING);
-        order.setOrderDate(LocalDateTime.now());
+        String orderNumber = generateOrderNumber();
+        Order order = new Order(orderNumber, customer, OrderStatus.PENDING);
 
-        List<OrderLine> orderLines = new ArrayList<>();
-        BigDecimal totalPrice = BigDecimal.ZERO;
-
-        for (OrderLineRequest lineRequest : request.orderLines()) {
+        for (CreateOrderRequest.OrderLineRequest lineRequest : request.orderLines()) {
             Pizza pizza = pizzaRepository.findById(lineRequest.pizzaId())
-                    .orElseThrow(() -> new RuntimeException("Pizza not found with id: " + lineRequest.pizzaId()));
+                    .orElseThrow(() -> new RuntimeException("Pizza not found: " + lineRequest.pizzaId()));
 
-            if (!pizza.isAvailable()) {
-                throw new RuntimeException("Pizza is not available: " + pizza.getName());
-            }
-
-            OrderLine orderLine = new OrderLine();
-            orderLine.setOrder(order);
-            orderLine.setPizza(pizza);
-            orderLine.setQuantity(lineRequest.quantity());
-            orderLine.setUnitPrice(pizza.getPrice());
-            
-            BigDecimal subtotal = pizza.getPrice().multiply(BigDecimal.valueOf(lineRequest.quantity()));
-            orderLine.setSubtotal(subtotal);
-            totalPrice = totalPrice.add(subtotal);
-
-            orderLines.add(orderLine);
+            OrderLine orderLine = new OrderLine(pizza, lineRequest.quantity());
+            order.addOrderLine(orderLine);
         }
-
-        order.setOrderLines(orderLines);
 
         Order savedOrder = orderRepository.save(order);
-        return orderMapper.toOrderResponse(savedOrder);
+        log.info("Created order with id: {} and number: {}", savedOrder.getId(), savedOrder.getOrderNumber());
+
+        return orderMapper.toResponse(savedOrder);
     }
 
-    @Transactional
-    public OrderResponse updateOrderStatus(Long id, OrderStatus newStatus) {
-        Order order = orderRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Order not found with id: " + id));
-        
-        order.setStatus(newStatus);
-        Order updatedOrder = orderRepository.save(order);
-        return orderMapper.toOrderResponse(updatedOrder);
+    public Optional<OrderResponse> updateStatus(Long id, OrderStatus status) {
+        log.debug("Updating order {} status to: {}", id, status);
+        return orderRepository.findById(id)
+                .map(order -> {
+                    order.setStatus(status);
+                    Order updatedOrder = orderRepository.save(order);
+                    log.info("Updated order {} status to: {}", id, status);
+                    return orderMapper.toResponse(updatedOrder);
+                });
     }
 
-    @Transactional
-    public void cancelOrder(Long id) {
-        Order order = orderRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Order not found with id: " + id));
-        
-        if (order.getStatus() == OrderStatus.DELIVERED) {
-            throw new RuntimeException("Cannot cancel a delivered order");
-        }
-        
-        order.setStatus(OrderStatus.CANCELLED);
-        orderRepository.save(order);
+    public boolean cancel(Long id) {
+        log.debug("Cancelling order with id: {}", id);
+        return orderRepository.findById(id)
+                .map(order -> {
+                    order.setStatus(OrderStatus.CANCELLED);
+                    orderRepository.save(order);
+                    log.info("Cancelled order with id: {}", id);
+                    return true;
+                })
+                .orElse(false);
     }
 
     private String generateOrderNumber() {
-        return "ORD-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+        return "ORD-" + LocalDateTime.now().getYear() + "-" +
+                String.format("%06d", orderRepository.count() + 1);
     }
 }

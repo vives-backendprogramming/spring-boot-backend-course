@@ -29,16 +29,16 @@ INSERT INTO nutritional_info (calories, protein, carbohydrates, fat, pizza_id) V
 (270, 14.0, 34.0, 9.5, 12);  -- Tonno
 
 -- Users (password field null for now - will be hashed and added in security lesson)
-INSERT INTO users (name, email, password, phone, address, role, created_at, updated_at) VALUES
-('Emma Johnson', 'emma.johnson@example.com', null, '+32 470 12 34 56', 'Rue de la Loi 123, 1000 Brussels', 'CUSTOMER', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-('Liam Smith', 'liam.smith@example.com', null, '+32 471 23 45 67', 'Meir 45, 2000 Antwerp', 'CUSTOMER', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-('Olivia Brown', 'olivia.brown@example.com', null, '+32 472 34 56 78', 'Korenmarkt 12, 9000 Ghent', 'CUSTOMER', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-('Noah Davis', 'noah.davis@example.com', null, '+32 473 45 67 89', 'Grand Place 1, 7000 Mons', 'CUSTOMER', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-('Ava Wilson', 'ava.wilson@example.com', null, '+32 474 56 78 90', 'Boulevard Tirou 89, 6000 Charleroi', 'CUSTOMER', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-('Admin User', 'admin@pizzastore.be', null, '+32 475 67 89 01', 'Headquarters, 1000 Brussels', 'ADMIN', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+INSERT INTO customers (name, email, password, phone, address, role, created_at, updated_at) VALUES
+('Emma Johnson', 'emma.johnson@example.com', 'emma', '+32 470 12 34 56', 'Rue de la Loi 123, 1000 Brussels', 'CUSTOMER', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('Liam Smith', 'liam.smith@example.com', 'liam', '+32 471 23 45 67', 'Meir 45, 2000 Antwerp', 'CUSTOMER', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('Olivia Brown', 'olivia.brown@example.com', 'olivia', '+32 472 34 56 78', 'Korenmarkt 12, 9000 Ghent', 'CUSTOMER', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('Noah Davis', 'noah.davis@example.com', 'noah', '+32 473 45 67 89', 'Grand Place 1, 7000 Mons', 'CUSTOMER', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('Ava Wilson', 'ava.wilson@example.com', 'ava', '+32 474 56 78 90', 'Boulevard Tirou 89, 6000 Charleroi', 'CUSTOMER', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('Admin User', 'admin@pizzastore.be', 'admin', '+32 475 67 89 01', 'Headquarters, 1000 Brussels', 'ADMIN', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
 
 -- Favorite Pizzas (Many-to-Many relationship)
-INSERT INTO user_favorite_pizzas (user_id, pizza_id) VALUES
+INSERT INTO customer_favorite_pizzas (customer_id, pizza_id) VALUES
 (1, 1), (1, 3), (1, 5),  -- Emma likes Margherita, Quattro Formaggi, Diavola
 (2, 2), (2, 5), (2, 11), -- Liam likes Pepperoni, Diavola, BBQ Chicken
 (3, 1), (3, 4), (3, 9),  -- Olivia likes Margherita, Vegetariana, Marinara
@@ -46,7 +46,7 @@ INSERT INTO user_favorite_pizzas (user_id, pizza_id) VALUES
 (5, 3), (5, 7), (5, 10); -- Ava likes Quattro Formaggi, Funghi, Capricciosa
 
 -- Orders
-INSERT INTO orders (order_number, order_date, total_amount, status, user_id, created_at, updated_at) VALUES
+INSERT INTO orders (order_number, order_date, total_amount, status, customer_id, created_at, updated_at) VALUES
 ('ORD-20240115-00001', '2024-01-15 12:30:00', 20.98, 'DELIVERED', 1, '2024-01-15 12:30:00', '2024-01-15 14:15:00'),
 ('ORD-20240115-00002', '2024-01-15 14:00:00', 22.98, 'DELIVERED', 2, '2024-01-15 14:00:00', '2024-01-15 15:45:00'),
 ('ORD-20240116-00003', '2024-01-16 10:15:00', 34.97, 'DELIVERED', 3, '2024-01-16 10:15:00', '2024-01-16 12:30:00'),

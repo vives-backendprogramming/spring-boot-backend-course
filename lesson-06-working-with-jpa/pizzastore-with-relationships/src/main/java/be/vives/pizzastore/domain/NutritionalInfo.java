@@ -10,17 +10,13 @@ public class NutritionalInfo {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false)
     private Integer calories;
 
-    @Column(nullable = false)
-    private Integer protein;
+    private java.math.BigDecimal protein;
 
-    @Column(nullable = false)
-    private Integer carbohydrates;
+    private java.math.BigDecimal carbohydrates;
 
-    @Column(nullable = false)
-    private Integer fat;
+    private java.math.BigDecimal fat;
 
     // @OneToOne: NutritionalInfo belongs to one Pizza
     @OneToOne
@@ -31,7 +27,7 @@ public class NutritionalInfo {
     public NutritionalInfo() {
     }
 
-    public NutritionalInfo(Integer calories, Integer protein, Integer carbohydrates, Integer fat) {
+    public NutritionalInfo(Integer calories, java.math.BigDecimal protein, java.math.BigDecimal carbohydrates, java.math.BigDecimal fat) {
         this.calories = calories;
         this.protein = protein;
         this.carbohydrates = carbohydrates;
@@ -55,27 +51,27 @@ public class NutritionalInfo {
         this.calories = calories;
     }
 
-    public Integer getProtein() {
+    public java.math.BigDecimal getProtein() {
         return protein;
     }
 
-    public void setProtein(Integer protein) {
+    public void setProtein(java.math.BigDecimal protein) {
         this.protein = protein;
     }
 
-    public Integer getCarbohydrates() {
+    public java.math.BigDecimal getCarbohydrates() {
         return carbohydrates;
     }
 
-    public void setCarbohydrates(Integer carbohydrates) {
+    public void setCarbohydrates(java.math.BigDecimal carbohydrates) {
         this.carbohydrates = carbohydrates;
     }
 
-    public Integer getFat() {
+    public java.math.BigDecimal getFat() {
         return fat;
     }
 
-    public void setFat(Integer fat) {
+    public void setFat(java.math.BigDecimal fat) {
         this.fat = fat;
     }
 

@@ -4,8 +4,9 @@ import java.math.BigDecimal;
 
 public record OrderLineResponse(
         Long id,
-        PizzaSummaryResponse pizza,
-        int quantity,
+        Long pizzaId,
+        String pizzaName,
+        Integer quantity,
         BigDecimal unitPrice,
         BigDecimal subtotal
 ) {
