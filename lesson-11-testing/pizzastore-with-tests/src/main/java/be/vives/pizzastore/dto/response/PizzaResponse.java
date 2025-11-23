@@ -6,6 +6,9 @@ public record PizzaResponse(
         Long id,
         String name,
         BigDecimal price,
-        String description
+        String description,
+        String imageUrl,
+        Boolean available,
+        NutritionalInfoResponse nutritionalInfo
 ) {
 }

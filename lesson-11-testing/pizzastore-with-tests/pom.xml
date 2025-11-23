@@ -13,10 +13,10 @@
     </parent>
 
     <groupId>be.vives</groupId>
-    <artifactId>pizzastore-complete-api</artifactId>
+    <artifactId>pizzastore-with-tests</artifactId>
     <version>1.0.0</version>
-    <name>PizzaStore Complete REST API</name>
-    <description>Complete REST API demonstrating all concepts from lessons 1-7</description>
+    <name>PizzaStore Complete REST API with tests</name>
+    <description>Complete REST API with tests</description>
 
     <properties>
         <java.version>25</java.version>

@@ -18,8 +18,18 @@ public interface PizzaMapper {
     List<PizzaResponse> toResponseList(List<Pizza> pizzas);
 
     @Mapping(target = "id", ignore = true)
+    @Mapping(target = "createdAt", ignore = true)
+    @Mapping(target = "createdBy", ignore = true)
+    @Mapping(target = "updatedAt", ignore = true)
+    @Mapping(target = "updatedBy", ignore = true)
+    @Mapping(target = "favoritedByCustomers", ignore = true)
     Pizza toEntity(CreatePizzaRequest request);
 
     @Mapping(target = "id", ignore = true)
+    @Mapping(target = "createdAt", ignore = true)
+    @Mapping(target = "createdBy", ignore = true)
+    @Mapping(target = "updatedAt", ignore = true)
+    @Mapping(target = "updatedBy", ignore = true)
+    @Mapping(target = "favoritedByCustomers", ignore = true)
     void updateEntity(UpdatePizzaRequest request, @MappingTarget Pizza pizza);
 }

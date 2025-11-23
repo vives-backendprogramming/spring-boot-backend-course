@@ -1,6 +1,8 @@
 package be.vives.pizzastore.dto.request;
 
-import jakarta.validation.constraints.*;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 
 public record CreateCustomerRequest(
         @NotBlank(message = "Name is required")
@@ -11,12 +13,14 @@ public record CreateCustomerRequest(
         @Email(message = "Email must be valid")
         String email,
 
-        @NotBlank(message = "Phone is required")
-        @Pattern(regexp = "^\\+32[0-9]{9}$", message = "Phone must be Belgian format (+32xxxxxxxxx)")
+        @NotBlank(message = "Password is required")
+        @Size(min = 8, message = "Password must be at least 8 characters")
+        String password,
+
+        @Size(max = 20, message = "Phone must not exceed 20 characters")
         String phone,
 
-        @NotBlank(message = "Address is required")
-        @Size(min = 10, max = 200, message = "Address must be between 10 and 200 characters")
+        @Size(max = 200, message = "Address must not exceed 200 characters")
         String address
 ) {
 }

@@ -3,6 +3,7 @@ package be.vives.pizzastore.service;
 import be.vives.pizzastore.domain.*;
 import be.vives.pizzastore.dto.request.CreateOrderRequest;
 import be.vives.pizzastore.dto.response.OrderResponse;
+import be.vives.pizzastore.exception.BusinessException;
 import be.vives.pizzastore.mapper.OrderMapper;
 import be.vives.pizzastore.repository.CustomerRepository;
 import be.vives.pizzastore.repository.OrderRepository;
@@ -16,7 +17,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Optional;
 
 @Service
 @Transactional
@@ -67,24 +67,36 @@ public class OrderService {
                 ));
     }
 
-    public Optional<OrderResponse> findById(Long id) {
+    public OrderResponse findById(Long id) {
         log.debug("Finding order with id: {}", id);
-        return orderRepository.findByIdWithOrderLines(id)
-                .map(orderMapper::toResponse);
+        Order order = orderRepository.findByIdWithOrderLines(id).orElse(null);
+        if (order == null) {
+            return null;
+        }
+        return orderMapper.toResponse(order);
     }
 
     public OrderResponse create(CreateOrderRequest request) {
         log.debug("Creating new order for customer: {}", request.customerId());
 
-        Customer customer = customerRepository.findById(request.customerId())
-                .orElseThrow(() -> new RuntimeException("Customer not found: " + request.customerId()));
+        Customer customer = customerRepository.findById(request.customerId()).orElse(null);
+        if (customer == null) {
+            throw new BusinessException("Customer with id " + request.customerId() + " not found");
+        }
 
         String orderNumber = generateOrderNumber();
         Order order = new Order(orderNumber, customer, OrderStatus.PENDING);
 
         for (CreateOrderRequest.OrderLineRequest lineRequest : request.orderLines()) {
-            Pizza pizza = pizzaRepository.findById(lineRequest.pizzaId())
-                    .orElseThrow(() -> new RuntimeException("Pizza not found: " + lineRequest.pizzaId()));
+            Pizza pizza = pizzaRepository.findById(lineRequest.pizzaId()).orElse(null);
+            if (pizza == null) {
+                throw new BusinessException("Pizza with id " + lineRequest.pizzaId() + " not found");
+            }
+            
+            // Business rule: Cannot order unavailable pizzas
+            if (!pizza.getAvailable()) {
+                throw new BusinessException("Pizza '" + pizza.getName() + "' is currently not available");
+            }
 
             OrderLine orderLine = new OrderLine(pizza, lineRequest.quantity());
             order.addOrderLine(orderLine);
@@ -96,27 +108,39 @@ public class OrderService {
         return orderMapper.toResponse(savedOrder);
     }
 
-    public Optional<OrderResponse> updateStatus(Long id, OrderStatus status) {
+    public OrderResponse updateStatus(Long id, OrderStatus status) {
         log.debug("Updating order {} status to: {}", id, status);
-        return orderRepository.findById(id)
-                .map(order -> {
-                    order.setStatus(status);
-                    Order updatedOrder = orderRepository.save(order);
-                    log.info("Updated order {} status to: {}", id, status);
-                    return orderMapper.toResponse(updatedOrder);
-                });
+        Order order = orderRepository.findById(id).orElse(null);
+        if (order == null) {
+            return null;
+        }
+        
+        order.setStatus(status);
+        Order updatedOrder = orderRepository.save(order);
+        log.info("Updated order {} status to: {}", id, status);
+        return orderMapper.toResponse(updatedOrder);
     }
 
-    public boolean cancel(Long id) {
+    public void cancel(Long id) {
         log.debug("Cancelling order with id: {}", id);
-        return orderRepository.findById(id)
-                .map(order -> {
-                    order.setStatus(OrderStatus.CANCELLED);
-                    orderRepository.save(order);
-                    log.info("Cancelled order with id: {}", id);
-                    return true;
-                })
-                .orElse(false);
+        Order order = orderRepository.findById(id).orElse(null);
+        if (order == null) {
+            throw new BusinessException("Order with id " + id + " not found");
+        }
+        
+        // Business rule: Cannot cancel delivered orders
+        if (order.getStatus() == OrderStatus.DELIVERED) {
+            throw new BusinessException("Cannot cancel order with status " + order.getStatus());
+        }
+        
+        // Business rule: Cannot cancel already cancelled orders
+        if (order.getStatus() == OrderStatus.CANCELLED) {
+            throw new BusinessException("Order is already cancelled");
+        }
+        
+        order.setStatus(OrderStatus.CANCELLED);
+        orderRepository.save(order);
+        log.info("Cancelled order with id: {}", id);
     }
 
     private String generateOrderNumber() {

@@ -12,6 +12,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -25,16 +26,12 @@ public class PizzaService {
 
     private final PizzaRepository pizzaRepository;
     private final PizzaMapper pizzaMapper;
+    private final FileStorageService fileStorageService;
 
-    public PizzaService(PizzaRepository pizzaRepository, PizzaMapper pizzaMapper) {
+    public PizzaService(PizzaRepository pizzaRepository, PizzaMapper pizzaMapper, FileStorageService fileStorageService) {
         this.pizzaRepository = pizzaRepository;
         this.pizzaMapper = pizzaMapper;
-    }
-
-    public List<PizzaResponse> findAll() {
-        log.debug("Finding all pizzas");
-        List<Pizza> pizzas = pizzaRepository.findAll();
-        return pizzaMapper.toResponseList(pizzas);
+        this.fileStorageService = fileStorageService;
     }
 
     public Page<PizzaResponse> findAll(Pageable pageable) {
@@ -70,6 +67,12 @@ public class PizzaService {
     public PizzaResponse create(CreatePizzaRequest request) {
         log.debug("Creating new pizza: {}", request.name());
         Pizza pizza = pizzaMapper.toEntity(request);
+        
+        // Set bidirectional relationship for NutritionalInfo
+        if (pizza.getNutritionalInfo() != null) {
+            pizza.getNutritionalInfo().setPizza(pizza);
+        }
+        
         Pizza savedPizza = pizzaRepository.save(pizza);
         log.info("Created pizza with id: {}", savedPizza.getId());
         return pizzaMapper.toResponse(savedPizza);
@@ -80,6 +83,12 @@ public class PizzaService {
         return pizzaRepository.findById(id)
                 .map(pizza -> {
                     pizzaMapper.updateEntity(request, pizza);
+                    
+                    // Set bidirectional relationship for NutritionalInfo
+                    if (pizza.getNutritionalInfo() != null) {
+                        pizza.getNutritionalInfo().setPizza(pizza);
+                    }
+                    
                     Pizza updatedPizza = pizzaRepository.save(pizza);
                     log.info("Updated pizza with id: {}", id);
                     return pizzaMapper.toResponse(updatedPizza);
@@ -95,5 +104,17 @@ public class PizzaService {
         }
         log.warn("Pizza with id {} not found for deletion", id);
         return false;
+    }
+
+    public Optional<PizzaResponse> uploadImage(Long id, MultipartFile file) {
+        log.debug("Uploading image for pizza with id: {}", id);
+        return pizzaRepository.findById(id)
+                .map(pizza -> {
+                    String imageUrl = fileStorageService.storeFile(file, id);
+                    pizza.setImageUrl(imageUrl);
+                    Pizza updatedPizza = pizzaRepository.save(pizza);
+                    log.info("Updated image URL for pizza with id: {}", id);
+                    return pizzaMapper.toResponse(updatedPizza);
+                });
     }
 }
