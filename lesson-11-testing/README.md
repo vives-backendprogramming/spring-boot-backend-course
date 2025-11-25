@@ -1585,16 +1585,22 @@ class PizzaControllerTest {
 See the `pizzastore-with-tests/` project for:
 
 ### Repository Tests (`@DataJpaTest`)
+- ✅ `CustomerRepositoryTest` - All custom queries tested
+- ✅ `OrderRepositoryTest` - All custom queries tested
 - ✅ `PizzaRepositoryTest` - All custom queries tested
 - Tests custom queries with in-memory H2
 - Fast execution (<100ms per test)
 
 ### Service Tests (Mockito)
+- ✅ `CustomerServiceTest` - All CRUD operations tested
+- ✅ `OrderServiceTest` - All CRUD operations tested
 - ✅ `PizzaServiceTest` - All CRUD operations tested
 - Mocked dependencies (repository, mapper)
 - Very fast (<10ms per test)
 
 ### Controller Tests (`@WebMvcTest`)
+- ✅ `CustomerControllerTest` - All endpoints tested
+- ✅ `OrderControllerTest` - All endpoints tested
 - ✅ `PizzaControllerTest` - All endpoints tested
 - MockMvc for HTTP testing
 - JSON response validation
