@@ -389,6 +389,31 @@ public class SecurityConfig {
 }
 ```
 
+### 🔍 Understanding @EnableWebSecurity
+
+The `@EnableWebSecurity` annotation is a crucial annotation that **activates Spring Security** for your application. Here's what it does:
+
+**Purpose:**
+- Enables Spring Security's web security support
+- Activates the `@Configuration` class for Spring Security
+- Allows you to define custom security configurations via `SecurityFilterChain` beans
+
+**What happens when you use @EnableWebSecurity:**
+
+1. **Imports Security Configuration**: Automatically imports Spring Security's default configuration classes
+2. **Enables WebSecurity**: Activates the `SecurityFilterChain` beans
+3. **Filter Chain Registration**: Registers the Spring Security filter chain (`springSecurityFilterChain`) as a servlet filter
+4. **Custom Configuration Support**: Allows you to override default security behavior by defining beans like `SecurityFilterChain`, `AuthenticationManager`, etc.
+
+**When to use:**
+- ✅ Always use when creating a custom security configuration class
+- ✅ Required when you want to override default Spring Security behavior
+- ✅ Needed to define custom authentication and authorization rules
+
+**Note:** If you don't use `@EnableWebSecurity`, Spring Boot will still auto-configure basic security (via `SecurityAutoConfiguration`), but you won't be able to customize it.
+
+---
+
 ### Key Points:
 
 1. **CSRF Disabled**: Not needed for stateless JWT authentication
