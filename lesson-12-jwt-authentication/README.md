@@ -1061,6 +1061,131 @@ Since JWT is stateless, implement logout by:
 private String password;
 ```
 
+### 7. Keep Controllers Clean - Centralized Security Configuration
+
+**⚠️ Important Architectural Principle**
+
+One of the most important best practices in Spring Security is to **keep security configuration separate from your controllers**. This follows the **Separation of Concerns** principle and makes your application more maintainable.
+
+#### ❌ Don't: Security Annotations in Controllers
+
+```java
+@RestController
+@RequestMapping("/api/pizzas")
+public class PizzaController {
+    
+    @PreAuthorize("hasRole('ADMIN')")
+    @PostMapping
+    public ResponseEntity<PizzaResponse> createPizza(@RequestBody PizzaRequest request) {
+        // ...
+    }
+    
+    @PreAuthorize("hasAnyRole('ADMIN', 'CUSTOMER')")
+    @GetMapping("/{id}")
+    public ResponseEntity<PizzaResponse> getPizza(@PathVariable Long id) {
+        // ...
+    }
+}
+```
+
+**Problems with this approach:**
+- 🔴 Security rules scattered across multiple controller classes
+- 🔴 Hard to maintain and audit all security rules
+- 🔴 Easy to forget adding security to new endpoints
+- 🔴 Controllers become cluttered with security concerns
+- 🔴 Difficult to test controllers in isolation
+
+#### ✅ Do: Centralized Security Configuration
+
+```java
+@Configuration
+@EnableWebSecurity
+public class SecurityConfig {
+
+    @Bean
+    public SecurityFilterChain filterChain(HttpSecurity http, JwtAuthenticationFilter jwtAuthFilter) throws Exception {
+        http
+            .csrf(csrf -> csrf.disable())
+            .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            .authorizeHttpRequests(auth -> auth
+                // Public endpoints
+                .requestMatchers("/api/auth/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/pizzas/**").permitAll()
+                
+                // Admin-only endpoints
+                .requestMatchers(HttpMethod.POST, "/api/pizzas").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.PUT, "/api/pizzas/**").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.DELETE, "/api/pizzas/**").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.POST, "/api/pizzas/*/image").hasRole("ADMIN")
+                
+                // Customer or Admin endpoints
+                .requestMatchers("/api/orders/**").hasAnyRole("CUSTOMER", "ADMIN")
+                .requestMatchers("/api/customers/me").hasAnyRole("CUSTOMER", "ADMIN")
+                
+                // All other endpoints require authentication
+                .anyRequest().authenticated()
+            )
+            .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
+        
+        return http.build();
+    }
+}
+```
+
+**Benefits of centralized configuration:**
+- ✅ **Single source of truth**: All security rules in one place
+- ✅ **Easy to audit**: Quick overview of who can access what
+- ✅ **Maintainable**: Changes to security rules happen in one location
+- ✅ **Clean controllers**: Controllers focus on business logic only
+- ✅ **Better testing**: Controllers can be tested without security context
+- ✅ **Consistency**: Ensures uniform security policy across the application
+
+#### Clean Controller Example
+
+```java
+@RestController
+@RequestMapping("/api/pizzas")
+@RequiredArgsConstructor
+public class PizzaController {
+    
+    private final PizzaService pizzaService;
+    
+    // No security annotations needed!
+    // Security is configured in SecurityConfig
+    
+    @PostMapping
+    public ResponseEntity<PizzaResponse> createPizza(@Valid @RequestBody PizzaRequest request) {
+        PizzaResponse pizza = pizzaService.createPizza(request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(pizza);
+    }
+    
+    @GetMapping("/{id}")
+    public ResponseEntity<PizzaResponse> getPizza(@PathVariable Long id) {
+        return pizzaService.findById(id)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+}
+```
+
+#### When to Use @PreAuthorize
+
+While centralized configuration is preferred, `@PreAuthorize` can be useful for:
+
+1. **Dynamic, method-level security** based on method parameters:
+```java
+@PreAuthorize("#userId == authentication.principal.id or hasRole('ADMIN')")
+public Order getOrder(Long orderId, Long userId) { ... }
+```
+
+2. **Complex SpEL expressions** that can't be expressed in URL patterns:
+```java
+@PreAuthorize("@orderSecurity.canAccessOrder(#orderId)")
+public Order getOrder(Long orderId) { ... }
+```
+
+For most REST APIs with standard URL-based security, **centralized configuration in SecurityConfig is the better choice**.
+
 ---
 
 ## 📝 Summary
@@ -1138,7 +1263,5 @@ curl -X POST http://localhost:8080/api/pizzas \
 ```
 
 ---
-
-**Next Lesson**: [Lesson 13 - Security with Identity Provider (IdP)](/lesson-13-security-idp/)
 
 🎉 You've successfully implemented JWT authentication in your Spring Boot application!
