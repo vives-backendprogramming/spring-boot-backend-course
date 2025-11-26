@@ -4,6 +4,8 @@ import be.vives.pizzastore.dto.request.CreatePizzaRequest;
 import be.vives.pizzastore.dto.request.UpdatePizzaRequest;
 import be.vives.pizzastore.dto.response.PizzaResponse;
 import be.vives.pizzastore.exception.GlobalExceptionHandler;
+import be.vives.pizzastore.security.JwtUtil;
+import be.vives.pizzastore.security.SecurityConfig;
 import be.vives.pizzastore.service.PizzaService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
@@ -15,6 +17,8 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -28,11 +32,12 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@WebMvcTest(controllers = PizzaController.class)  // Loads only Spring MVC components
-@Import(GlobalExceptionHandler.class)
+@WebMvcTest(controllers = PizzaController.class)
+@Import({SecurityConfig.class, GlobalExceptionHandler.class})
 class PizzaControllerTest {
 
     @Autowired
@@ -44,7 +49,14 @@ class PizzaControllerTest {
     @MockitoBean
     private PizzaService pizzaService;
 
+    @MockitoBean
+    private UserDetailsService userDetailsService;
+
+    @MockitoBean
+    private JwtUtil jwtUtil;
+
     @Test
+    @WithMockUser
     void getPizzas_NoPizzas_ReturnsEmptyPage() throws Exception {
         // Given
         Page<PizzaResponse> emptyPage = Page.empty();
@@ -61,6 +73,7 @@ class PizzaControllerTest {
     }
 
     @Test
+    @WithMockUser
     void getPizzas_MultiplePizzas_ReturnsPage() throws Exception {
         // Given
         List<PizzaResponse> pizzas = Arrays.asList(
@@ -84,6 +97,7 @@ class PizzaControllerTest {
     }
 
     @Test
+    @WithMockUser
     void getPizza_ExistingId_ReturnsPizza() throws Exception {
         // Given
         PizzaResponse pizza = new PizzaResponse(1L, "Margherita", new BigDecimal("8.50"), "Classic", null, true, null);
@@ -101,6 +115,7 @@ class PizzaControllerTest {
     }
 
     @Test
+    @WithMockUser
     void getPizza_NonExistingId_Returns404() throws Exception {
         // Given
         when(pizzaService.findById(999L)).thenReturn(Optional.empty());
@@ -113,6 +128,7 @@ class PizzaControllerTest {
     }
 
     @Test
+    @WithMockUser(roles = "ADMIN")
     void createPizza_ValidRequest_Returns201() throws Exception {
         // Given
         CreatePizzaRequest request = new CreatePizzaRequest(
@@ -129,6 +145,7 @@ class PizzaControllerTest {
 
         // When / Then
         mockMvc.perform(post("/api/pizzas")
+                        .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated())
@@ -141,6 +158,7 @@ class PizzaControllerTest {
     }
 
     @Test
+    @WithMockUser(roles = "ADMIN")
     void createPizza_InvalidRequest_StillCreates() throws Exception {
         // Given - invalid request (blank name, negative price)
         // Note: Validation is not enforced at controller level without @Valid annotation
@@ -157,6 +175,7 @@ class PizzaControllerTest {
 
         // When / Then - without @Valid, invalid requests are still processed
         mockMvc.perform(post("/api/pizzas")
+                        .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated());
@@ -165,6 +184,7 @@ class PizzaControllerTest {
     }
 
     @Test
+    @WithMockUser(roles = "ADMIN")
     void updatePizza_ValidRequest_Returns200() throws Exception {
         // Given
         UpdatePizzaRequest request = new UpdatePizzaRequest(
@@ -181,6 +201,7 @@ class PizzaControllerTest {
 
         // When / Then
         mockMvc.perform(put("/api/pizzas/1")
+                        .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
@@ -192,6 +213,7 @@ class PizzaControllerTest {
     }
 
     @Test
+    @WithMockUser(roles = "ADMIN")
     void updatePizza_NonExistingId_Returns404() throws Exception {
         // Given
         UpdatePizzaRequest request = new UpdatePizzaRequest(
@@ -207,6 +229,7 @@ class PizzaControllerTest {
 
         // When / Then
         mockMvc.perform(put("/api/pizzas/999")
+                        .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isNotFound());
@@ -215,30 +238,35 @@ class PizzaControllerTest {
     }
 
     @Test
+    @WithMockUser(roles = "ADMIN")
     void deletePizza_ExistingId_Returns204() throws Exception {
         // Given
         when(pizzaService.delete(1L)).thenReturn(true);
 
         // When / Then
-        mockMvc.perform(delete("/api/pizzas/1"))
+        mockMvc.perform(delete("/api/pizzas/1")
+                        .with(csrf()))
                 .andExpect(status().isNoContent());
 
         verify(pizzaService).delete(1L);
     }
 
     @Test
+    @WithMockUser(roles = "ADMIN")
     void deletePizza_NonExistingId_Returns404() throws Exception {
         // Given
         when(pizzaService.delete(999L)).thenReturn(false);
 
         // When / Then
-        mockMvc.perform(delete("/api/pizzas/999"))
+        mockMvc.perform(delete("/api/pizzas/999")
+                        .with(csrf()))
                 .andExpect(status().isNotFound());
 
         verify(pizzaService).delete(999L);
     }
 
     @Test
+    @WithMockUser
     void getPizzas_WithPriceRangeFilter_ReturnsFilteredList() throws Exception {
         // Given
         List<PizzaResponse> pizzas = Arrays.asList(
@@ -260,6 +288,7 @@ class PizzaControllerTest {
     }
 
     @Test
+    @WithMockUser
     void getPizzas_WithMaxPriceFilter_ReturnsFilteredList() throws Exception {
         // Given
         List<PizzaResponse> pizzas = Arrays.asList(
@@ -278,6 +307,7 @@ class PizzaControllerTest {
     }
 
     @Test
+    @WithMockUser
     void getPizzas_WithNameFilter_ReturnsFilteredList() throws Exception {
         // Given
         List<PizzaResponse> pizzas = Arrays.asList(
@@ -298,6 +328,7 @@ class PizzaControllerTest {
     }
 
     @Test
+    @WithMockUser(roles = "ADMIN")
     void uploadPizzaImage_ExistingPizza_ReturnsUpdatedPizza() throws Exception {
         // Given
         MockMultipartFile file = new MockMultipartFile(
@@ -313,7 +344,8 @@ class PizzaControllerTest {
 
         // When / Then
         mockMvc.perform(multipart("/api/pizzas/1/image")
-                        .file(file))
+                        .file(file)
+                        .with(csrf()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id", is(1)))
                 .andExpect(jsonPath("$.imageUrl", is("/uploads/pizza-1.jpg")));
@@ -322,6 +354,7 @@ class PizzaControllerTest {
     }
 
     @Test
+    @WithMockUser(roles = "ADMIN")
     void uploadPizzaImage_NonExistingPizza_Returns404() throws Exception {
         // Given
         MockMultipartFile file = new MockMultipartFile(
@@ -335,13 +368,15 @@ class PizzaControllerTest {
 
         // When / Then
         mockMvc.perform(multipart("/api/pizzas/999/image")
-                        .file(file))
+                        .file(file)
+                        .with(csrf()))
                 .andExpect(status().isNotFound());
 
         verify(pizzaService).uploadImage(eq(999L), any());
     }
 
     @Test
+    @WithMockUser(roles = "ADMIN")
     void uploadPizzaImage_InvalidFile_Returns400() throws Exception {
         // Given
         MockMultipartFile file = new MockMultipartFile(
@@ -356,13 +391,15 @@ class PizzaControllerTest {
 
         // When / Then
         mockMvc.perform(multipart("/api/pizzas/1/image")
-                        .file(file))
+                        .file(file)
+                        .with(csrf()))
                 .andExpect(status().isBadRequest());
 
         verify(pizzaService).uploadImage(eq(1L), any());
     }
 
     @Test
+    @WithMockUser(roles = "ADMIN")
     void uploadPizzaImage_StorageError_Returns500() throws Exception {
         // Given
         MockMultipartFile file = new MockMultipartFile(
@@ -377,9 +414,66 @@ class PizzaControllerTest {
 
         // When / Then
         mockMvc.perform(multipart("/api/pizzas/1/image")
-                        .file(file))
+                        .file(file)
+                        .with(csrf()))
                 .andExpect(status().isInternalServerError());
 
         verify(pizzaService).uploadImage(eq(1L), any());
+    }
+
+    @Test
+    @WithMockUser(roles = "ANONYMOUS")
+    void getPizzas_WithoutAuthentication_ReturnsOk() throws Exception {
+        // Given - Anonymous users can view pizzas (GET /api/pizzas/** is permitAll())
+        List<PizzaResponse> pizzas = Arrays.asList(
+                new PizzaResponse(1L, "Margherita", new BigDecimal("8.50"), "Classic", null, true, null)
+        );
+        Page<PizzaResponse> page = new PageImpl<>(pizzas);
+        when(pizzaService.findAll(any(Pageable.class))).thenReturn(page);
+
+        // When / Then
+        mockMvc.perform(get("/api/pizzas"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void createPizza_WithoutAuthentication_ReturnsUnauthorized() throws Exception {
+        // Given
+        CreatePizzaRequest request = new CreatePizzaRequest(
+                "New Pizza",
+                new BigDecimal("12.00"),
+                "Delicious",
+                true,
+                null
+        );
+
+        // When / Then - Anonymous users cannot create pizzas
+        // Note: In WebMvcTest context, Spring Security returns 403 (Forbidden) for anonymous requests
+        // In integration tests with full JWT filter chain, it would return 401 (Unauthorized)
+        mockMvc.perform(post("/api/pizzas")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(roles = "CUSTOMER")
+    void createPizza_WithCustomerRole_ReturnsForbidden() throws Exception {
+        // Given
+        CreatePizzaRequest request = new CreatePizzaRequest(
+                "New Pizza",
+                new BigDecimal("12.00"),
+                "Delicious",
+                true,
+                null
+        );
+
+        // When / Then - Customers cannot create pizzas, only admins can
+        mockMvc.perform(post("/api/pizzas")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isForbidden());
     }
 }

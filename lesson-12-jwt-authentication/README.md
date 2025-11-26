@@ -343,15 +343,17 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/pizzas/**").permitAll()
                         .requestMatchers("/h2-console/**").permitAll()
                         
-                        // Customer endpoints - require CUSTOMER or ADMIN role
-                        .requestMatchers(HttpMethod.POST, "/api/orders/**").hasAnyRole("CUSTOMER", "ADMIN")
-                        .requestMatchers(HttpMethod.GET, "/api/orders/**").hasAnyRole("CUSTOMER", "ADMIN")
-                        
-                        // Admin endpoints - require ADMIN role only
+                        // Pizza modification endpoints - require ADMIN role only
                         .requestMatchers(HttpMethod.POST, "/api/pizzas/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PUT, "/api/pizzas/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PATCH, "/api/pizzas/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/api/pizzas/**").hasRole("ADMIN")
+                        
+                        // Customer endpoints - accessible by CUSTOMER and ADMIN
+                        .requestMatchers("/api/customers/**").hasAnyRole("CUSTOMER", "ADMIN")
+                        
+                        // Order endpoints - require CUSTOMER or ADMIN role
+                        .requestMatchers("/api/orders/**").hasAnyRole("CUSTOMER", "ADMIN")
                         
                         // All other requests require authentication
                         .anyRequest().authenticated()
@@ -417,10 +419,13 @@ The `@EnableWebSecurity` annotation is a crucial annotation that **activates Spr
 ### Key Points:
 
 1. **CSRF Disabled**: Not needed for stateless JWT authentication
-2. **Public Endpoints**: Authentication endpoints and GET pizzas don't require authentication
+2. **Public Endpoints**: 
+   - `/api/auth/**`: Registration and login
+   - `GET /api/pizzas/**`: Anonymous users can view pizzas (read-only)
+   - `/h2-console/**`: H2 database console (development only)
 3. **Role-Based Access**:
-   - `CUSTOMER`: Can view and create orders
-   - `ADMIN`: Full access to manage pizzas
+   - **CUSTOMER**: Can access all `/api/customers/**` endpoints (view, manage favorites) and `/api/orders/**` endpoints (create and view orders)
+   - **ADMIN**: Has CUSTOMER privileges + can modify pizzas (POST, PUT, PATCH, DELETE on `/api/pizzas/**`)
 4. **Stateless Sessions**: No session storage on the server
 5. **JWT Filter**: Added before Spring Security's authentication filter
 
@@ -993,19 +998,33 @@ curl -X POST http://localhost:8080/api/pizzas \
 |----------|--------|-----------|----------|-------|
 | `/api/auth/**` | ALL | ✅ | ✅ | ✅ |
 | `/api/pizzas/**` | GET | ✅ | ✅ | ✅ |
-| `/api/pizzas/**` | POST/PUT/DELETE | ❌ | ❌ | ✅ |
-| `/api/orders/**` | GET/POST | ❌ | ✅ | ✅ |
-| `/api/customers/**` | POST/PUT/DELETE | ❌ | ❌ | ✅ |
+| `/api/pizzas/**` | POST/PUT/PATCH/DELETE | ❌ | ❌ | ✅ |
+| `/api/customers/**` | ALL | ❌ | ✅ | ✅ |
+| `/api/orders/**` | ALL | ❌ | ✅ | ✅ |
 
 ### Implementation Details
 
 **SecurityConfig.java:**
 ```java
 .authorizeHttpRequests(auth -> auth
-    .requestMatchers("/api/auth/**").permitAll()  // Public
-    .requestMatchers(HttpMethod.GET, "/api/pizzas/**").permitAll()  // Browse menu
-    .requestMatchers(HttpMethod.POST, "/api/orders/**").hasAnyRole("CUSTOMER", "ADMIN")
+    // Public endpoints - anyone can access
+    .requestMatchers("/api/auth/**").permitAll()
+    .requestMatchers(HttpMethod.GET, "/api/pizzas/**").permitAll()
+    .requestMatchers("/h2-console/**").permitAll()
+    
+    // Pizza modification endpoints - require ADMIN role only
     .requestMatchers(HttpMethod.POST, "/api/pizzas/**").hasRole("ADMIN")
+    .requestMatchers(HttpMethod.PUT, "/api/pizzas/**").hasRole("ADMIN")
+    .requestMatchers(HttpMethod.PATCH, "/api/pizzas/**").hasRole("ADMIN")
+    .requestMatchers(HttpMethod.DELETE, "/api/pizzas/**").hasRole("ADMIN")
+    
+    // Customer endpoints - accessible by CUSTOMER and ADMIN
+    .requestMatchers("/api/customers/**").hasAnyRole("CUSTOMER", "ADMIN")
+    
+    // Order endpoints - require CUSTOMER or ADMIN role
+    .requestMatchers("/api/orders/**").hasAnyRole("CUSTOMER", "ADMIN")
+    
+    // All other requests require authentication
     .anyRequest().authenticated()
 )
 ```

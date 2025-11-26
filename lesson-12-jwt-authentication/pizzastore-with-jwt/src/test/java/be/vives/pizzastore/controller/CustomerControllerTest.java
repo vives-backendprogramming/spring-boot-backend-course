@@ -7,6 +7,8 @@ import be.vives.pizzastore.dto.response.CustomerResponse;
 import be.vives.pizzastore.dto.response.OrderResponse;
 import be.vives.pizzastore.dto.response.PizzaResponse;
 import be.vives.pizzastore.exception.GlobalExceptionHandler;
+import be.vives.pizzastore.security.JwtUtil;
+import be.vives.pizzastore.security.SecurityConfig;
 import be.vives.pizzastore.service.CustomerService;
 import be.vives.pizzastore.service.OrderService;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -18,6 +20,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.MediaType;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -31,11 +35,12 @@ import static org.hamcrest.Matchers.is;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(controllers = CustomerController.class)
-@Import(GlobalExceptionHandler.class)
+@Import({SecurityConfig.class,GlobalExceptionHandler.class})
 class CustomerControllerTest {
 
     @Autowired
@@ -50,7 +55,14 @@ class CustomerControllerTest {
     @MockitoBean
     private OrderService orderService;
 
+    @MockitoBean
+    private UserDetailsService userDetailsService;
+
+    @MockitoBean
+    private JwtUtil jwtUtil;
+
     @Test
+    @WithMockUser(roles = "ADMIN")
     void getAllCustomers_shouldReturnPageOfCustomers() throws Exception {
         // Arrange
         CustomerResponse customer1 = new CustomerResponse(1L, "John Doe", "john@example.com", "1234567890", "123 Main St", "CUSTOMER");
@@ -73,6 +85,7 @@ class CustomerControllerTest {
     }
 
     @Test
+    @WithMockUser(roles = "CUSTOMER")
     void getCustomer_whenExists_shouldReturnCustomer() throws Exception {
         // Arrange
         CustomerResponse customer = new CustomerResponse(1L, "John Doe", "john@example.com", "1234567890", "123 Main St", "CUSTOMER");
@@ -92,6 +105,7 @@ class CustomerControllerTest {
     }
 
     @Test
+    @WithMockUser(roles = "CUSTOMER")
     void getCustomerOrders_shouldReturnPageOfOrders() throws Exception {
         // Arrange
         OrderResponse order1 = new OrderResponse(1L, "ORD-2024-000001", 1L, "John Doe", 
@@ -115,6 +129,7 @@ class CustomerControllerTest {
     }
 
     @Test
+    @WithMockUser(roles = "CUSTOMER")
     void getFavoritePizzas_shouldReturnListOfPizzas() throws Exception {
         // Arrange
         PizzaResponse pizza1 = new PizzaResponse(1L, "Margherita", BigDecimal.valueOf(8.50), "Classic pizza", null, true, null);
@@ -136,6 +151,7 @@ class CustomerControllerTest {
     }
 
     @Test
+    @WithMockUser(roles = "ADMIN")
     void createCustomer_shouldReturnCreatedCustomer() throws Exception {
         // Arrange
         CreateCustomerRequest request = new CreateCustomerRequest(
@@ -146,6 +162,7 @@ class CustomerControllerTest {
 
         // Act & Assert
         mockMvc.perform(post("/api/customers")
+                        .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated())
@@ -159,6 +176,7 @@ class CustomerControllerTest {
     }
 
     @Test
+    @WithMockUser(roles = "ADMIN")
     void updateCustomer_shouldReturnUpdatedCustomer() throws Exception {
         // Arrange
         UpdateCustomerRequest request = new UpdateCustomerRequest(
@@ -169,6 +187,7 @@ class CustomerControllerTest {
 
         // Act & Assert
         mockMvc.perform(put("/api/customers/1")
+                        .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
@@ -181,36 +200,42 @@ class CustomerControllerTest {
     }
 
     @Test
+    @WithMockUser(roles = "ADMIN")
     void deleteCustomer_shouldReturnNoContent() throws Exception {
         // Arrange
         doNothing().when(customerService).delete(1L);
 
         // Act & Assert
-        mockMvc.perform(delete("/api/customers/1"))
+        mockMvc.perform(delete("/api/customers/1")
+                        .with(csrf()))
                 .andExpect(status().isNoContent());
 
         verify(customerService).delete(1L);
     }
 
     @Test
+    @WithMockUser(roles = "CUSTOMER")
     void addFavoritePizza_shouldReturnOk() throws Exception {
         // Arrange
         doNothing().when(customerService).addFavoritePizza(1L, 2L);
 
         // Act & Assert
-        mockMvc.perform(post("/api/customers/1/favorites/2"))
+        mockMvc.perform(post("/api/customers/1/favorites/2")
+                        .with(csrf()))
                 .andExpect(status().isOk());
 
         verify(customerService).addFavoritePizza(1L, 2L);
     }
 
     @Test
+    @WithMockUser(roles = "CUSTOMER")
     void removeFavoritePizza_shouldReturnNoContent() throws Exception {
         // Arrange
         doNothing().when(customerService).removeFavoritePizza(1L, 2L);
 
         // Act & Assert
-        mockMvc.perform(delete("/api/customers/1/favorites/2"))
+        mockMvc.perform(delete("/api/customers/1/favorites/2")
+                        .with(csrf()))
                 .andExpect(status().isNoContent());
 
         verify(customerService).removeFavoritePizza(1L, 2L);

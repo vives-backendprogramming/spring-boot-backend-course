@@ -6,6 +6,8 @@ import be.vives.pizzastore.dto.request.UpdateOrderStatusRequest;
 import be.vives.pizzastore.dto.response.OrderLineResponse;
 import be.vives.pizzastore.dto.response.OrderResponse;
 import be.vives.pizzastore.exception.GlobalExceptionHandler;
+import be.vives.pizzastore.security.JwtUtil;
+import be.vives.pizzastore.security.SecurityConfig;
 import be.vives.pizzastore.service.OrderService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
@@ -16,6 +18,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.MediaType;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -29,11 +33,12 @@ import static org.hamcrest.Matchers.is;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(controllers = OrderController.class)
-@Import(GlobalExceptionHandler.class)
+@Import({SecurityConfig.class, GlobalExceptionHandler.class})
 class OrderControllerTest {
 
     @Autowired
@@ -45,7 +50,14 @@ class OrderControllerTest {
     @MockitoBean
     private OrderService orderService;
 
+    @MockitoBean
+    private UserDetailsService userDetailsService;
+
+    @MockitoBean
+    private JwtUtil jwtUtil;
+
     @Test
+    @WithMockUser(roles = "ADMIN")
     void getOrders_withoutFilters_shouldReturnAllOrders() throws Exception {
         // Arrange
         OrderResponse order1 = new OrderResponse(1L, "ORD-2024-000001", 1L, "John Doe", 
@@ -71,6 +83,7 @@ class OrderControllerTest {
     }
 
     @Test
+    @WithMockUser(roles = "CUSTOMER")
     void getOrders_withCustomerId_shouldReturnCustomerOrders() throws Exception {
         // Arrange
         OrderResponse order1 = new OrderResponse(1L, "ORD-2024-000001", 1L, "John Doe", 
@@ -95,6 +108,7 @@ class OrderControllerTest {
     }
 
     @Test
+    @WithMockUser(roles = "ADMIN")
     void getOrders_withStatus_shouldReturnOrdersWithStatus() throws Exception {
         // Arrange
         OrderResponse order1 = new OrderResponse(1L, "ORD-2024-000001", 1L, "John Doe", 
@@ -119,6 +133,7 @@ class OrderControllerTest {
     }
 
     @Test
+    @WithMockUser(roles = "CUSTOMER")
     void getOrder_whenExists_shouldReturnOrder() throws Exception {
         // Arrange
         OrderLineResponse line1 = new OrderLineResponse(1L, 1L, "Margherita", 2, BigDecimal.valueOf(8.50), BigDecimal.valueOf(17.00));
@@ -144,6 +159,7 @@ class OrderControllerTest {
     }
 
     @Test
+    @WithMockUser(roles = "CUSTOMER")
     void getOrder_whenNotExists_shouldReturnNotFound() throws Exception {
         // Arrange
         when(orderService.findById(999L)).thenReturn(null);
@@ -156,6 +172,7 @@ class OrderControllerTest {
     }
 
     @Test
+    @WithMockUser(roles = "CUSTOMER")
     void createOrder_shouldReturnCreatedOrder() throws Exception {
         // Arrange
         CreateOrderRequest.OrderLineRequest lineRequest1 = new CreateOrderRequest.OrderLineRequest(1L, 2);
@@ -171,6 +188,7 @@ class OrderControllerTest {
 
         // Act & Assert
         mockMvc.perform(post("/api/orders")
+                        .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated())
@@ -185,6 +203,7 @@ class OrderControllerTest {
     }
 
     @Test
+    @WithMockUser(roles = "ADMIN")
     void updateOrderStatus_whenExists_shouldReturnUpdatedOrder() throws Exception {
         // Arrange
         UpdateOrderStatusRequest request = new UpdateOrderStatusRequest(OrderStatus.PREPARING);
@@ -195,6 +214,7 @@ class OrderControllerTest {
 
         // Act & Assert
         mockMvc.perform(patch("/api/orders/1/status")
+                        .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
@@ -204,6 +224,7 @@ class OrderControllerTest {
     }
 
     @Test
+    @WithMockUser(roles = "ADMIN")
     void updateOrderStatus_whenNotExists_shouldReturnNotFound() throws Exception {
         // Arrange
         UpdateOrderStatusRequest request = new UpdateOrderStatusRequest(OrderStatus.PREPARING);
@@ -212,6 +233,7 @@ class OrderControllerTest {
 
         // Act & Assert
         mockMvc.perform(patch("/api/orders/999/status")
+                        .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isNotFound());
@@ -220,12 +242,14 @@ class OrderControllerTest {
     }
 
     @Test
+    @WithMockUser(roles = "CUSTOMER")
     void cancelOrder_shouldReturnNoContent() throws Exception {
         // Arrange
         doNothing().when(orderService).cancel(1L);
 
         // Act & Assert
-        mockMvc.perform(delete("/api/orders/1"))
+        mockMvc.perform(delete("/api/orders/1")
+                        .with(csrf()))
                 .andExpect(status().isNoContent());
 
         verify(orderService).cancel(1L);
