@@ -58,7 +58,7 @@ class OrderControllerTest {
 
     @Test
     @WithMockUser(roles = "ADMIN")
-    void getOrders_withoutFilters_shouldReturnAllOrders() throws Exception {
+    void getOrders_withAdminRole_shouldReturnAllOrders() throws Exception {
         // Arrange
         OrderResponse order1 = new OrderResponse(1L, "ORD-2024-000001", 1L, "John Doe", 
                 List.of(), BigDecimal.valueOf(25.50), OrderStatus.PENDING, LocalDateTime.now());
@@ -83,7 +83,7 @@ class OrderControllerTest {
     }
 
     @Test
-    @WithMockUser(roles = "CUSTOMER")
+    @WithMockUser(roles = "ADMIN")
     void getOrders_withCustomerId_shouldReturnCustomerOrders() throws Exception {
         // Arrange
         OrderResponse order1 = new OrderResponse(1L, "ORD-2024-000001", 1L, "John Doe", 
@@ -133,7 +133,7 @@ class OrderControllerTest {
     }
 
     @Test
-    @WithMockUser(roles = "CUSTOMER")
+    @WithMockUser(roles = "ADMIN")
     void getOrder_whenExists_shouldReturnOrder() throws Exception {
         // Arrange
         OrderLineResponse line1 = new OrderLineResponse(1L, 1L, "Margherita", 2, BigDecimal.valueOf(8.50), BigDecimal.valueOf(17.00));
@@ -159,7 +159,7 @@ class OrderControllerTest {
     }
 
     @Test
-    @WithMockUser(roles = "CUSTOMER")
+    @WithMockUser(roles = "ADMIN")
     void getOrder_whenNotExists_shouldReturnNotFound() throws Exception {
         // Arrange
         when(orderService.findById(999L)).thenReturn(null);
@@ -242,7 +242,7 @@ class OrderControllerTest {
     }
 
     @Test
-    @WithMockUser(roles = "CUSTOMER")
+    @WithMockUser(roles = "ADMIN")
     void cancelOrder_shouldReturnNoContent() throws Exception {
         // Arrange
         doNothing().when(orderService).cancel(1L);
@@ -253,5 +253,73 @@ class OrderControllerTest {
                 .andExpect(status().isNoContent());
 
         verify(orderService).cancel(1L);
+    }
+
+    // Security tests
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void createOrder_withAdminRole_returnsForbidden() throws Exception {
+        // Arrange
+        CreateOrderRequest.OrderLineRequest lineRequest = new CreateOrderRequest.OrderLineRequest(1L, 2);
+        CreateOrderRequest request = new CreateOrderRequest(1L, List.of(lineRequest));
+
+        // Act & Assert - Admins cannot create orders, only customers can
+        mockMvc.perform(post("/api/orders")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isForbidden());
+
+        verify(orderService, never()).create(any());
+    }
+
+    @Test
+    @WithMockUser(roles = "CUSTOMER")
+    void getOrders_withCustomerRole_returnsForbidden() throws Exception {
+        // Act & Assert - Customers cannot view all orders, only admins can
+        mockMvc.perform(get("/api/orders")
+                        .param("page", "0")
+                        .param("size", "10"))
+                .andExpect(status().isForbidden());
+
+        verify(orderService, never()).findAll(any(Pageable.class));
+    }
+
+    @Test
+    @WithMockUser(roles = "CUSTOMER")
+    void getOrder_withCustomerRole_returnsForbidden() throws Exception {
+        // Act & Assert - Customers cannot view specific orders, only admins can
+        mockMvc.perform(get("/api/orders/1"))
+                .andExpect(status().isForbidden());
+
+        verify(orderService, never()).findById(any());
+    }
+
+    @Test
+    @WithMockUser(roles = "CUSTOMER")
+    void updateOrderStatus_withCustomerRole_returnsForbidden() throws Exception {
+        // Arrange
+        UpdateOrderStatusRequest request = new UpdateOrderStatusRequest(OrderStatus.PREPARING);
+
+        // Act & Assert - Customers cannot update order status, only admins can
+        mockMvc.perform(patch("/api/orders/1/status")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isForbidden());
+
+        verify(orderService, never()).updateStatus(any(), any());
+    }
+
+    @Test
+    @WithMockUser(roles = "CUSTOMER")
+    void cancelOrder_withCustomerRole_returnsForbidden() throws Exception {
+        // Act & Assert - Customers cannot cancel orders, only admins can
+        mockMvc.perform(delete("/api/orders/1")
+                        .with(csrf()))
+                .andExpect(status().isForbidden());
+
+        verify(orderService, never()).cancel(any());
     }
 }

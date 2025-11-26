@@ -48,8 +48,9 @@ public class SecurityConfig {
                         // Customer endpoints - accessible by CUSTOMER and ADMIN
                         .requestMatchers("/api/customers/**").hasAnyRole("CUSTOMER", "ADMIN")
                         
-                        // Order endpoints - require CUSTOMER or ADMIN role
-                        .requestMatchers("/api/orders/**").hasAnyRole("CUSTOMER", "ADMIN")
+                        // Order endpoints - POST is for CUSTOMER, all other methods for ADMIN
+                        .requestMatchers(HttpMethod.POST, "/api/orders").hasRole("CUSTOMER")
+                        .requestMatchers("/api/orders/**").hasRole("ADMIN")
                         
                         // All other requests require authentication
                         .anyRequest().authenticated()

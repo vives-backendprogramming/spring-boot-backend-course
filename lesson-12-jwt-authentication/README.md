@@ -15,6 +15,7 @@
 - [Testing the Authentication](#-testing-the-authentication)
 - [Role-Based Access Control](#-role-based-access-control)
 - [Best Practices](#-best-practices)
+- [Testing Secured Controllers](#-testing-secured-controllers)
 - [Summary](#-summary)
 - [Runnable Project](#-runnable-project)
 
@@ -342,19 +343,20 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/pizzas/**").permitAll()
                         .requestMatchers("/h2-console/**").permitAll()
-                        
+
                         // Pizza modification endpoints - require ADMIN role only
                         .requestMatchers(HttpMethod.POST, "/api/pizzas/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PUT, "/api/pizzas/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PATCH, "/api/pizzas/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/api/pizzas/**").hasRole("ADMIN")
-                        
+
                         // Customer endpoints - accessible by CUSTOMER and ADMIN
                         .requestMatchers("/api/customers/**").hasAnyRole("CUSTOMER", "ADMIN")
-                        
-                        // Order endpoints - require CUSTOMER or ADMIN role
-                        .requestMatchers("/api/orders/**").hasAnyRole("CUSTOMER", "ADMIN")
-                        
+
+                        // Order endpoints - POST is for CUSTOMER, all other methods for ADMIN
+                        .requestMatchers(HttpMethod.POST, "/api/orders").hasRole("CUSTOMER")
+                        .requestMatchers("/api/orders/**").hasRole("ADMIN")
+
                         // All other requests require authentication
                         .anyRequest().authenticated()
                 )
@@ -1000,7 +1002,8 @@ curl -X POST http://localhost:8080/api/pizzas \
 | `/api/pizzas/**` | GET | ✅ | ✅ | ✅ |
 | `/api/pizzas/**` | POST/PUT/PATCH/DELETE | ❌ | ❌ | ✅ |
 | `/api/customers/**` | ALL | ❌ | ✅ | ✅ |
-| `/api/orders/**` | ALL | ❌ | ✅ | ✅ |
+| `/api/orders` | POST | ❌ | ✅ | ❌ |
+| `/api/orders/**` | GET/PATCH/DELETE | ❌ | ❌ | ✅ |
 
 ### Implementation Details
 
@@ -1021,14 +1024,14 @@ curl -X POST http://localhost:8080/api/pizzas \
     // Customer endpoints - accessible by CUSTOMER and ADMIN
     .requestMatchers("/api/customers/**").hasAnyRole("CUSTOMER", "ADMIN")
     
-    // Order endpoints - require CUSTOMER or ADMIN role
-    .requestMatchers("/api/orders/**").hasAnyRole("CUSTOMER", "ADMIN")
+    // Order endpoints - POST is for CUSTOMER, all other methods for ADMIN
+    .requestMatchers(HttpMethod.POST, "/api/orders").hasRole("CUSTOMER")
+    .requestMatchers("/api/orders/**").hasRole("ADMIN")
     
     // All other requests require authentication
     .anyRequest().authenticated()
 )
 ```
-
 ---
 
 ## ✨ Best Practices
@@ -1116,41 +1119,6 @@ public class PizzaController {
 
 #### ✅ Do: Centralized Security Configuration
 
-```java
-@Configuration
-@EnableWebSecurity
-public class SecurityConfig {
-
-    @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http, JwtAuthenticationFilter jwtAuthFilter) throws Exception {
-        http
-            .csrf(csrf -> csrf.disable())
-            .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-            .authorizeHttpRequests(auth -> auth
-                // Public endpoints
-                .requestMatchers("/api/auth/**").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/pizzas/**").permitAll()
-                
-                // Admin-only endpoints
-                .requestMatchers(HttpMethod.POST, "/api/pizzas").hasRole("ADMIN")
-                .requestMatchers(HttpMethod.PUT, "/api/pizzas/**").hasRole("ADMIN")
-                .requestMatchers(HttpMethod.DELETE, "/api/pizzas/**").hasRole("ADMIN")
-                .requestMatchers(HttpMethod.POST, "/api/pizzas/*/image").hasRole("ADMIN")
-                
-                // Customer or Admin endpoints
-                .requestMatchers("/api/orders/**").hasAnyRole("CUSTOMER", "ADMIN")
-                .requestMatchers("/api/customers/me").hasAnyRole("CUSTOMER", "ADMIN")
-                
-                // All other endpoints require authentication
-                .anyRequest().authenticated()
-            )
-            .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
-        
-        return http.build();
-    }
-}
-```
-
 **Benefits of centralized configuration:**
 - ✅ **Single source of truth**: All security rules in one place
 - ✅ **Easy to audit**: Quick overview of who can access what
@@ -1204,6 +1172,231 @@ public Order getOrder(Long orderId) { ... }
 ```
 
 For most REST APIs with standard URL-based security, **centralized configuration in SecurityConfig is the better choice**.
+
+---
+
+## 🧪 Testing Secured Controllers
+
+When testing controllers that are secured with Spring Security, you need to handle authentication in your tests. Here's how to effectively test secured endpoints.
+
+### Using `@WithMockUser`
+
+The `@WithMockUser` annotation from Spring Security Test allows you to simulate an authenticated user without going through the entire authentication process.
+
+#### Basic Setup
+
+```java
+@WebMvcTest(PizzaController.class)
+@Import({SecurityConfig.class, JwtAuthenticationFilter.class, JwtUtil.class})
+class PizzaControllerTest {
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    @MockitoBean
+    private PizzaService pizzaService;
+
+    @MockitoBean
+    private CustomUserDetailsService customUserDetailsService;
+
+    // Tests...
+}
+```
+
+#### Why Mock `CustomUserDetailsService`?
+
+Even though we're using `@WithMockUser` for authentication in tests, Spring Security still expects the `UserDetailsService` bean to be available in the application context. Here's why:
+
+1. **Spring Security Configuration**: The `SecurityConfig` requires a `UserDetailsService` bean to be configured in the authentication manager
+2. **Filter Chain Initialization**: During test setup, Spring Security initializes the filter chain, which references the `UserDetailsService`
+3. **Not Actually Called**: In `@WebMvcTest` with `@WithMockUser`, the service is **never actually invoked** because `@WithMockUser` bypasses the normal authentication flow
+
+**Without mocking it:**
+```
+Error creating bean 'customUserDetailsService': 
+Unsatisfied dependency - no qualifying bean of type 'CustomerRepository'
+```
+
+**With mocking it:**
+```java
+@MockitoBean
+private CustomUserDetailsService customUserDetailsService;
+```
+✅ Spring Security context initializes successfully  
+✅ Tests run without needing the full repository layer  
+✅ `@WithMockUser` handles authentication
+
+### Testing Different Roles
+
+#### Admin-Only Endpoint
+
+```java
+@Test
+@WithMockUser(roles = "ADMIN")
+void createPizza_WithAdminRole_ReturnsCreated() throws Exception {
+    // Given
+    PizzaRequest request = new PizzaRequest("Margherita", "Classic pizza", 
+                                            8.50, true);
+    PizzaResponse response = new PizzaResponse(1L, "Margherita", 
+                                                "Classic pizza", 8.50, true, null);
+    
+    when(pizzaService.createPizza(any(PizzaRequest.class))).thenReturn(response);
+
+    // When / Then
+    mockMvc.perform(post("/api/pizzas")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(objectMapper.writeValueAsString(request)))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.id").value(1))
+            .andExpect(jsonPath("$.name").value("Margherita"));
+}
+```
+
+#### Testing Forbidden Access
+
+```java
+@Test
+@WithMockUser(roles = "CUSTOMER")
+void createPizza_WithCustomerRole_ReturnsForbidden() throws Exception {
+    // Given
+    PizzaRequest request = new PizzaRequest("Margherita", "Classic pizza", 
+                                            8.50, true);
+
+    // When / Then - Customers cannot create pizzas, only admins can
+    mockMvc.perform(post("/api/pizzas")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(objectMapper.writeValueAsString(request)))
+            .andExpect(status().isForbidden());
+
+    // Verify service was never called because Spring Security blocked the request
+    verify(pizzaService, never()).createPizza(any());
+}
+```
+
+#### Testing Unauthorized Access
+
+```java
+@Test
+void createPizza_WithoutAuthentication_ReturnsUnauthorized() throws Exception {
+    // Given
+    PizzaRequest request = new PizzaRequest("Margherita", "Classic pizza", 
+                                            8.50, true);
+
+    // When / Then - No authentication provided
+    mockMvc.perform(post("/api/pizzas")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(objectMapper.writeValueAsString(request)))
+            .andExpect(status().isUnauthorized());
+
+    verify(pizzaService, never()).createPizza(any());
+}
+```
+
+#### Testing Public Endpoints
+
+```java
+@Test
+void getPizzas_WithoutAuthentication_ReturnsOk() throws Exception {
+    // Given - Public endpoint, no authentication required
+    Page<PizzaResponse> pizzaPage = new PageImpl<>(List.of(
+        new PizzaResponse(1L, "Margherita", "Classic pizza", 8.50, true, null),
+        new PizzaResponse(2L, "Pepperoni", "Spicy pepperoni", 9.50, true, null)
+    ));
+    
+    when(pizzaService.findAll(any(Pageable.class))).thenReturn(pizzaPage);
+
+    // When / Then - Anyone can access GET /api/pizzas
+    mockMvc.perform(get("/api/pizzas"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.content", hasSize(2)));
+}
+```
+
+### Testing Customer or Admin Endpoints
+
+```java
+@Test
+@WithMockUser(roles = "CUSTOMER")
+void createOrder_WithCustomerRole_ReturnsCreated() throws Exception {
+    // Given
+    CreateOrderRequest request = new CreateOrderRequest(1L, List.of(
+        new OrderLineRequest(1L, 2)
+    ));
+    OrderResponse response = new OrderResponse(/* ... */);
+    
+    when(orderService.createOrder(anyLong(), any())).thenReturn(response);
+
+    // When / Then - Customers can create orders
+    mockMvc.perform(post("/api/orders")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(objectMapper.writeValueAsString(request)))
+            .andExpect(status().isCreated());
+}
+
+@Test
+@WithMockUser(roles = "ADMIN")
+void createOrder_WithAdminRole_ReturnsCreated() throws Exception {
+    // Given
+    CreateOrderRequest request = new CreateOrderRequest(1L, List.of(
+        new OrderLineRequest(1L, 2)
+    ));
+    OrderResponse response = new OrderResponse(/* ... */);
+    
+    when(orderService.createOrder(anyLong(), any())).thenReturn(response);
+
+    // When / Then - Admins can also create orders
+    mockMvc.perform(post("/api/orders")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(objectMapper.writeValueAsString(request)))
+            .andExpect(status().isCreated());
+}
+```
+
+### Best Practices for Security Testing
+
+1. **Test all access levels**: Test with ADMIN, CUSTOMER, and no authentication
+2. **Test forbidden access**: Verify users can't access resources they shouldn't
+3. **Keep tests focused**: Test security separately from business logic when possible
+4. **Use meaningful test names**: Clearly indicate what role and outcome is being tested
+5. **Import necessary security components**: Include `SecurityConfig`, `JwtAuthenticationFilter`, and `JwtUtil`
+6. **Mock UserDetailsService**: Always mock it to satisfy Spring Security's context initialization
+
+### Integration Tests vs Controller Tests
+
+**Controller Tests (`@WebMvcTest`)**:
+- Use `@WithMockUser` for authentication
+- Mock the service layer
+- Fast and isolated
+- Test security at the controller level
+
+**Integration Tests (`@SpringBootTest`)**:
+- Use real JWT tokens with `Bearer` authorization header
+- Test the entire authentication flow
+- Include database and all layers
+- Test security end-to-end
+
+Example integration test:
+```java
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+class PizzaIntegrationTest {
+
+    @Autowired
+    private TestRestTemplate restTemplate;
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void createPizza_WithValidToken_ReturnsCreated() {
+        // Test with real security context
+        PizzaRequest request = new PizzaRequest("Margherita", "Classic pizza", 
+                                                8.50, true);
+        
+        ResponseEntity<PizzaResponse> response = restTemplate
+            .postForEntity("/api/pizzas", request, PizzaResponse.class);
+        
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+    }
+}
+```
 
 ---
 
