@@ -268,16 +268,39 @@ Spring Boot provides specialized test slices for testing specific layers:
 
 | Annotation | Purpose | What's Loaded | Mock Annotation |
 |------------|---------|---------------|-----------------|
-| `@WebMvcTest` | Test controllers | Spring MVC components only | `@MockBean` |
-| `@DataJpaTest` | Test repositories | JPA components + in-memory DB | `@MockBean` |
-| `@JsonTest` | Test JSON serialization | JSON marshallers | `@MockBean` |
-| `@RestClientTest` | Test REST clients | REST client components | `@MockBean` |
-| `@SpringBootTest` | Integration tests | **Entire application** | `@MockBean` |
+| `@WebMvcTest` | Test controllers | Spring MVC components only | `@MockitoBean` |
+| `@DataJpaTest` | Test repositories | JPA components + in-memory DB | `@MockitoBean` |
+| `@JsonTest` | Test JSON serialization | JSON marshallers | `@MockitoBean` |
+| `@RestClientTest` | Test REST clients | REST client components | `@MockitoBean` |
+| `@SpringBootTest` | Integration tests | **Entire application** | `@MockitoBean` |
 | `@ExtendWith(MockitoExtension.class)` | **Pure unit tests** | **NO Spring context** | `@Mock` |
 
 > **Key Difference:**
-> - **With Spring** (`@WebMvcTest`, `@SpringBootTest`, etc.) → Use `@MockBean`
+> - **With Spring** (`@WebMvcTest`, `@SpringBootTest`, etc.) → Use `@MockitoBean`
 > - **Without Spring** (`@ExtendWith(MockitoExtension.class)`) → Use `@Mock`
+
+> **⚠️ Important Change since Spring Boot 3.4+:**
+> 
+> `@MockBean` from `org.springframework.boot.test.mock.mockito` is **deprecated** since Spring Boot 3.4.0.
+> 
+> ✅ Use `@MockitoBean` from `org.springframework.test.context.bean.override.mockito` instead
+> 
+> These new annotation provides the same functionality but are part of Spring Framework's core testing support.
+>
+> **Migration is simple:**
+> ```java
+> // ❌ Old (deprecated since Spring Boot 3.4.0)
+> import org.springframework.boot.test.mock.mockito.MockBean;
+> 
+> @MockBean
+> private PizzaService pizzaService;
+> 
+> // ✅ New (Spring Boot 3.4+)
+> import org.springframework.test.context.bean.override.mockito.MockitoBean;
+> 
+> @MockitoBean
+> private PizzaService pizzaService;
+> ```
 
 ---
 
@@ -424,11 +447,11 @@ Test services in isolation by mocking dependencies.
 > 
 > **When to use:**
 > - ✅ **Pure unit tests** (service tests): Use `@ExtendWith(MockitoExtension.class)` + `@Mock` + `@InjectMocks`
-> - ✅ **Spring integration tests** (controller tests): Use `@WebMvcTest` or `@SpringBootTest` with `@MockBean`
+> - ✅ **Spring integration tests** (controller tests): Use `@WebMvcTest` or `@SpringBootTest` with `@MockitoBean`
 > 
 > The difference:
 > - `@ExtendWith(MockitoExtension.class)` = Mockito without Spring (faster, pure unit test)
-> - `@MockBean` = Mock within Spring context (for integration tests)
+> - `@MockitoBean` = Mock within Spring context (for integration tests)
 
 #### Example: PizzaService Test
 
@@ -466,10 +489,10 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class PizzaServiceTest {
 
-    @Mock  // Mockito mock (not @MockBean!)
+    @Mock  // Mockito mock (not @MockitoBean!)
     private PizzaRepository pizzaRepository;
 
-    @Mock  // Mockito mock (not @MockBean!)
+    @Mock  // Mockito mock (not @MockitoBean!)
     private PizzaMapper pizzaMapper;
 
     @Mock
@@ -667,16 +690,20 @@ class PizzaServiceTest {
 
 Test REST controllers with MockMvc, mocking the service layer.
 
-> **📝 Note on `@MockBean`**
+> **📝 Note on `@MockitoBean` (Spring Boot 3.4+)**
 > 
-> `@MockBean` **is NOT deprecated** in Spring Boot 3. It's the standard way to mock beans in Spring test context.
+> Since Spring Boot 3.4.0, `@MockBean` is **deprecated** in favor of `@MockitoBean`.
+> 
+> **Migration:**
+> - ❌ Old (deprecated): `import org.springframework.boot.test.mock.mockito.MockBean;`
+> - ✅ New: `import org.springframework.test.context.bean.override.mockito.MockitoBean;`
 > 
 > **When to use:**
-> - ✅ **Spring integration tests**: Use `@MockBean` with `@WebMvcTest` or `@SpringBootTest`
+> - ✅ **Spring integration tests**: Use `@MockitoBean` with `@WebMvcTest` or `@SpringBootTest`
 > - ❌ **Pure unit tests**: Use `@Mock` with `@ExtendWith(MockitoExtension.class)` instead
 > 
 > The difference:
-> - `@MockBean` = Mock managed by Spring context (slower, but tests Spring integration)
+> - `@MockitoBean` = Mock managed by Spring context (slower, but tests Spring integration)
 > - `@Mock` = Mock managed by Mockito (faster, pure unit test)
 
 #### Example: PizzaController Test
@@ -692,7 +719,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -713,7 +740,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 // Spring integration test - loads Spring MVC context
-// This is why we use @MockBean (not @Mock!)
+// This is why we use @MockitoBean (not @Mock!)
 @WebMvcTest(controllers = PizzaController.class)
 @Import(be.vives.pizzastore.exception.GlobalExceptionHandler.class)  // Import exception handler
 class PizzaControllerTest {
@@ -724,7 +751,7 @@ class PizzaControllerTest {
     @Autowired
     private ObjectMapper objectMapper;
 
-    @MockBean  // Mock within Spring context (not @Mock!)
+    @MockitoBean  // Mock within Spring context (not @Mock!)
     private PizzaService pizzaService;
 
     @Test
@@ -925,7 +952,7 @@ class PizzaControllerTest {
 **Key Points:**
 - `@WebMvcTest` loads only web layer
 - `MockMvc` for HTTP requests/responses
-- `@MockBean` mocks service dependencies
+- `@MockitoBean` mocks service dependencies (replaces deprecated `@MockBean`)
 - `jsonPath()` for testing JSON responses
 - Tests HTTP status codes, headers, and body
 - No database, very fast
@@ -1115,7 +1142,7 @@ class PizzaValidationTest {
     @Autowired
     private ObjectMapper objectMapper;
 
-    @MockBean
+    @MockitoBean
     private PizzaService pizzaService;
 
     @Test
@@ -1190,7 +1217,7 @@ class ExceptionHandlingTest {
     @Autowired
     private MockMvc mockMvc;
 
-    @MockBean
+    @MockitoBean
     private PizzaService pizzaService;
 
     @Test
@@ -1533,14 +1560,12 @@ class SlowServiceTest {
 
 ### 9. Choose the Right Mock Annotation
 
-> **Important: `@Mock` vs `@MockBean` in Spring Boot 3**
-
-Both annotations are **NOT deprecated** and serve different purposes:
+> **Important: `@Mock` vs `@MockitoBean` in Spring Boot 3.4+**
 
 | Scenario | Use | Why |
 |----------|-----|-----|
 | **Pure unit test** (no Spring) | `@Mock` + `@ExtendWith(MockitoExtension.class)` | Fastest - no Spring context |
-| **Spring integration test** | `@MockBean` with `@WebMvcTest` or `@SpringBootTest` | Tests Spring integration |
+| **Spring integration test** | `@MockitoBean` with `@WebMvcTest` or `@SpringBootTest` | Tests Spring integration |
 
 ```java
 // ✅ Pure unit test - service layer
@@ -1556,7 +1581,7 @@ class PizzaServiceTest {
 // ✅ Spring integration test - controller layer
 @WebMvcTest(PizzaController.class)  // Loads Spring MVC
 class PizzaControllerTest {
-    @MockBean  // Mock in Spring context
+    @MockitoBean  // With Spring Integration
     private PizzaService service;
     
     @Autowired
@@ -1566,17 +1591,17 @@ class PizzaControllerTest {
 
 **Key Differences:**
 
-| Feature | `@Mock` | `@MockBean` |
-|---------|---------|-------------|
+| Feature | `@Mock` | `@MockitoBean`  |
+|---------|---------|-----------------|
 | **Spring context** | ❌ No | ✅ Yes |
 | **Speed** | ⚡ Very fast (<10ms) | 🐌 Slower (loads Spring) |
 | **Use case** | Service tests | Controller tests |
 | **Annotation combo** | `@ExtendWith(MockitoExtension.class)` | `@WebMvcTest` or `@SpringBootTest` |
-| **Status in Spring Boot 3** | ✅ Still required | ✅ Not deprecated |
+| **Package** | `org.mockito` | `org.springframework.test.context.bean.override.mockito` |
 
 **Recommendation:**
 - Use `@Mock` for 70% of your tests (service layer unit tests)
-- Use `@MockBean` for 30% of your tests (controller/integration tests)
+- Use `@MockitoBean` for 30% of your tests (controller/integration tests)
 
 ---
 
