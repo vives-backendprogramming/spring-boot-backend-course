@@ -571,7 +571,72 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
 ## 👤 UserDetailsService Implementation
 
-Implement Spring Security's `UserDetailsService` to load user data:
+### Understanding UserDetailsService
+
+**`UserDetailsService`** is a core Spring Security interface responsible for **retrieving user information** during the authentication process. It has a single method:
+
+```java
+UserDetails loadUserByUsername(String username) throws UsernameNotFoundException;
+```
+
+**Key Responsibilities:**
+- Load user data from your data source (database, LDAP, external API, etc.)
+- Convert your domain user entity into Spring Security's `UserDetails` object
+- Throw `UsernameNotFoundException` if the user doesn't exist
+
+**The Flow:**
+1. User attempts to log in with credentials (email/password)
+2. Spring Security calls `loadUserByUsername(email)` on your `UserDetailsService` implementation
+3. Your implementation queries the database and retrieves the user
+4. Your implementation converts the user entity to a `UserDetails` object
+5. Spring Security compares the provided password with the stored (encrypted) password
+6. If valid, authentication succeeds and a JWT token is generated
+
+### Storing User Information in the Database
+
+In our PizzaStore application, **we store user credentials directly in our own database** using the `Customer` entity:
+
+```java
+@Entity
+@Table(name = "customers")
+public class Customer {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(nullable = false, length = 100)
+    private String name;
+
+    @Column(nullable = false, unique = true, length = 100)
+    private String email;  // Used as username for authentication
+
+    @Column(nullable = false)
+    private String password;  // BCrypt-encrypted password
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private Role role = Role.CUSTOMER;  // CUSTOMER or ADMIN
+
+    // ... other fields (phone, address, orders, etc.)
+}
+```
+
+**Why Store User Data Ourselves?**
+- Full control over user data and schema
+- Can easily extend with business-specific fields (address, phone, orders)
+- Passwords are stored **encrypted** using BCrypt (never plain text!)
+- Simple to implement for applications with their own user base
+- No dependency on external authentication providers (unlike OAuth2/OpenID Connect)
+
+**Security Considerations:**
+- **Password encryption**: Always use `BCryptPasswordEncoder` to hash passwords before storing
+- **Unique email constraint**: Prevents duplicate accounts
+- **Role-based access**: The `Role` enum allows for authorization (CUSTOMER vs ADMIN)
+- **Never expose passwords**: DTOs should never include the password field in responses
+
+### Custom UserDetailsService Implementation
+
+Implement Spring Security's `UserDetailsService` to load user data from the database:
 
 ```java
 @Service
@@ -586,20 +651,47 @@ public class CustomUserDetailsService implements UserDetailsService {
     @Override
     public UserDetails loadUserByUsername(String email) throws UsernameNotFoundException {
         Customer customer = customerRepository.findByEmail(email)
-                .orElseThrow(() -> new UsernameNotFoundException(
-                        "User not found with email: " + email));
+                .orElseThrow(() -> new UsernameNotFoundException("User not found with email: " + email));
 
         return new User(
                 customer.getEmail(),
                 customer.getPassword(),
-                Collections.singletonList(
-                        new SimpleGrantedAuthority("ROLE_" + customer.getRole().name()))
+                Collections.singletonList(new SimpleGrantedAuthority("ROLE_" + customer.getRole().name()))
         );
     }
 }
 ```
 
-**Note**: Spring Security expects role names to be prefixed with `ROLE_`.
+**Implementation Details:**
+
+1. **`@Service`**: Makes this a Spring-managed bean that can be injected into the security configuration
+
+2. **`loadUserByUsername(String email)`**:
+   - We use **email as the username** (more user-friendly than a separate username field)
+   - Queries the database via `CustomerRepository.findByEmail()`
+   - Throws `UsernameNotFoundException` if the user doesn't exist
+
+3. **Return `UserDetails` object**:
+   - Uses Spring Security's `User` class (implements `UserDetails`)
+   - **Username**: The customer's email
+   - **Password**: The BCrypt-encrypted password from the database
+   - **Authorities**: A list of granted authorities (roles) for authorization
+
+4. **Role Prefix**: Spring Security expects role names to be prefixed with `ROLE_`. So:
+   - `Role.CUSTOMER` → `ROLE_CUSTOMER`
+   - `Role.ADMIN` → `ROLE_ADMIN`
+
+**Repository Method:**
+
+The `CustomerRepository` needs a custom query method:
+
+```java
+public interface CustomerRepository extends JpaRepository<Customer, Long> {
+    Optional<Customer> findByEmail(String email);
+}
+```
+
+This method is used by the `UserDetailsService` to retrieve the user by email during authentication.
 
 ---
 
