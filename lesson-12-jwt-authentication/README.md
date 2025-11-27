@@ -326,12 +326,9 @@ Create a `SecurityConfig` class to configure Spring Security:
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
-    private final UserDetailsService userDetailsService;
 
-    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter, 
-                          UserDetailsService userDetailsService) {
+    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
-        this.userDetailsService = userDetailsService;
     }
 
     @Bean
@@ -363,21 +360,12 @@ public class SecurityConfig {
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
-                .authenticationProvider(authenticationProvider())
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         // For H2 Console
         http.headers(headers -> headers.frameOptions(frame -> frame.sameOrigin()));
 
         return http.build();
-    }
-
-    @Bean
-    public AuthenticationProvider authenticationProvider() {
-        DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider();
-        authProvider.setUserDetailsService(userDetailsService);
-        authProvider.setPasswordEncoder(passwordEncoder());
-        return authProvider;
     }
 
     @Bean
@@ -418,6 +406,45 @@ The `@EnableWebSecurity` annotation is a crucial annotation that **activates Spr
 
 ---
 
+### ⚙️ Authentication Provider Auto-Configuration
+
+**Important Note about Modern Spring Security (Spring Boot 3.x+):**
+
+In older versions of Spring Security, you had to manually create a `DaoAuthenticationProvider` bean:
+
+```java
+// ❌ OLD WAY - No longer necessary in Spring Boot 3.x
+@Bean
+public AuthenticationProvider authenticationProvider() {
+    DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider();
+    authProvider.setUserDetailsService(userDetailsService);
+    authProvider.setPasswordEncoder(passwordEncoder());
+    return authProvider;
+}
+```
+
+**In modern Spring Boot 3.x+**, Spring Security **automatically configures** the `DaoAuthenticationProvider` when it detects:
+1. A `UserDetailsService` bean (our `CustomUserDetailsService`)
+2. A `PasswordEncoder` bean (our `BCryptPasswordEncoder`)
+
+This is done through **auto-configuration**. The framework automatically wires these beans together internally, eliminating boilerplate code.
+
+**Benefits:**
+- ✅ **Less code**: No need to explicitly create the authentication provider
+- ✅ **Convention over configuration**: Spring Boot handles the wiring
+- ✅ **Cleaner configuration**: Focus only on what's unique to your application
+- ✅ **More maintainable**: Less custom code means less to maintain
+
+This is why our `SecurityConfig` only needs to:
+- Define the `PasswordEncoder` bean
+- Define the `AuthenticationManager` bean
+- Configure the security filter chain
+- Add our custom JWT filter
+
+The authentication provider is created and configured automatically by Spring Boot behind the scenes!
+
+---
+
 ### Key Points:
 
 1. **CSRF Disabled**: Not needed for stateless JWT authentication
@@ -430,6 +457,7 @@ The `@EnableWebSecurity` annotation is a crucial annotation that **activates Spr
    - **ADMIN**: Has CUSTOMER privileges + can modify pizzas (POST, PUT, PATCH, DELETE on `/api/pizzas/**`)
 4. **Stateless Sessions**: No session storage on the server
 5. **JWT Filter**: Added before Spring Security's authentication filter
+6. **Auto-Configuration**: Spring Boot automatically configures the authentication provider using our `UserDetailsService` and `PasswordEncoder` beans
 
 ---
 
