@@ -19,7 +19,7 @@ public class RegisterRequest {
     @Size(min = 6, max = 100, message = "Password must be at least 6 characters")
     private String password;
 
-    @Pattern(regexp = "^\\+?[0-9]{10,15}$", message = "Phone number should be valid")
+    @Pattern(regexp = "^\\+?[0-9 ]{10,16}$", message = "Phone number should be valid")
     private String phone;
 
     @Size(max = 200, message = "Address must not exceed 200 characters")
