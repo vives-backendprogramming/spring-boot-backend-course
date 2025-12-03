@@ -1,0 +1,17 @@
+version: '3'
+
+services:
+  dex:
+    image: ghcr.io/dexidp/dex:v2.41.1
+    container_name: dex-idp
+    ports:
+      - "5556:5556"
+    volumes:
+      - ./dex-config.yaml:/etc/dex/config.docker.yaml
+    command: ["dex", "serve", "/etc/dex/config.docker.yaml"]
+    networks:
+      - pizzastore-network
+
+networks:
+  pizzastore-network:
+    driver: bridge

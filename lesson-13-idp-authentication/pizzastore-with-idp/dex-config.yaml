@@ -1,0 +1,53 @@
+issuer: http://localhost:5556/dex
+
+storage:
+  type: memory
+
+web:
+  http: 0.0.0.0:5556
+
+# Static clients (our Spring Boot application)
+staticClients:
+  - id: pizzastore-client
+    redirectURIs:
+      - 'http://localhost:8080/login/oauth2/code/dex'
+      - 'http://localhost:3000/callback'  # For potential frontend
+    name: 'PizzaStore Application'
+    secret: pizzastore-secret
+
+# Enable password connector for testing
+enablePasswordDB: true
+
+# Static passwords for testing (in production, use external connectors)
+staticPasswords:
+  - email: "admin@pizzastore.com"
+    # bcrypt hash of "password" - generated with: htpasswd -bnBC 10 "" password | tr -d ':\n'
+    hash: "$2a$10$2b2cU8CPhOTaGrs1HRQuAueS7JTT5ZHsHSzYiFPm1leZck7Mc8T4W"
+    username: "admin"
+    userID: "08a8684b-db88-4b73-90a9-3cd1661f5466"
+
+  - email: "customer@pizzastore.com"
+    hash: "$2a$10$2b2cU8CPhOTaGrs1HRQuAueS7JTT5ZHsHSzYiFPm1leZck7Mc8T4W"
+    username: "customer"
+    userID: "41331323-6f44-45e6-b3b9-2c4b60c02be5"
+
+oauth2:
+  skipApprovalScreen: true
+
+# External connectors (examples - can be enabled in production)
+# connectors:
+#   - type: google
+#     id: google
+#     name: Google
+#     config:
+#       clientID: $GOOGLE_CLIENT_ID
+#       clientSecret: $GOOGLE_CLIENT_SECRET
+#       redirectURI: http://localhost:5556/dex/callback
+#
+#   - type: github
+#     id: github
+#     name: GitHub
+#     config:
+#       clientID: $GITHUB_CLIENT_ID
+#       clientSecret: $GITHUB_CLIENT_SECRET
+#       redirectURI: http://localhost:5556/dex/callback
