@@ -278,66 +278,83 @@ public ResponseEntity<PizzaResponse> createPizza(@RequestBody CreatePizzaRequest
 }
 ```
 
-### Complete Controller Example
+#### Understanding @SecurityRequirement
+
+The `@SecurityRequirement` annotation links an endpoint to a security scheme defined in your OpenAPI configuration. 
+
+**Key Points:**
+- **Global Security**: When applied in `@OpenAPIDefinition(security = ...)`, all endpoints are secured by default
+- **Endpoint-Level Security**: Use `@SecurityRequirement` at method level to override global settings
+- **Public Endpoints**: Use `@SecurityRequirement(name = "")` or omit the annotation to make an endpoint public (when global security is enabled)
+- **Multiple Schemes**: You can apply multiple security requirements: `security = {@SecurityRequirement(name = "bearerAuth"), @SecurityRequirement(name = "apiKey")}`
+
+#### Available Security Scheme Types
+
+Spring Boot applications can use various authentication methods. Here are the most common types:
+
+| Security Scheme Type | Description | Use Case | Configuration Example |
+|---------------------|-------------|----------|----------------------|
+| **HTTP Bearer (JWT)** | Bearer token authentication using JWT | Most common for REST APIs. Token in `Authorization: Bearer <token>` header | `type = SecuritySchemeType.HTTP, scheme = "bearer", bearerFormat = "JWT"` |
+| **HTTP Basic** | Username and password encoded in Base64 | Simple authentication, less secure | `type = SecuritySchemeType.HTTP, scheme = "basic"` |
+| **API Key** | Custom API key in header, query, or cookie | Third-party integrations, rate limiting | `type = SecuritySchemeType.APIKEY, in = SecuritySchemeIn.HEADER, paramName = "X-API-Key"` |
+| **OAuth2** | OAuth 2.0 authorization flows | Social login, enterprise SSO | `type = SecuritySchemeType.OAUTH2, flows = @OAuthFlows(...)` |
+| **OpenID Connect** | OpenID Connect Discovery | Identity Provider (IdP) authentication like Keycloak, Dex | `type = SecuritySchemeType.OPENIDCONNECT, openIdConnectUrl = "..."` |
+
+#### JWT Bearer Authentication (Current Implementation)
+
+Our PizzaStore API uses JWT Bearer authentication:
 
 ```java
-package be.vives.pizzastore.controller;
-
-import be.vives.pizzastore.dto.request.CreatePizzaRequest;
-import be.vives.pizzastore.dto.response.PizzaResponse;
-import be.vives.pizzastore.service.PizzaService;
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.Parameter;
-import io.swagger.v3.oas.annotations.media.Content;
-import io.swagger.v3.oas.annotations.media.Schema;
-import io.swagger.v3.oas.annotations.responses.ApiResponse;
-import io.swagger.v3.oas.annotations.responses.ApiResponses;
-import io.swagger.v3.oas.annotations.security.SecurityRequirement;
-import io.swagger.v3.oas.annotations.tags.Tag;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
-
-@RestController
-@RequestMapping("/api/pizzas")
-@Tag(name = "Pizza Management", description = "APIs for managing pizzas")
-public class PizzaController {
-
-    private final PizzaService pizzaService;
-
-    public PizzaController(PizzaService pizzaService) {
-        this.pizzaService = pizzaService;
-    }
-
-    @GetMapping
-    @Operation(
-            summary = "Get all pizzas",
-            description = "Retrieves all pizzas with pagination and filtering support"
-    )
-    @ApiResponse(responseCode = "200", description = "Successfully retrieved pizzas")
-    public ResponseEntity<Page<PizzaResponse>> getPizzas(
-            @Parameter(description = "Pagination parameters") Pageable pageable) {
-        return ResponseEntity.ok(pizzaService.findAll(pageable));
-    }
-
-    @PostMapping
-    @Operation(
-            summary = "Create a new pizza",
-            description = "Creates a new pizza. Requires ADMIN role.",
-            security = @SecurityRequirement(name = "bearerAuth")
-    )
-    @ApiResponses(value = {
-            @ApiResponse(responseCode = "201", description = "Pizza created successfully"),
-            @ApiResponse(responseCode = "401", description = "Unauthorized"),
-            @ApiResponse(responseCode = "403", description = "Forbidden - ADMIN role required")
-    })
-    public ResponseEntity<PizzaResponse> createPizza(@RequestBody CreatePizzaRequest request) {
-        // Implementation
-        return ResponseEntity.created(null).build();
-    }
-}
+@SecurityScheme(
+    name = "bearerAuth",
+    type = SecuritySchemeType.HTTP,
+    scheme = "bearer",
+    bearerFormat = "JWT",
+    description = "JWT authentication token. Obtain via /api/auth/login"
+)
 ```
+
+**How it works in Swagger UI:**
+1. Click the **"Authorize"** button (lock icon) in Swagger UI
+2. Enter your JWT token in the format: `Bearer <your-jwt-token>` or just `<your-jwt-token>`
+3. Click **"Authorize"**
+4. All subsequent requests will include the token in the `Authorization` header
+
+#### OAuth2 / OpenID Connect (IdP Authentication)
+
+For Identity Provider (IdP) based authentication (covered in Lesson 13), you would configure:
+
+```java
+@SecurityScheme(
+    name = "oidc",
+    type = SecuritySchemeType.OPENIDCONNECT,
+    openIdConnectUrl = "http://localhost:5556/.well-known/openid-configuration",
+    description = "OpenID Connect authentication via Dex IdP"
+)
+
+// OR using OAuth2 with specific flows:
+@SecurityScheme(
+    name = "oauth2",
+    type = SecuritySchemeType.OAUTH2,
+    flows = @OAuthFlows(
+        authorizationCode = @OAuthFlow(
+            authorizationUrl = "http://localhost:5556/auth",
+            tokenUrl = "http://localhost:5556/token",
+            scopes = {
+                @OAuthScope(name = "openid", description = "OpenID Connect scope"),
+                @OAuthScope(name = "profile", description = "User profile access"),
+                @OAuthScope(name = "email", description = "User email access")
+            }
+        )
+    )
+)
+```
+
+**Key Difference between JWT and IdP:**
+- **JWT (Lesson 12)**: Your application manages users, passwords, and token generation
+- **IdP (Lesson 13)**: External identity provider (like Dex, Keycloak, Google, Azure AD) manages authentication
+- **Both** can use the same `@SecurityRequirement` annotations on endpoints
+- **Swagger UI** integration is simpler with JWT, more complex with OAuth2/OIDC flows
 
 ---
 
