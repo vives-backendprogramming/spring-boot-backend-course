@@ -431,31 +431,112 @@ public class LoginRequest {
 
 ### Validation Annotations Integration
 
-**Springdoc automatically reflects Bean Validation annotations in the OpenAPI spec!**
+**Springdoc automatically reflects Bean Validation annotations in the OpenAPI specification!**
+
+When you add Jakarta Bean Validation annotations to your DTOs, they are automatically included in the generated OpenAPI spec, which means:
+- **Required fields** are marked as required in Swagger UI (via `@NotNull`, `@NotBlank`)
+- **String length constraints** appear in the schema (via `@Size`)
+- **Numeric ranges** are documented (via `@Min`, `@Max`, `@DecimalMin`, `@DecimalMax`)
+- **Format validations** are shown (via `@Email`, `@Pattern`)
+- **Custom error messages** help developers understand validation rules
+
+#### Example: CreatePizzaRequest
 
 ```java
-@Schema(description = "Product creation request")
-public record ProductRequest(
+package be.vives.pizzastore.dto.request;
 
-        @NotNull(message = "Name is required")
-        @Size(min = 3, max = 100)
-        @Schema(description = "Product name", example = "Laptop", required = true)
+import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+
+import java.math.BigDecimal;
+
+@Schema(description = "Request object for creating a new pizza")
+public record CreatePizzaRequest(
+
+        @NotBlank(message = "Pizza name is required")
+        @Schema(description = "Name of the pizza", example = "Margherita", required = true)
         String name,
 
-        @DecimalMin(value = "0.01")
-        @DecimalMax(value = "999999.99")
-        @Schema(description = "Product price in EUR", example = "299.99", required = true)
+        @NotNull(message = "Price is required")
+        @DecimalMin(value = "0.01", message = "Price must be positive")
+        @Schema(description = "Price of the pizza in EUR", example = "12.50", required = true)
         BigDecimal price,
 
-        @Min(value = 0)
-        @Max(value = 10000)
-        @Schema(description = "Available quantity", example = "100", required = true)
-        Integer quantity
+        @Schema(description = "Description of the pizza", 
+                example = "Classic pizza with tomato sauce, mozzarella, and fresh basil")
+        String description
 ) {
 }
 ```
 
-Validation constraints like `@NotNull`, `@Size`, `@Min`, `@Max`, `@Pattern`, and `@Email` are automatically included in the generated OpenAPI specification!
+#### Example: RegisterRequest
+
+```java
+package be.vives.pizzastore.dto;
+
+import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
+
+@Schema(description = "Request object for user registration")
+public class RegisterRequest {
+
+    @NotBlank(message = "Name is required")
+    @Size(min = 2, max = 100, message = "Name must be between 2 and 100 characters")
+    @Schema(description = "User's full name", example = "John Doe", required = true)
+    private String name;
+
+    @NotBlank(message = "Email is required")
+    @Email(message = "Email should be valid")
+    @Schema(description = "User's email address", example = "john.doe@example.com", required = true)
+    private String email;
+
+    @NotBlank(message = "Password is required")
+    @Size(min = 6, max = 100, message = "Password must be at least 6 characters")
+    @Schema(description = "User's password (minimum 6 characters)", example = "password123", required = true)
+    private String password;
+
+    @Pattern(regexp = "^\\+?[0-9 ]{10,16}$", message = "Phone number should be valid")
+    @Schema(description = "User's phone number", example = "+32 456 78 90 12")
+    private String phone;
+
+    @Size(max = 200, message = "Address must not exceed 200 characters")
+    @Schema(description = "User's address", example = "123 Main Street, Brussels")
+    private String address;
+
+    // Constructors, getters, setters...
+}
+```
+
+#### How Validation Appears in OpenAPI/Swagger UI
+
+When you open the Swagger UI and look at these request schemas, you'll see:
+
+1. **Required fields** are marked with a red asterisk (*) and listed in the "required" array
+2. **String length** constraints show `minLength` and `maxLength` properties
+3. **Numeric constraints** show `minimum`, `maximum`, and `exclusiveMinimum` properties
+4. **Pattern validation** shows the regex pattern
+5. **Format validation** shows the format type (e.g., `format: email`)
+6. **Example values** help developers understand expected input
+
+**Key Validation Annotations and Their OpenAPI Mappings:**
+
+| Jakarta Validation Annotation | OpenAPI Property | Description |
+|------------------------------|------------------|-------------|
+| `@NotNull`, `@NotBlank`, `@NotEmpty` | `required: true` | Field is mandatory |
+| `@Size(min = x, max = y)` | `minLength: x, maxLength: y` | String/collection size constraints |
+| `@Min(value)`, `@Max(value)` | `minimum: value, maximum: value` | Numeric range constraints (inclusive) |
+| `@DecimalMin(value)`, `@DecimalMax(value)` | `minimum: value, maximum: value` | Decimal range constraints |
+| `@Pattern(regexp)` | `pattern: "regexp"` | Regular expression validation |
+| `@Email` | `format: "email"` | Email format validation |
+| `@Positive`, `@PositiveOrZero` | `minimum: 0` or `minimum: 1` | Positive number constraint |
+| `@Negative`, `@NegativeOrZero` | `maximum: 0` or `maximum: -1` | Negative number constraint |
+
+This automatic integration means **you document validation rules once** in your Java code, and they're automatically reflected in your API documentation—no duplication needed!
 
 ---
 
@@ -787,7 +868,6 @@ Clearly document security requirements:
 
 - Update documentation when changing endpoints
 - Review Swagger UI regularly to ensure accuracy
-- Use CI/CD to validate OpenAPI spec
 
 ### 7. Avoid Over-Documentation
 
