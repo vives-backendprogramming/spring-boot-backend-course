@@ -98,6 +98,8 @@ cursus/
 ├── lesson-10-validation-.../        # 🍕 With validation
 ├── lesson-11-testing/               # 🍕 With comprehensive tests
 ├── lesson-12-jwt-authentication/    # 🍕 With JWT authentication
+├── lesson-13-idp-authentication/    # 🍕 With IdP authentication
+├── lesson-14-swagger-openapi/       # 🍕 With API documentation
 └── uploads/                         # Pizza image storage
 ```
 

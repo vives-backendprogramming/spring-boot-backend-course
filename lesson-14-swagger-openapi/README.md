@@ -1,7 +1,5 @@
 # Lesson 14: API Documentation with Swagger/OpenAPI
 
-**Spring Boot 3.5.7 | Java 25 | Springdoc OpenAPI 2.8.13**
-
 ---
 
 ## 📋 Table of Contents
@@ -242,6 +240,17 @@ public ResponseEntity<PizzaResponse> getPizza(
     // Implementation
 }
 ```
+
+**OpenAPI Annotations Explained:**
+
+| Annotation | Purpose | Usage |
+|------------|---------|-------|
+| `@Operation` | Describes the operation (endpoint) | Provides summary and detailed description |
+| `@ApiResponses` | Documents all possible HTTP responses | Contains array of `@ApiResponse` annotations |
+| `@ApiResponse` | Documents a single HTTP response | Specifies responseCode, description, and content |
+| `@Content` | Describes response/request body content | Specifies media type and schema |
+| `@Schema` | Links to a Java class/type for the response body | Uses `implementation` to reference DTO classes |
+| `@Parameter` | Documents method parameters | Provides description and whether it's required |
 
 ### Secured Endpoints
 
