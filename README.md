@@ -2,9 +2,11 @@
 
 ## 🎯 Overview
 
-**Comprehensive Spring Boot 3 Course for Building REST API Backends**
+**Comprehensive Spring Boot 4 Course for Building REST API Backends**
 
-This course teaches students to build production-ready Java backend applications for mobile applications using modern Spring Boot practices. Students will learn by building a complete **PizzaStore REST API** from scratch.
+This course teaches students to build production-ready Java backend applications for mobile applications using modern Spring Boot practices. Students learn by building one evolving **PizzaStore REST API** from scratch, lesson by lesson, until it becomes a complete backend with persistence, validation, testing, authentication, and API documentation.
+
+The finished reference solution lives in the [`pizzastore/`](../pizzastore) folder at the root of this repository: a Spring Boot REST API for managing pizzas, orders and customers, secured with JWT authentication, backed by an H2 database via Spring Data JPA, and documented with Swagger/OpenAPI.
 
 ---
 
@@ -27,22 +29,7 @@ This course teaches students to build production-ready Java backend applications
 10. **Validation & Exception Handling** - Input validation and error responses
 11. **Testing Spring Boot Applications** - Repository, Service, Controller, Integration tests
 12. **JWT Authentication** - Token-based authentication with roles
-(13. **Security with IdP** - OAuth2/OIDC with Dex Identity Provider)
-14. **Swagger/OpenAPI** - API documentation and Swagger UI
-15. **Spring Boot Actuator** - Production monitoring and health checks
-
----
-
-## 🍕 The PizzaStore Project
-
-Students build one evolving **PizzaStore REST API** throughout the course:
-
-### Domain Model
-- **Pizza** - Menu items with prices, descriptions, images, and nutritional info
-- **Customer** - User accounts with favorites
-- **Order** - Orders with multiple order lines
-- **OrderLine** - Individual pizza items in an order
-- **NutritionalInfo** - Calorie and nutrition data per pizza
+13. **Swagger/OpenAPI** - API documentation and Swagger UI
 
 ---
 
@@ -54,17 +41,16 @@ Students build one evolving **PizzaStore REST API** throughout the course:
 - **Maven 3.6+**
 - **IntelliJ IDEA Ultimate** (recommended)
 - **Postman** or similar API testing tool
-- **Docker** (for Dex IdP in Lesson 13)
 
 ### Quick Start
 
 ```bash
 # Clone the repository
 git clone <repository-url>
-cd cursus
+cd JavaBackendProgramming
 
-# Start with the latest complete project
-cd lesson-11-testing/pizzastore-with-tests
+# Start with the final reference solution
+cd pizzastore
 
 # Build and run
 mvn clean install
@@ -84,8 +70,10 @@ open http://localhost:8080/h2-console
 
 ## 📁 Repository Structure
 
+Each lesson has its own folder with a README explaining the lesson's topic, and (from lesson 4 onward) its own copy of the PizzaStore project with that lesson's concepts applied on top of the previous one.
+
 ```
-cursus/
+spring-boot-backend-course/
 ├── lesson-01-servlets/              # Context for Spring Boot
 ├── lesson-02-spring-di-ioc/         # Dependency Injection
 ├── lesson-03-properties-profiles/   # Configuration
@@ -95,13 +83,13 @@ cursus/
 ├── lesson-07-dtos-mappers/          # 🍕 DTOs & Service layer
 ├── lesson-08-rest-principles/       # REST theory
 ├── lesson-09-complete-rest-api/     # 🍕 Complete CRUD API
-├── lesson-10-validation-.../        # 🍕 With validation
+├── lesson-10-validation-exception-handling/  # 🍕 With validation
 ├── lesson-11-testing/               # 🍕 With comprehensive tests
 ├── lesson-12-jwt-authentication/    # 🍕 With JWT authentication
-├── lesson-13-idp-authentication/    # 🍕 With IdP authentication
-├── lesson-14-swagger-openapi/       # 🍕 With API documentation
-└── uploads/                         # Pizza image storage
+└── lesson-13-swagger-openapi/       # 🍕 With API documentation
 ```
+
+The complete, final version of the project (used as the reference solution) lives separately in [`pizzastore/`](../pizzastore) at the root of the repository.
 
 ---
 
