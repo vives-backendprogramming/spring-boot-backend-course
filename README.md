@@ -6,24 +6,27 @@
 
 This course teaches students to build production-ready Java backend applications for mobile applications using modern Spring Boot practices. Students learn by building one evolving **PizzaStore REST API** from scratch, lesson by lesson, until it becomes a complete backend with persistence, validation, testing, authentication, and API documentation.
 
-The finished reference solution lives in the [`pizzastore/`](../pizzastore) folder at the root of this repository: a Spring Boot REST API for managing pizzas, orders and customers, secured with JWT authentication, backed by an H2 database via Spring Data JPA, and documented with Swagger/OpenAPI.
+The finished reference solution lives in a separate repository, [**PizzaStore**](https://github.com/vives-backendprogramming/PizzaStore): a Spring Boot REST API for managing pizzas, orders and customers, secured with JWT authentication, backed by an H2 database via Spring Data JPA, and documented with Swagger/OpenAPI.
 
 ---
 
 ## 📚 Course Structure
 
 **Foundation**
+
 1. **Introduction to Java Servlets** - Why Spring Boot exists
 2. **Spring DI and IoC** - Core Spring concepts and dependency injection
 3. **Properties and Profiles** - Configuration management
 4. **Spring Boot Introduction** - First PizzaStore project
 
 **Web & Data**
+
 5. **Spring MVC** - Web application architecture
 6. **Working with JPA** - Data persistence and entity relationships
 7. **DTOs & Mappers** - Request/Response objects with MapStruct
 
 **REST API Development**
+
 8. **REST Principles** - HTTP methods, status codes, resource design
 9. **Building a Complete REST API** - Full CRUD, pagination, image upload
 10. **Validation & Exception Handling** - Input validation and error responses
@@ -45,12 +48,9 @@ The finished reference solution lives in the [`pizzastore/`](../pizzastore) fold
 ### Quick Start
 
 ```bash
-# Clone the repository
-git clone <repository-url>
-cd JavaBackendProgramming
-
-# Start with the final reference solution
-cd pizzastore
+# Clone the final reference solution (a separate repository)
+git clone https://github.com/vives-backendprogramming/PizzaStore.git
+cd PizzaStore
 
 # Build and run
 mvn clean install
@@ -86,10 +86,10 @@ spring-boot-backend-course/
 ├── lesson-10-validation-exception-handling/  # 🍕 With validation
 ├── lesson-11-testing/               # 🍕 With comprehensive tests
 ├── lesson-12-jwt-authentication/    # 🍕 With JWT authentication
-└── lesson-13-swagger-openapi/       # 🍕 With API documentation
+└── lesson-14-swagger-openapi/       # 🍕 With API documentation
 ```
 
-The complete, final version of the project (used as the reference solution) lives separately in [`pizzastore/`](../pizzastore) at the root of the repository.
+The complete, final version of the project (used as the reference solution) lives in a **separate repository**: [PizzaStore](https://github.com/vives-backendprogramming/PizzaStore).
 
 ---
 
