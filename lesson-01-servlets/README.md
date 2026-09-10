@@ -349,14 +349,14 @@ import java.io.*;
 public class HelloServlet extends HttpServlet {
     
     @Override
-    protected void doGet(HttpServletRequest request, 
-                         HttpServletResponse response) 
+    protected void doGet(HttpServletRequest req, 
+                         HttpServletResponse resp) 
             throws ServletException, IOException {
         
-        response.setContentType("text/html");
-        response.setCharacterEncoding("UTF-8");
+        resp.setContentType("text/html");
+        resp.setCharacterEncoding("UTF-8");
         
-        PrintWriter out = response.getWriter();
+        PrintWriter out = resp.getWriter();
         out.println("<!DOCTYPE html>");
         out.println("<html>");
         out.println("<head><title>Hello Servlet</title></head>");
@@ -407,12 +407,12 @@ import java.io.*;
 public class HelloServlet extends HttpServlet {
     
     @Override
-    protected void doGet(HttpServletRequest request, 
-                         HttpServletResponse response) 
+    protected void doGet(HttpServletRequest req, 
+                         HttpServletResponse resp) 
             throws ServletException, IOException {
         
-        response.setContentType("text/html");
-        PrintWriter out = response.getWriter();
+        resp.setContentType("text/html");
+        PrintWriter out = resp.getWriter();
         
         out.println("<html><body>");
         out.println("<h1>Hello from Servlet!</h1>");
@@ -420,6 +420,8 @@ public class HelloServlet extends HttpServlet {
     }
 }
 ```
+
+> **Note**: Before Jakarta EE 9 (2020), this same API lived under the `javax.servlet.*` package instead of `jakarta.servlet.*`. If you find older Servlet 3.0 tutorials online, that's why their imports look different — the API itself is otherwise the same.
 
 ## ❌ Limitations of Servlets
 
@@ -594,7 +596,7 @@ public class UserController {
 ## 📖 Additional Resources
 
 - [Jakarta Servlet Specification](https://jakarta.ee/specifications/servlet/)
-- [Oracle Servlet Tutorial](https://docs.oracle.com/javaee/7/tutorial/servlets.htm)
+- [Jakarta Servlet 6.0 API JavaDoc](https://jakarta.ee/specifications/servlet/6.0/apidocs/)
 
 ---
 
