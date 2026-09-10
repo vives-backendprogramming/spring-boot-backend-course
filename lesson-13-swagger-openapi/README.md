@@ -1,4 +1,4 @@
-# Lesson 14: API Documentation with Swagger/OpenAPI
+# Lesson 13: API Documentation with Swagger/OpenAPI
 
 ---
 

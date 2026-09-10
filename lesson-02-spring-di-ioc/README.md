@@ -9,6 +9,7 @@
 - [🫘 What is a Bean?](#-what-is-a-bean)
 - [🔄 IoC Container](#-ioc-container)
 - [💉 Dependency Injection (DI)](#-dependency-injection-di)
+- [🗂️ Spring Application Context & Configuration Metadata](#️-spring-application-context--configuration-metadata)
 - [📦 Spring Stereotype Annotations](#-spring-stereotype-annotations)
 - [⚙️ @Configuration and @Bean](#️-configuration-and-bean)
 - [🔍 Component Scanning](#-component-scanning)
@@ -182,9 +183,11 @@ public class OrderService {
 
 **Benefits:**
 - Loose coupling
+- Increased cohesion (each class focuses on its own responsibility, not on building its dependencies)
 - Easy to test (inject mocks)
 - Easy to swap implementations
 - The framework controls object creation
+- Reduces boilerplate code (no manual `new`-ing and wiring of dependency graphs)
 
 ### The IoC Principle
 
@@ -198,7 +201,7 @@ public class OrderService {
 
 ---
 
-### 💉 Dependency Injection (DI)
+## 💉 Dependency Injection (DI)
 
 **Dependency Injection** is the mechanism by which IoC is achieved. Dependencies are "injected" into objects rather than objects creating their own dependencies.
 
@@ -271,6 +274,62 @@ public class NotificationService {
 
 ---
 
+## 🗂️ Spring Application Context & Configuration Metadata
+
+### The Spring Application Context
+
+The IoC container has a concrete implementation you'll actually use: the **Spring application context**, a Java object that implements `org.springframework.context.ApplicationContext`. It's responsible for:
+
+- **Instantiating** the beans in the application context
+- **Configuring** the beans in the application context
+- **Assembling** the beans (wiring their dependencies together)
+- **Managing the lifecycle** of Spring beans (from creation to destruction)
+
+It does all of this by reading **configuration metadata** — the instructions that tell Spring *what* to instantiate, configure, and assemble.
+
+### Configuration Metadata: Three Styles
+
+Configuration metadata can be written in three different ways. Spring added support for these over time:
+
+| Year | Spring Version | Style |
+|------|----------------|-------|
+| 2004 | Spring 1.0 | **XML-based configuration** (the original style) |
+| 2007 | Spring 2.5 | **Annotation-based configuration** (`@Component`, `@Autowired`, ...) |
+| 2009 | Spring 3.0 | **Java-based configuration** (`@Configuration`, `@Bean`) |
+
+Each newer style didn't replace the previous one — they coexist, and a Spring application can even mix them. In practice today, **annotation-based and Java-based configuration are what you'll use** (and what the rest of this lesson focuses on) — XML configuration is legacy and virtually never used in a modern Spring Boot application.
+
+#### XML-Based Configuration (Historical Context)
+
+Before annotations existed, every bean and every dependency was wired by hand in an XML file:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" ...>
+
+    <bean id="transferService" class="com.example.service.TransferServiceImpl">
+        <property name="accountRepository" ref="accountRepository" />
+    </bean>
+
+    <bean id="accountRepository" class="com.example.repository.AccountRepository">
+        <constructor-arg ref="dataSource"/>
+    </bean>
+
+    <bean id="dataSource" class="org.springframework.jdbc.datasource.DriverManagerDataSource">
+        <property name="driverClassName" value="com.mysql.cj.jdbc.Driver" />
+        <property name="url" value="jdbc:mysql://localhost:3306/db" />
+        <property name="username" value="user" />
+        <property name="password" value="pass" />
+    </bean>
+
+</beans>
+```
+
+This is verbose, error-prone (a typo in a class name only fails at runtime), and completely separate from the code it configures — exactly the kind of "configuration complexity" that annotation-based and Java-based configuration were created to solve. You won't write XML config in this course, but you'll likely still encounter it if you ever work on an older Spring codebase.
+
+---
+
 ## 📦 Spring Stereotype Annotations
 
 Spring uses **stereotype annotations** to identify beans automatically through **component scanning**.
@@ -278,14 +337,26 @@ Spring uses **stereotype annotations** to identify beans automatically through *
 ### The Annotation Hierarchy
 
 ```
-            @Component
-                 │
-    ┌────────────┼────────────┐
-    │            │            │
-@Service    @Repository   @Controller
+                    @Component
+                        │
+    ┌────────────┬──────┴──────┬────────────────┐
+    │            │             │                │
+@Service    @Repository   @Controller     @Configuration
 ```
 
-All stereotype annotations are **specializations** of `@Component`.
+All stereotype annotations are **specializations** of `@Component` — including `@Configuration` (covered later in this lesson). This isn't just a diagram convention: if you look at Spring's actual source code, `@Service` (and `@Configuration`) are themselves annotated with `@Component`:
+
+```java
+@Target(ElementType.TYPE)
+@Retention(RetentionPolicy.RUNTIME)
+@Documented
+@Component // <- this is what makes @Service a specialization
+public @interface Service {
+    // ...
+}
+```
+
+This is why component scanning (`@ComponentScan`) picks up `@Service`, `@Repository`, `@Controller`, and `@Configuration` classes alike — they're all, fundamentally, `@Component`.
 
 ### @Component
 
@@ -313,7 +384,6 @@ public class PizzaService {
     
     private final PizzaRepository pizzaRepository;
     
-    @Autowired
     public PizzaService(PizzaRepository pizzaRepository) {
         this.pizzaRepository = pizzaRepository;
     }
@@ -375,7 +445,6 @@ public class PizzaController {
     
     private final PizzaService pizzaService;
     
-    @Autowired
     public PizzaController(PizzaService pizzaService) {
         this.pizzaService = pizzaService;
     }
@@ -552,8 +621,6 @@ public class PizzaService {
 // Retrieve by custom name
 PizzaService service = (PizzaService) context.getBean("myPizzaService");
 ```
-
----
 
 ---
 
