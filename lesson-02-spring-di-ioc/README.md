@@ -628,30 +628,30 @@ PizzaService service = (PizzaService) context.getBean("myPizzaService");
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                  SPRING IOC CONTAINER                        │
-│              (Application Context)                           │
-│                                                              │
+│                  SPRING IOC CONTAINER                       │
+│              (Application Context)                          │
+│                                                             │
 │  1. SCAN packages for @Component, @Service, @Repository,    │
-│     @Controller                                              │
-│                                                              │
-│  2. CREATE bean instances                                    │
-│                                                              │
-│  3. WIRE dependencies using @Autowired                       │
-│                                                              │
-│  4. MANAGE lifecycle (initialization, destruction)           │
-│                                                              │
-│                                                              │
-│  ┌──────────────┐    ┌──────────────┐                      │
-│  │ @Controller  │───▶│  @Service    │                      │
-│  │              │    │              │                      │
-│  └──────────────┘    └──────┬───────┘                      │
+│     @Controller                                             │
+│                                                             │
+│  2. CREATE bean instances                                   │
+│                                                             │
+│  3. WIRE dependencies using @Autowired                      │
+│                                                             │
+│  4. MANAGE lifecycle (initialization, destruction)          │
+│                                                             │
+│                                                             │
+│  ┌──────────────┐    ┌──────────────┐                       │
+│  │ @Controller  │───▶│  @Service    │                       │
+│  │              │    │              │                       │
+│  └──────────────┘    └──────┬───────┘                       │
 │                             │                               │
 │                             ▼                               │
-│                      ┌──────────────┐                      │
-│                      │ @Repository  │                      │
-│                      │              │                      │
-│                      └──────────────┘                      │
-│                                                              │
+│                      ┌──────────────┐                       │
+│                      │ @Repository  │                       │
+│                      │              │                       │
+│                      └──────────────┘                       │
+│                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
 
