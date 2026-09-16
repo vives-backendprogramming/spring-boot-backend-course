@@ -13,7 +13,7 @@
 - [🏗️ Creating Spring Boot Projects](#️-creating-spring-boot-projects)
 - [📂 Spring Boot Project Structure](#-spring-boot-project-structure)
 - [🔍 Spring Boot DevTools](#-spring-boot-devtools)
-- [🍕 Building the PizzaStore - Complete Example with JPA](#-building-the-pizzastore---complete-example-with-jpa)
+- [🍕 Demo: Building a first PizzaStore](#-demo-building-a-first-pizzastore)
 - [🔧 What Just Happened?](#-what-just-happened)
 - [🏗️ Spring Boot Build Plugin](#️-spring-boot-build-plugin)
 - [📊 Spring Boot Actuator](#-spring-boot-actuator)
@@ -211,7 +211,7 @@ To build a REST API with Spring MVC, you'd need:
 ```xml
 <dependency>
     <groupId>org.springframework.boot</groupId>
-    <artifactId>spring-boot-starter-web</artifactId>
+    <artifactId>spring-boot-starter-webmvc</artifactId>
 </dependency>
 ```
 
@@ -228,10 +228,10 @@ This single starter brings in:
 
 | Starter | Purpose | Includes |
 |---------|---------|----------|
-| `spring-boot-starter-web` | Web applications with Spring MVC, REST | Spring MVC, Tomcat, JSON |
+| `spring-boot-starter-webmvc` | Web applications with Spring MVC, REST | Spring MVC, Tomcat, JSON |
 | `spring-boot-starter-data-jpa` | JPA with Hibernate | Spring Data JPA, Hibernate, JDBC |
 | `spring-boot-starter-security` | Spring Security | Spring Security |
-| `spring-boot-starter-test` | Testing | JUnit, Mockito, AssertJ |
+| `spring-boot-starter-webmvc-test` | Web layer testing | JUnit 5, Spring Test, AssertJ |
 | `spring-boot-starter-validation` | Bean Validation | Hibernate Validator |
 | `spring-boot-starter-actuator` | Production monitoring | Metrics, health checks |
 
@@ -240,7 +240,7 @@ This single starter brings in:
 ### How Starters Work
 
 ```
-spring-boot-starter-web
+spring-boot-starter-webmvc
     ├── spring-boot-starter
     │   ├── spring-boot
     │   ├── spring-boot-autoconfigure
@@ -472,7 +472,7 @@ There are three main ways to initialize a Spring Boot project:
 2. Choose project settings:
    - **Project**: Maven
    - **Language**: Java
-   - **Spring Boot version**: 3.5.7 (latest stable)
+   - **Spring Boot version**: The latest stable version of Spring Boot 4 (4.0.8 at the time of writing)
    - **Group**: `be.vives`
    - **Artifact**: `pizzastore-intro`
    - **Packaging**: Jar
@@ -500,7 +500,7 @@ IntelliJ generates the project structure directly in your workspace.
 **Install Spring Boot CLI** first, then:
 
 ```bash
-spring init --dependencies=web,data-jpa,h2,devtools pizzastore
+spring init --dependencies=webmvc,data-jpa,h2,devtools pizzastore
 ```
 
 **Options**:
@@ -511,7 +511,7 @@ spring init --dependencies=web,data-jpa,h2,devtools pizzastore
 
 **Example**:
 ```bash
-spring init -dweb,data-jpa,h2,devtools -b3.5.7 --java-version=25 pizzastore
+spring init -dwebmvc,data-jpa,h2,devtools -b4.0.8 --java-version=25 pizzastore
 ```
 
 ---
@@ -532,12 +532,12 @@ pizzastore-intro/
 │   │   │               ├── controller/
 │   │   │               │   └── PizzaController.java      # REST controllers
 │   │   │               ├── dto/
-│   │   │               │   └── PizzRequest.java          # Data transfer objects
+│   │   │               │   └── PizzaRequest.java         # Data transfer objects
 │   │   │               ├── service/
 │   │   │               │   └── PizzaService.java         # Business logic
 │   │   │               ├── repository/
 │   │   │               │   └── PizzaRepository.java      # Data access (JPA)
-│   │   │               └── model/
+│   │   │               └── domain/
 │   │   │                   └── Pizza.java                # Domain entities
 │   │   └── resources/
 │   │       ├── application.properties                    # Configuration
@@ -568,7 +568,7 @@ pizzastore-intro/
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.5.7</version>
+        <version>4.0.8</version>
         <relativePath/>
     </parent>
     
@@ -583,30 +583,16 @@ pizzastore-intro/
     </properties>
     
     <dependencies>
-        <!-- Web starter: Spring MVC + embedded Tomcat -->
+        <!-- H2 Console: web-based DB browser (its own starter as of Spring Boot 4) -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-web</artifactId>
+            <artifactId>spring-boot-h2console</artifactId>
         </dependency>
-        
+
         <!-- JPA starter: Spring Data JPA + Hibernate -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-jpa</artifactId>
-        </dependency>
-        
-        <!-- H2 in-memory database for development -->
-        <dependency>
-            <groupId>com.h2database</groupId>
-            <artifactId>h2</artifactId>
-            <scope>runtime</scope>
-        </dependency>
-        
-        <!-- DevTools for automatic restart -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-devtools</artifactId>
-            <optional>true</optional>
         </dependency>
 
         <!-- Spring Boot Starter Validation: Bean Validation with Hibernate Validator -->
@@ -614,11 +600,42 @@ pizzastore-intro/
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-validation</artifactId>
         </dependency>
-        
-        <!-- Test starter -->
+
+        <!-- Web starter: Spring MVC + embedded Tomcat -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-test</artifactId>
+            <artifactId>spring-boot-starter-webmvc</artifactId>
+        </dependency>
+        
+        <!-- DevTools for automatic restart -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-devtools</artifactId>
+            <scope>runtime</scope>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- H2 in-memory database for development -->
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- Test starters: JPA/repository layer + validation + web layer -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jpa-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-webmvc-test</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>
@@ -633,6 +650,8 @@ pizzastore-intro/
     </build>
 </project>
 ```
+
+**💡 Tip**: this is exactly what you get if you generate the project yourself on [start.spring.io](https://start.spring.io) — Group `be.vives`, Artifact `pizzastore-intro`, Java 25, with the dependencies from Step 1 below. No manual `maven-compiler-plugin` override needed anymore: the parent already picks a compiler plugin that understands `java.version=25`.
 
 **PizzaStoreApplication.java**:
 ```java
@@ -697,8 +716,11 @@ Follow the **Creating Spring Boot Projects** section above to create a project w
 - Spring Web
 - Spring Data JPA
 - H2 Database
+- H2 Console
 - Spring Boot DevTools
 - Spring Boot Validation
+
+**Note**: as of Spring Boot 4, the H2 Console has its own starter — `spring-boot-h2console` — separate from the `h2` driver itself. Both are needed if you want to browse the database in your browser (see Step 2).
 
 ### Step 2: Configure application.properties
 
@@ -722,7 +744,7 @@ spring.h2.console.path=/h2-console
 spring.jpa.hibernate.ddl-auto=create-drop
 spring.jpa.show-sql=true
 spring.jpa.properties.hibernate.format_sql=true
-spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.H2Dialect
+spring.jpa.defer-datasource-initialization=true
 
 # Server
 server.port=8080
@@ -740,16 +762,17 @@ spring.devtools.restart.enabled=true
 - **H2 Database**: In-memory database, perfect for development
 - **ddl-auto=create-drop**: Creates tables on startup, drops on shutdown
 - **show-sql=true**: Shows SQL statements in console
-- **h2.console.enabled=true**: Enables web console to view database
+- **h2.console.enabled=true**: Enables the web console — but only takes effect if the `spring-boot-h2console` starter from Step 1 is on the classpath; without it, `/h2-console` returns a plain `404`
+- **defer-datasource-initialization=true**: Runs `data.sql` *after* Hibernate creates the schema (instead of before), since Hibernate — not a manual schema script — owns table creation here
 
 ### Step 3: Create the Pizza Entity
 
-For this introductory demo, we keep the Pizza entity simple with just three fields: id, description, and price.
+For this introductory demo, we keep the Pizza entity simple with just three fields: id, name, and price. This matches the `Pizza` entity of the final PizzaStore project — later lessons will simply *add* fields and relationships (description, image, availability, nutritional info, ...) on top of this same entity.
 
-**`src/main/java/be/vives/pizzastore/model/Pizza.java`**:
+**`src/main/java/be/vives/pizzastore/domain/Pizza.java`**:
 
 ```java
-package be.vives.pizzastore.model;
+package be.vives.pizzastore.domain;
 
 import jakarta.persistence.*;
 import java.math.BigDecimal;
@@ -762,8 +785,8 @@ public class Pizza {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     
-    @Column(nullable = false, length = 500)
-    private String description;
+    @Column(nullable = false, length = 100)
+    private String name;
     
     @Column(nullable = false, precision = 10, scale = 2)
     private BigDecimal price;
@@ -771,8 +794,8 @@ public class Pizza {
     public Pizza() {
     }
     
-    public Pizza(String description, BigDecimal price) {
-        this.description = description;
+    public Pizza(String name, BigDecimal price) {
+        this.name = name;
         this.price = price;
     }
     
@@ -784,12 +807,12 @@ public class Pizza {
         this.id = id;
     }
     
-    public String getDescription() {
-        return description;
+    public String getName() {
+        return name;
     }
     
-    public void setDescription(String description) {
-        this.description = description;
+    public void setName(String name) {
+        this.name = name;
     }
     
     public BigDecimal getPrice() {
@@ -804,7 +827,7 @@ public class Pizza {
     public String toString() {
         return "Pizza{" +
                 "id=" + id +
-                ", description='" + description + '\'' +
+                ", name='" + name + '\'' +
                 ", price=" + price +
                 '}';
     }
@@ -869,7 +892,7 @@ public record PizzaRequest(
 ```java
 package be.vives.pizzastore.repository;
 
-import be.vives.pizzastore.model.Pizza;
+import be.vives.pizzastore.domain.Pizza;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -893,7 +916,7 @@ The service layer handles business logic and performs the **mapping** between DT
 package be.vives.pizzastore.service;
 
 import be.vives.pizzastore.dto.PizzaRequest;
-import be.vives.pizzastore.model.Pizza;
+import be.vives.pizzastore.domain.Pizza;
 import be.vives.pizzastore.repository.PizzaRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -937,10 +960,9 @@ public class PizzaService {
 **Key Points**:
 - `@Service`: Marks this as a Spring service component
 - `@Transactional`: Ensures database operations are transactional
-- **Manual mapping**: Simple mapping from `PizzaRequest` to `Pizza` entity
-- The `name` from the request becomes the `description` in the entity
+- **Manual mapping**: Simple, one-to-one mapping from `PizzaRequest` to `Pizza` entity
 
-**Note**: For more complex mappings, you would use a library like MapStruct or ModelMapper. We'll cover that in a later lesson.
+**Note**: For more complex mappings, you would use a library like MapStruct. We'll cover that in a later lesson.
 
 ### Step 7: Create the REST Controller
 
@@ -950,7 +972,7 @@ public class PizzaService {
 package be.vives.pizzastore.controller;
 
 import be.vives.pizzastore.dto.PizzaRequest;
-import be.vives.pizzastore.model.Pizza;
+import be.vives.pizzastore.domain.Pizza;
 import be.vives.pizzastore.service.PizzaService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -996,30 +1018,30 @@ public class PizzaController {
 - `@Valid`: Triggers validation on the `PizzaRequest` object
 
 **Validation in Action**:
-When `@Valid` is used, Spring automatically validates the request object based on the constraints defined in `PizzaRequest`. If validation fails, Spring returns a `400 Bad Request` with details about validation errors.
+When `@Valid` is used, Spring automatically validates the request object based on the constraints defined in `PizzaRequest`. If validation fails, Spring returns a `400 Bad Request`. This project doesn't have a custom exception handler yet, so the response body stays generic for now — we'll build a proper `GlobalExceptionHandler` that returns field-level error details in the validation & exception handling lesson.
 
 ### Step 8: Add Sample Data (Optional)
 
 **Create `src/main/resources/data.sql`**:
 
 ```sql
-INSERT INTO pizzas (description, price) 
+INSERT INTO pizzas (name, price)
 VALUES ('Classic tomato and mozzarella', 8.99);
 
-INSERT INTO pizzas (description, price) 
+INSERT INTO pizzas (name, price)
 VALUES ('Pepperoni and cheese', 10.99);
 
-INSERT INTO pizzas (description, price) 
+INSERT INTO pizzas (name, price)
 VALUES ('Four cheese blend', 11.99);
 
-INSERT INTO pizzas (description, price) 
+INSERT INTO pizzas (name, price)
 VALUES ('Fresh vegetables', 9.99);
 
-INSERT INTO pizzas (description, price) 
+INSERT INTO pizzas (name, price)
 VALUES ('Spicy salami', 12.99);
 ```
 
-**Note**: Spring Boot automatically executes `data.sql` on startup when using H2.
+**Note**: Spring Boot automatically executes `data.sql` on startup when using H2, after Hibernate creates the schema (thanks to `spring.jpa.defer-datasource-initialization=true` from Step 2).
 
 ### Step 9: Run the Application
 
@@ -1046,7 +1068,7 @@ java -jar target/pizzastore-intro-1.0.0.jar
   '  |____| .__|_| |_|_| |_\__, | / / / /
  =========|_|==============|___/=/_/_/_/
 
- :: Spring Boot ::               (v3.5.7)
+ :: Spring Boot ::               (v4.0.8)
 
 2024-01-15 10:00:00 INFO  PizzaStoreApplication: Starting PizzaStoreApplication
 2024-01-15 10:00:01 INFO  PizzaService: PizzaService initialized
@@ -1103,19 +1125,13 @@ curl -X POST http://localhost:8080/api/pizzas \
   }'
 ```
 
-This will return a `400 Bad Request` with validation error details:
+This will return a `400 Bad Request`. Without a custom exception handler, Spring Boot's default error response is generic — it confirms *that* the request was rejected, but not *which* field failed or why:
 ```json
 {
+  "timestamp": "2026-01-15T10:00:00.000Z",
   "status": 400,
   "error": "Bad Request",
-  "message": "Validation failed for object='pizzaRequest'. Error count: 1",
-  "errors": [
-    {
-      "field": "price",
-      "rejectedValue": 25.00,
-      "defaultMessage": "Price must not exceed 20"
-    }
-  ]
+  "path": "/api/pizzas"
 }
 ```
 
@@ -1128,18 +1144,17 @@ curl -X POST http://localhost:8080/api/pizzas \
   }'
 ```
 
-This will return:
+This returns the same generic `400 Bad Request` shape:
 ```json
 {
+  "timestamp": "2026-01-15T10:00:00.000Z",
   "status": 400,
-  "errors": [
-    {
-      "field": "name",
-      "defaultMessage": "Name is required"
-    }
-  ]
+  "error": "Bad Request",
+  "path": "/api/pizzas"
 }
 ```
+
+**Try it yourself**: run the app and watch the console — Spring logs the *actual* validation failure server-side as a `WARN` from `DefaultHandlerExceptionResolver` (field name, rejected value, violated constraint), even though the client only sees the generic response above. That gap is exactly what a `GlobalExceptionHandler` will close in a later lesson.
 
 ### Using Postman
 
@@ -1160,12 +1175,12 @@ This will return:
 [
   {
     "id": 1,
-    "description": "Classic tomato and mozzarella",
+    "name": "Classic tomato and mozzarella",
     "price": 8.99
   },
   {
     "id": 2,
-    "description": "Pepperoni and cheese",
+    "name": "Pepperoni and cheese",
     "price": 10.99
   }
 ]
@@ -1175,7 +1190,7 @@ This will return:
 ```json
 {
   "id": 6,
-  "description": "Hawaii",
+  "name": "Hawaii",
   "price": 11.99
 }
 ```
@@ -1342,7 +1357,7 @@ curl http://localhost:8080/actuator/beans
 curl http://localhost:8080/actuator/mappings
 ```
 
-**Note**: We'll explore Actuator in depth in Lesson 16.
+**Note**: Actuator isn't covered in a dedicated lesson in this course — this is just a quick taste of what Spring Boot offers for production monitoring.
 
 ---
 
@@ -1422,6 +1437,8 @@ curl http://localhost:8080/actuator/mappings
 - [Spring Boot DevTools Documentation](https://docs.spring.io/spring-boot/docs/current/reference/html/using.html#using.devtools)
 - [Spring Boot Actuator](https://docs.spring.io/spring-boot/docs/current/reference/html/actuator.html)
 - [Spring Boot Auto-Configuration](https://docs.spring.io/spring-boot/docs/current/reference/html/using.html#using.auto-configuration)
+
+**Note on the book**: This lesson closely follows *Pro Spring Boot 4*, Chapter 1: *Spring Boot Quick Start* — the same Spring Initializr walkthrough, the same `@SpringBootApplication` breakdown, and the same "latest stable Spring Boot 4" / `spring-boot-starter-webmvc` setup. The book's own demo (a read-only Customer CRM) skips a database entirely; this lesson goes one step further and wires up JPA + H2 so the very first PizzaStore version is already backed by a real, persistent entity.
 
 ---
 

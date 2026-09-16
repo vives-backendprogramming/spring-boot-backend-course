@@ -1,6 +1,6 @@
 package be.vives.pizzastore.repository;
 
-import be.vives.pizzastore.model.Pizza;
+import be.vives.pizzastore.domain.Pizza;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 

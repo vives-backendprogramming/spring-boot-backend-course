@@ -1,7 +1,7 @@
 package be.vives.pizzastore.controller;
 
+import be.vives.pizzastore.domain.Pizza;
 import be.vives.pizzastore.dto.PizzaRequest;
-import be.vives.pizzastore.model.Pizza;
 import be.vives.pizzastore.service.PizzaService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;

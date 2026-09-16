@@ -1,7 +1,7 @@
 package be.vives.pizzastore.service;
 
+import be.vives.pizzastore.domain.Pizza;
 import be.vives.pizzastore.dto.PizzaRequest;
-import be.vives.pizzastore.model.Pizza;
 import be.vives.pizzastore.repository.PizzaRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
