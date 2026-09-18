@@ -128,6 +128,24 @@ Right now, `DummyEmailService` always "sends" (prints) emails, in every environm
 
 3. **Refactor `TeacherService`** so its field and constructor parameter are typed `EmailService` instead of the concrete `DummyEmailService`. This is the same "depend on an abstraction" idea behind the DAO/service split from Lesson 2.
 
+   ```java
+   @Service
+   public class TeacherService {
+   
+       private TeacherDao teacherDao;
+       private StudentService studentService;
+       private EmailService emailService;   // <--- `EmailService` interface instead of the concrete `DummyEmailService`
+   
+       public TeacherService(TeacherDao teacherDao, 
+                             StudentService studentService, 
+                             EmailService emailService) {     // <--- `EmailService` interface instead of the concrete `DummyEmailService`
+           this.teacherDao = teacherDao;
+           this.studentService = studentService;
+           this.emailService = emailService;
+       }
+   }
+   ```
+
 4. Run the application again — it should behave exactly as before. Spring only has one bean of type `EmailService` (`DummyEmailService`), so nothing is ambiguous yet.
 
 5. **Create a second implementation**, `ProdEmailService`, also implementing `EmailService` and annotated `@Service`:
@@ -181,8 +199,8 @@ Right now, `DummyEmailService` always "sends" (prints) emails, in every environm
 
 ## 📤 Submitting Your Work
 
-Commit and push your changes to your own GitHub Classroom repository, as instructed on Toledo.
+Commit and push your changes to your own GitHub repository.
 
 ## 🔍 Reference Solution
 
-At the time of writing, no reference-solution branch for this lesson's exercise has been published yet in [`vives-backendprogramming/SchoolAdministration`](https://github.com/vives-backendprogramming/SchoolAdministration) (only `opgave`, `ioctoepassen`, and `springcontextaware` exist, covering Lesson 2). Use the [Lesson 2 reference solution](../lesson-02-spring-di-ioc/EXERCISE.md#-reference-solution) as your starting point and this document as your guide.
+The `propertiesenprofielen` branch of [`vives-backendprogramming/SchoolAdministration`](https://github.com/vives-backendprogramming/SchoolAdministration/tree/propertiesenprofielen) contains the full reference solution for this exercise, built on top of `springcontextaware` (the [Lesson 2 reference solution](../lesson-02-spring-di-ioc/EXERCISE.md#-reference-solution)).
