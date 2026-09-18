@@ -712,6 +712,7 @@ PizzaService service = (PizzaService) context.getBean("myPizzaService");
 
 ## 📖 Additional Resources
 
+- 🧪 **[Hands-On Exercise](EXERCISE.md)** — refactor a real tightly-coupled application (`SchoolAdministration`) to IoC & DI, step by step
 - [Spring Framework Documentation](https://docs.spring.io/spring-framework/reference/)
 - [Core Technologies (IoC Container)](https://docs.spring.io/spring-framework/reference/core.html)
 - [Bean Definition](https://docs.spring.io/spring-framework/reference/core/beans/definition.html)
