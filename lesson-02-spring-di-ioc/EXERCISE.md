@@ -30,7 +30,7 @@ By the end of this exercise, you will have:
 
 ## 🚀 Getting Started
 
-1. Clone the starter project: [`vives-backendprogramming/SchoolAdministrationStart`](https://github.com/vives-backendprogramming/SchoolAdministrationStart)
+1. Accept [`classroom assignment`](https://classroom50.org/vives-backendprogramming/vives-java-backend-programming/assignments/schooladministration/accept) with starter project
 2. Open it in IntelliJ.
 3. Run `SchoolAdminApp.main()` and look at the console output — you should see a mock "email" printed for a message sent from a teacher to one student, and a batch of mock emails sent to an entire class.
 4. Explore the project. Make sure you understand each class's responsibility before touching anything:
