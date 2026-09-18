@@ -6,7 +6,9 @@
 - [🎯 Learning Objectives](#-learning-objectives)
 - [🔧 Why Externalize Configuration?](#-why-externalize-configuration)
 - [💉 @Value Annotation](#-value-annotation)
+- [📍 Where Properties Come From (Property Sources & Priority)](#-where-properties-come-from-property-sources--priority)
 - [📄 Property Files](#-property-files)
+- [📃 YAML Files](#-yaml-files)
 - [🔌 @PropertySource](#-propertysource)
 - [🌍 Spring Profiles](#-spring-profiles)
 - [🎭 What are Spring Profiles?](#-what-are-spring-profiles)
@@ -78,7 +80,7 @@ public class DataSourceConfig {
 
 **You can use**:
 - Properties files
-- YAML files (not covered in this course)
+- YAML files  — not used in this course, but good to recognize
 - Environment variables
 - Command-line arguments
 
@@ -161,6 +163,25 @@ private String appName;  // Uses "MyApp" if property not found
 
 ---
 
+## 📍 Where Properties Come From (Property Sources & Priority)
+
+`@Value("${...}")` doesn't read a single file — it reads from the **Spring `Environment`**. The `Environment` pulls properties from several different **property sources** (JVM system properties, OS environment variables, property files, ...) and exposes them to your beans as one unified set of values, so a bean never has to know *where* a property actually came from.
+
+A property can be configured in several different places at once:
+
+1. **Command-line arguments** (e.g. `--server.port=8080`)
+2. **JVM system properties** (e.g. `-Dserver.port=8080`)
+3. **OS environment variables**
+4. **`application.properties` file outside the application** (e.g. on the application server)
+5. **`application.properties` file inside the application** (on the classpath, `src/main/resources`)
+6. **Property sources supplied via `@PropertySource`/`@PropertySources`**
+
+This list is in **order of priority**: a property source higher in the list overrides the same property defined in a source lower in the list. So if you set `server.port` both in `application.properties` *and* as a JVM system property (`-Dserver.port=...`), the JVM system property wins because it's higher up.
+
+This is exactly why the [Configuration Hierarchy](#configuration-hierarchy) at the end of this lesson puts command-line arguments and environment variables above property files — it's the same priority order, just applied to the subset of sources you'll use most often in this course.
+
+---
+
 ## 📄 Property Files
 
 ### Creating application.properties
@@ -199,6 +220,36 @@ db.port=5432
 - Group related properties with common prefix
 - Document properties with comments
 - Use lowercase with dots as separators
+
+---
+
+## 📃 YAML Files
+
+Besides `.properties`, Spring also supports **YAML** (`.yml`) as a property file format. The same data, just written hierarchically instead of as flat `key=value` pairs:
+
+**`application.properties`**:
+```properties
+server.port=9090
+spring.application.name=demoservice
+datasource.url=jdbc:mysql://localhost:3601/db
+```
+
+**`application.yml`** (equivalent):
+```yaml
+spring:
+  application:
+    name: demoservice
+server:
+  port: 9090
+datasource:
+  url: jdbc:mysql://localhost:3601/db
+```
+
+Both resolve to the exact same properties (`server.port`, `spring.application.name`, `datasource.url`) once loaded into the `Environment` — `@Value("${server.port}")` works identically regardless of which format produced the value.
+
+**⚠️ Does this work in plain Spring?** Not out of the box. Unlike `.properties`, plain Spring **cannot** parse a `.yml` file without an extra dependency: `org.yaml.snakeyaml` must be added to the classpath yourself. **Spring Boot**, starting in [Lesson 4](../lesson-04-spring-boot-intro/README.md), ships this dependency automatically via `spring-boot-starter`, which is why YAML "just works" there with zero extra setup.
+
+This course use `.properties` throughout, so YAML itself is not covered in depth — but recognize it when you see it, since it's the format Spring Boot projects (including the book) tend to default to.
 
 ---
 
@@ -806,12 +857,18 @@ logging.level.org.springframework=ERROR
 
 ### Configuration Hierarchy
 
+The full property-source priority order, as covered in [Where Properties Come From](#-where-properties-come-from-property-sources--priority):
+
 ```
-Command Line Arguments        ← Highest Priority
-Environment Variables
-application-{profile}.properties
-application.properties        ← Lowest Priority
+Command-Line Arguments               ← Highest Priority
+JVM System Properties (-D...)
+OS Environment Variables
+application.properties (outside the app)
+application.properties (on the classpath)
+@PropertySource-supplied files       ← Lowest Priority
 ```
+
+Within that "property files" tier, once profiles enter the picture (Spring Boot, [Lesson 4](../lesson-04-spring-boot-intro/README.md)): `application-{profile}.properties` overrides `application.properties` for any key they both define.
 
 ### Best Practices Recap
 
@@ -836,6 +893,7 @@ application.properties        ← Lowest Priority
 
 ## 📖 Additional Resources
 
+- 🧪 **[Hands-On Exercise](EXERCISE.md)** — externalize config and swap implementations with `@Profile` on `SchoolAdministration`
 - [Spring Environment Abstraction](https://docs.spring.io/spring-framework/reference/core/beans/environment.html)
 - [Spring Profiles Documentation](https://docs.spring.io/spring-framework/reference/core/beans/environment.html#beans-definition-profiles)
 - [SLF4J Documentation](http://www.slf4j.org/)
