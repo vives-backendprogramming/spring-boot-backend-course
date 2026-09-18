@@ -19,6 +19,8 @@ The finished reference solution lives in a separate repository, [**PizzaStore**]
 3. **Properties and Profiles** - Configuration management
 4. **Spring Boot Introduction** - First PizzaStore project
 
+> 📌 **Lessons 1-3 are plain Spring, by design.** They teach Spring's core mechanisms (servlets, dependency injection, externalized configuration) by hand, *before* Spring Boot automates them — so that Lesson 4's "Convention over Configuration" lands as a payoff, not a black box. As a result, these three lessons don't map to a chapter in *Pro Spring Boot 4*; book alignment starts from Lesson 4, which corresponds to the book's Chapter 1.
+
 **Web & Data**
 
 5. **Spring MVC** - Web application architecture
@@ -86,7 +88,7 @@ spring-boot-backend-course/
 ├── lesson-10-validation-exception-handling/  # 🍕 With validation
 ├── lesson-11-testing/               # 🍕 With comprehensive tests
 ├── lesson-12-jwt-authentication/    # 🍕 With JWT authentication
-└── lesson-14-swagger-openapi/       # 🍕 With API documentation
+└── lesson-13-swagger-openapi/       # 🍕 With API documentation
 ```
 
 The complete, final version of the project (used as the reference solution) lives in a **separate repository**: [PizzaStore](https://github.com/vives-backendprogramming/PizzaStore).

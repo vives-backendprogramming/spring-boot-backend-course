@@ -237,21 +237,6 @@ This single starter brings in:
 
 **Full list**: https://docs.spring.io/spring-boot/docs/current/reference/html/using.html#using.build-systems.starters
 
-### How Starters Work
-
-```
-spring-boot-starter-webmvc
-    ├── spring-boot-starter
-    │   ├── spring-boot
-    │   ├── spring-boot-autoconfigure
-    │   └── logging dependencies
-    ├── spring-boot-starter-tomcat
-    │   └── tomcat-embed-*
-    ├── spring-web
-    ├── spring-webmvc
-    └── jackson-databind
-```
-
 **Benefits**:
 - ✅ **Single dependency** instead of many
 - ✅ **Tested combinations** that work together
@@ -472,7 +457,7 @@ There are three main ways to initialize a Spring Boot project:
 2. Choose project settings:
    - **Project**: Maven
    - **Language**: Java
-   - **Spring Boot version**: The latest stable version of Spring Boot 4 (4.0.8 at the time of writing)
+   - **Spring Boot version**: The latest stable version of Spring Boot 4
    - **Group**: `be.vives`
    - **Artifact**: `pizzastore-intro`
    - **Packaging**: Jar
@@ -651,7 +636,7 @@ pizzastore-intro/
 </project>
 ```
 
-**💡 Tip**: this is exactly what you get if you generate the project yourself on [start.spring.io](https://start.spring.io) — Group `be.vives`, Artifact `pizzastore-intro`, Java 25, with the dependencies from Step 1 below. No manual `maven-compiler-plugin` override needed anymore: the parent already picks a compiler plugin that understands `java.version=25`.
+💡 this is exactly what you get if you generate the project yourself on [start.spring.io](https://start.spring.io) — Group `be.vives`, Artifact `pizzastore-intro`, Java 25, with the dependencies from Step 1 below. 
 
 **PizzaStoreApplication.java**:
 ```java

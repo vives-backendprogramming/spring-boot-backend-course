@@ -175,7 +175,7 @@ vives.jdbc.oracle.username=username
 vives.jdbc.oracle.password=password
 ```
 
-**Location**: Always in `src/main/resources/application.properties`
+**Location**: conventionally on the classpath root (`src/main/resources`) — but unlike Spring Boot later in this course, plain Spring does **not** discover this file automatically. You have to point Spring at it yourself with `@PropertySource` (see below).
 
 ### Property File Conventions
 
@@ -212,10 +212,17 @@ The `@PropertySource` annotation tells Spring where to find your properties file
 @Configuration
 @PropertySource("classpath:/application.properties")
 public class AppConfig {
+
+    @Bean
+    public static PropertySourcesPlaceholderConfigurer propertySourcesPlaceholderConfigurer() {
+        return new PropertySourcesPlaceholderConfigurer();
+    }
 }
 ```
 
 **`classpath:`** refers to `src/main/resources/`
+
+**⚠️ Don't skip the `PropertySourcesPlaceholderConfigurer` bean.** Without it, `@Value("${...}")` placeholders won't resolve in plain Spring — this is the single most common mistake with `@PropertySource`. The bean must be `static` so Spring can process it very early, before other `@Configuration` classes that use `@Value` are processed.
 
 ### Multiple Property Sources
 
@@ -398,16 +405,48 @@ src/main/resources/
   └── application-prod.properties     # Production only
 ```
 
-### How It Works
+### How It Works (in Spring Boot — coming in Lesson 4)
 
-1. Spring always loads `application.properties` first
-2. If a profile is active, Spring loads `application-{profile}.properties`
+Once we introduce Spring Boot in [Lesson 4](../lesson-04-spring-boot-intro/README.md), this naming convention becomes fully automatic:
+
+1. Spring Boot always loads `application.properties` first
+2. If a profile is active, Spring Boot also loads `application-{profile}.properties`
 3. Profile-specific properties **override** common properties
 4. You can have multiple profiles active simultaneously
+
+### Wiring It Up Yourself (plain Spring, no Boot)
+
+Plain Spring Framework does **not** know this naming convention — nothing loads `application-{profile}.properties` for you automatically. You wire it up yourself by combining `@Profile` with `@PropertySource`, one `@Configuration` class per environment:
+
+```java
+@Configuration
+@Profile("dev")
+@PropertySource("classpath:/application-dev.properties")
+public class DevConfig {
+}
+
+@Configuration
+@Profile("prod")
+@PropertySource("classpath:/application-prod.properties")
+public class ProdConfig {
+}
+```
+
+Only the `@Configuration` class matching the active profile gets processed, so only its `@PropertySource` gets loaded. This is exactly the pattern Spring Boot automates for you later: **conditional configuration based on a property**. The same underlying idea powers Boot's auto-configuration classes — there it's `@ConditionalOnProperty` / `@ConditionalOnClass` instead of `@Profile`, but the mechanism (a `@Configuration` class that only activates under certain conditions) is identical.
+
+**What actually retires in Spring Boot — and what doesn't.** It's tempting to read the above as "this is all obsolete once Boot arrives." Be precise about *what* gets automated:
+
+- ❌ **Obsolete in Boot**: this exact ritual — a `PropertySourcesPlaceholderConfigurer` bean, plus one hand-written `@Configuration` class per environment whose only job is to glue a profile name to a properties filename. You will essentially never write this again once you're on Spring Boot; `application-{profile}.properties` just loads itself.
+- ✅ **Still very real in Boot**: `@Profile` itself. You'll keep using it directly on `@Component`/`@Bean` for things that have nothing to do with property files — e.g. `@Profile("test")` on a mock/stub bean, `@Profile("!prod")` on a dev-only controller. Boot automates the *file-loading* convention, not the annotation.
+- ✅ **Still very real in Boot**: `@PropertySource` itself. Boot only auto-loads `application.properties` / `application-{profile}.properties` by convention — the moment you need a *non-standard* properties file (a legacy config file, a third-party library's properties, something outside the `application*` naming), you reach for `@PropertySource` on a `@Configuration` class exactly as you did here.
+
+So what you're learning here isn't dead knowledge that Boot throws away — it's the general-purpose mechanism (`Environment`, profiles, property sources) that Boot *also* runs on. Boot just removes one specific, repetitive wiring chore built on top of it.
 
 ---
 
 ## 🚀 Activating Profiles
+
+> **Note**: the runnable `.jar` shown below (`java -jar your-app.jar`) is a Spring Boot packaging feature you'll get in [Lesson 4](../lesson-04-spring-boot-intro/README.md). For now, in plain Spring, apply the same `-D`/`--` flags to however you currently launch your `main()` class — directly with `java`, or via your IDE's Run Configuration.
 
 ### ❌ Option 1: In Property File (Not Recommended)
 
@@ -429,28 +468,32 @@ These are the **recommended** ways to activate profiles:
 #### 1. JVM System Property
 
 ```bash
-java -jar pizzastore.jar -Dspring.profiles.active=dev
+java -Dspring.profiles.active=dev -jar your-app.jar
 ```
+
+**Watch the order**: `-D` system properties must come *before* `-jar` on the command line — anything after `-jar your-app.jar` is passed to your application as a plain argument, not read by the JVM as a system property.
 
 #### 2. Environment Variable
 
 **Linux/Mac**:
 ```bash
 export spring_profiles_active=dev
-java -jar pizzastore.jar
+java -jar your-app.jar
 ```
 
 **Windows**:
 ```cmd
 set spring_profiles_active=dev
-java -jar pizzastore.jar
+java -jar your-app.jar
 ```
 
 #### 3. Command Line Argument
 
 ```bash
-java -jar pizzastore.jar --spring.profiles.active=prod
+java -jar your-app.jar --spring.profiles.active=prod
 ```
+
+**Plain Spring caveat**: this `--flag=value` parsing (backed by Spring Framework's `SimpleCommandLinePropertySource`) doesn't happen automatically in a plain `AnnotationConfigApplicationContext` — you'd register it yourself in `main()`. Spring Boot's `SpringApplication.run(args)` wires this in for you, which is why it "just works" there.
 
 #### 4. In IDE (IntelliJ IDEA)
 
@@ -463,7 +506,7 @@ java -jar pizzastore.jar --spring.profiles.active=prod
 You can activate multiple profiles:
 
 ```bash
-java -jar pizzastore.jar --spring.profiles.active=prod,monitoring,ssl
+java -jar your-app.jar --spring.profiles.active=prod,monitoring,ssl
 ```
 
 Properties are loaded in order, with later profiles overriding earlier ones.
@@ -483,9 +526,9 @@ Logging is essential for:
 
 ### Logging in Spring
 
-Spring uses **SLF4J** (Simple Logging Facade for Java) as its logging abstraction with **Logback** as the default implementation.
+Spring Framework uses **Commons Logging** internally but leaves the concrete logging implementation open; in practice, almost every project pairs it with **SLF4J** (Simple Logging Facade for Java) and **Logback**.
 
-**No extra dependencies needed** - Spring includes them automatically!
+**In plain Spring, you add these yourself**: `slf4j-api` and `logback-classic` as Maven dependencies. (Once we move to Spring Boot in [Lesson 4](../lesson-04-spring-boot-intro/README.md), `spring-boot-starter` brings both in automatically — one less thing to configure.)
 
 ---
 
@@ -797,6 +840,8 @@ application.properties        ← Lowest Priority
 - [Spring Profiles Documentation](https://docs.spring.io/spring-framework/reference/core/beans/environment.html#beans-definition-profiles)
 - [SLF4J Documentation](http://www.slf4j.org/)
 - [Logback Documentation](https://logback.qos.ch/)
+
+**Note on the book**: *Pro Spring Boot 4* skips this "plain Spring" stage entirely — it starts directly from Spring Boot's `@ConfigurationProperties` / `@ConfigurationPropertiesScan` (Chapter 2: *Externalized Configuration*, *Profiles*). Once you've finished [Lesson 4](../lesson-04-spring-boot-intro/README.md), it's worth reading that chapter to see the type-safe, auto-configured version of everything you just did by hand here.
 
 ---
 
