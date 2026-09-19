@@ -118,10 +118,11 @@ When a HTTP request arrives, here's what happens:
 
 1. **DispatcherServlet** receives the request (front controller)
 2. **HandlerMapping** finds the right controller method
-3. **Controller** processes the request and returns a result
-4. **ViewResolver** resolves views (traditional apps) OR
-5. **Jackson** serializes objects to JSON (REST APIs)
-6. Response sent back to client
+3. **HandlerAdapter** invokes that method, resolving arguments like `@PathVariable`/`@RequestBody` along the way
+4. **Controller** processes the request and returns a result
+5. **ViewResolver** resolves views (traditional apps) OR
+6. **Jackson** serializes objects to JSON (REST APIs)
+7. Response sent back to client
 
 Spring Boot **autoconfigures** all of this for you!
 
@@ -140,6 +141,12 @@ Spring Boot **autoconfigures** all of this for you!
 - Handler mappings determine which controller method should handle an incoming request.
 - Mapping is commonly done via annotations (`@RequestMapping`, `@GetMapping`, `@PostMapping`, etc.).
 - Multiple strategies exist (URL path patterns, HTTP method, headers, content types). Spring evaluates the best match.
+- **Spring Boot 4**: URL matching now always uses `PathPattern` — the old `AntPathMatcher` strategy is gone. `PathPattern` parses and caches patterns at startup, which makes request routing faster at runtime (some legacy `AntPathMatcher` syntax, like certain uses of `**`, behaves slightly differently under `PathPattern`).
+
+#### Handler Adapter
+
+- Once the `HandlerMapping` has found the right controller, the `DispatcherServlet` uses a `HandlerAdapter` to actually invoke that controller's method.
+- The adapter is what resolves method arguments such as `@PathVariable` and `@RequestBody` before calling your code (see [Request Parameters](#-request-parameters) below).
 
 #### View Resolver
 
@@ -147,16 +154,18 @@ Spring Boot **autoconfigures** all of this for you!
 - Used in traditional MVC applications that render HTML on the server side (Thymeleaf, JSP, FreeMarker).
 - For a REST API (`@RestController`) the view resolver is typically not used because methods return data (JSON) rather than view names.
 
-### What's in `spring-boot-starter-web`?
+### What's in `spring-boot-starter-webmvc`?
 
 When you add this dependency, you get:
 
 ```xml
 <dependency>
     <groupId>org.springframework.boot</groupId>
-    <artifactId>spring-boot-starter-web</artifactId>
+    <artifactId>spring-boot-starter-webmvc</artifactId>
 </dependency>
 ```
+
+**Note**: as of Spring Boot 4, this starter is called `spring-boot-starter-webmvc` (it used to be `spring-boot-starter-web` in Spring Boot 3 and earlier) 
 
 **Included Components:**
 
@@ -239,7 +248,7 @@ Thymeleaf file: `src/main/resources/templates/pizzaview.html`:
 </html>
 ```
 
-(Include this one simple template in the course for demonstration purposes only.)
+Include this one simple template in the course for demonstration purposes only.
 
 - Controller returns a **view name** (String)
 - View resolver finds the template file (e.g. `pizzaview.html`)
@@ -507,9 +516,10 @@ public void deletePizza(@PathVariable Long id) {
 
 ## 📦 Jackson - JSON Serialization
 
-- Jackson is the library Spring Boot uses (via `spring-boot-starter-web`) to convert Java objects to JSON and back.
+- Jackson is the library Spring Boot uses (via `spring-boot-starter-webmvc`) to convert Java objects to JSON and back.
 - It performs **serialization** (Java → JSON) and **deserialization** (JSON → Java) automatically for controller methods that return objects or use `@RequestBody`.
 - You can customize JSON mapping using Jackson annotations (`@JsonProperty`, `@JsonIgnore`, `@JsonFormat`, etc.) when needed.
+- **Spring Boot 4** ships **Jackson 3** by default: it has native support for Java records (no extra configuration needed to serialize them) and defaults date/time serialization to the ISO-8601 standard. We'll lean on the record support once we introduce DTOs as `record`s in a later lesson.
 
 Example:
 ```java
@@ -559,6 +569,10 @@ public class Pizza {
 - [Spring REST Documentation](https://spring.io/guides/tutorials/rest/)
 - [Jackson Documentation](https://github.com/FasterXML/jackson)
 - [HTTP Status Codes](https://developer.mozilla.org/en-US/docs/Web/HTTP/Status)
+
+**Note on the book**: This lesson corresponds to *Pro Spring Boot 4*, Chapter 3: *Web Development with Spring Boot* — specifically the *Spring MVC Architecture Deep Dive* section (the request lifecycle through `DispatcherServlet`, `HandlerMapping`, `HandlerAdapter`, and `HttpMessageConverter`, plus the `@RestController`/`@RequestMapping`/`@RequestBody`/`@PathVariable` annotations covered under *Annotations Uncovered*). 
+
+Chapter 3 goes on to cover several topics this course spreads across later, dedicated lessons instead of repeating them here: native API versioning and core REST principles ([Lesson 8](../lesson-08-rest-principles/README.md)), Jakarta Bean Validation and `ProblemDetail`/`@RestControllerAdvice` exception handling ([Lesson 10](../lesson-10-validation-exception-handling/README.md)), and the unified `RestTestClient` ([Lesson 11](../lesson-11-testing/README.md)). 
 
 ---
 
