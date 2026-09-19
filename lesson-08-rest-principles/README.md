@@ -7,6 +7,7 @@
 - [🏛️ What is REST?](#️-what-is-rest)
 - [🎯 REST Constraints](#-rest-constraints)
 - [🗂️ Resource Naming Conventions](#️-resource-naming-conventions)
+- [🔢 API Versioning](#-api-versioning)
 - [🎬 HTTP Methods and Their Semantics](#-http-methods-and-their-semantics)
 - [📖 GET - Read Resources](#-get---read-resources)
 - [✏️ POST - Create Resources](#️-post---create-resources)
@@ -31,6 +32,7 @@ In this lesson, we step back from implementation details to understand the **pri
 By the end of this lesson, you will:
 - Understand the **REST architectural style** and its constraints
 - Learn **resource naming conventions**
+- Apply **URL path API versioning** to evolve an API without breaking existing clients
 - Master **HTTP method semantics**
 - Know all important **HTTP status codes**
 - Configure **CORS** (essential for mobile apps!)
@@ -183,6 +185,109 @@ GET /api/customers?search=john&city=Brussels
 ```
 
 ---
+
+## 🔢 API Versioning
+
+### Why Version an API?
+
+As an API evolves, you will eventually need to make a **breaking change** — tightening validation, renaming a field, changing a response shape — without breaking the clients (mobile apps, other services) that are already calling the existing behavior. **API versioning** lets you ship that breaking change as a *new* version while the old version keeps working exactly as before, for as long as older clients need it.
+
+### Versioning Strategies
+
+Spring Boot 4 and Spring Framework 7 support several ways to version an API:
+
+| Strategy | Example | Notes |
+|---|---|---|
+| **URL Path** | `/api/v1/pizzas` vs `/api/v2/pizzas` | Most explicit; easiest for clients (and humans) to discover and explore |
+| **Request Header** | `X-API-Version: 2` | Keeps the URI stable; version travels as metadata instead |
+| **Media Type / Content Negotiation** | `Accept: application/vnd.pizzastore.v2+json` | Follows HTTP content-negotiation semantics most purely |
+| **Query Parameter** | `/api/pizzas?version=2` | Simple, but easy to omit by accident — generally discouraged |
+
+The book picks **URL Path Versioning** for its Customer CRM because it is *"the most explicit and easiest for clients to explore"* — you can paste the URL straight into a browser and immediately see which version you're hitting. We'll use the same approach for PizzaStore.
+
+### URL Path Versioning: One Controller per Version
+
+The pattern is straightforward: give each API version its **own package and its own `@RestController`**, mapped under its own version prefix. Don't cram both behaviors into a single controller with `if` statements — that becomes unreadable fast, and it defeats the point of keeping the legacy behavior untouched.
+
+```java
+// v1 — legacy, kept exactly as it always behaved
+package be.vives.pizzastore.controller.v1;
+
+@RestController
+@RequestMapping("/api/v1/pizzas")
+public class PizzaControllerV1 {
+
+    private final PizzaService pizzaService;
+
+    public PizzaControllerV1(PizzaService pizzaService) {
+        this.pizzaService = pizzaService;
+    }
+
+    @PostMapping
+    public ResponseEntity<PizzaResponse> create(@RequestBody CreatePizzaRequest request) {
+        // Legacy behavior: no @Valid — still accepts the loosely-formed
+        // requests that older mobile app builds in the field send
+        PizzaResponse created = pizzaService.create(request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(created);
+    }
+}
+```
+
+```java
+// v2 — modern, strict
+package be.vives.pizzastore.controller.v2;
+
+@RestController
+@RequestMapping("/api/v2/pizzas")
+public class PizzaControllerV2 {
+
+    private final PizzaService pizzaService;
+
+    public PizzaControllerV2(PizzaService pizzaService) {
+        this.pizzaService = pizzaService;
+    }
+
+    @PostMapping
+    public ResponseEntity<PizzaResponse> create(@Valid @RequestBody CreatePizzaRequest request) {
+        // Modern behavior: @Valid triggers Jakarta Validation (Lesson 10).
+        // Invalid input never reaches the service layer — GlobalExceptionHandler
+        // turns it into a structured ProblemDetail response instead.
+        PizzaResponse created = pizzaService.create(request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(created);
+    }
+}
+```
+
+If a client sends an invalid request (e.g. a blank `name`) to `/api/v1/pizzas`, it still succeeds — preserving backward compatibility for whatever still depends on the old, permissive behavior. The exact same payload sent to `/api/v2/pizzas` is rejected with a `400 Bad Request` `ProblemDetail`, because `@Valid` is active there. Both versions delegate to the same `PizzaService`, so business logic isn't duplicated — only the controller-level contract differs between versions.
+
+### Verifying Both Versions Behave Differently
+
+Once the unified `RestTestClient` is introduced in [Lesson 11](../lesson-11-testing/README.md), this dual behavior is easy to assert in a single test class — exactly the way *Pro Spring Boot 4* verifies its own `CustomerControllerV1`/`CustomerControllerV2` pair:
+
+```java
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@AutoConfigureRestTestClient
+class PizzaVersioningTests {
+
+    @Autowired
+    private RestTestClient client;
+
+    @Test
+    void v1AcceptsInvalidData_v2RejectsIt() {
+        CreatePizzaRequest invalid = new CreatePizzaRequest("", null, null, false, null);
+
+        client.post().uri("/api/v1/pizzas")
+            .body(invalid)
+            .exchange()
+            .expectStatus().isCreated();          // legacy: permissive
+
+        client.post().uri("/api/v2/pizzas")
+            .body(invalid)
+            .exchange()
+            .expectStatus().isBadRequest();        // modern: validated
+    }
+}
+```
 
 ## 🎬 HTTP Methods and Their Semantics
 
@@ -609,11 +714,11 @@ spring.web.cors.max-age=3600
 2. **Use plural names** for collections
 3. **Use HTTP methods correctly** (GET for read, POST for create, etc.)
 4. **Return appropriate status codes** (201 for created, 404 for not found)
-5. **Version your API** (`/api/v1/pizzas`)
+5. **Version your API** (`/api/v1/pizzas`, see [API Versioning](#-api-versioning) above)
 6. **Use filtering via query parameters** (`?available=true`)
 7. **Include pagination** for large collections
 8. **Use consistent naming conventions** (camelCase or snake_case)
-9. **Document your API** (Swagger/OpenAPI - covered in Lesson 16)
+9. **Document your API** (Swagger/OpenAPI - covered in Lesson 13)
 10. **Configure CORS** for mobile apps
 
 ### ❌ DON'T
@@ -622,7 +727,7 @@ spring.web.cors.max-age=3600
 2. **Don't use GET for operations that modify state**
 3. **Don't ignore HTTP status codes** (don't return 200 for everything)
 4. **Don't expose database IDs if not necessary** (use UUIDs for public APIs)
-5. **Don't return entire entities** (use DTOs - covered in Lesson 6)
+5. **Don't return entire entities** (use DTOs - covered in Lesson 7)
 6. **Don't forget to handle errors consistently**
 
 ---
@@ -701,19 +806,6 @@ Resources include links to related resources
 6. **HATEOAS makes APIs discoverable** (optional but powerful)
 7. **Consistency is key** - follow conventions
 
-### REST Checklist for PizzaStore API
-
-- ✅ Resources use nouns (`/pizzas`, `/orders`, `/customers`)
-- ✅ Plural names for collections
-- ✅ HTTP methods used correctly
-- ✅ Appropriate status codes returned
-- ✅ Query parameters for filtering/sorting
-- ✅ CORS configured for mobile app
-- ✅ DTOs instead of entities
-- 🔲 Proper error handling (Lesson 11)
-- 🔲 API documentation (Lesson 16)
-- 🔲 Security (Lessons 12-15)
-
 ---
 
 ## 📖 Additional Resources
@@ -723,6 +815,10 @@ Resources include links to related resources
 - [HTTP Status Codes](https://httpstatuses.com/)
 - [Richardson Maturity Model](https://martinfowler.com/articles/richardsonMaturityModel.html)
 - [CORS Explained](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS)
+
+**Note on the book**: This lesson corresponds to *Pro Spring Boot 4*, Chapter 3: *Web Development with Spring Boot* — specifically the *RESTful API Design and Native Versioning* section, covering both its *Core REST Principles* subsection (resources as nouns, standard HTTP methods, meaningful status codes) and its *API Versioning Strategy* subsection (URL path vs. header vs. media type versioning, and the book's own `CustomerControllerV1`/`CustomerControllerV2` example, mirrored above as `PizzaControllerV1`/`PizzaControllerV2`). 
+
+Chapter 3 goes on to cover Jakarta Bean Validation and `ProblemDetail`/`@RestControllerAdvice` exception handling ([Lesson 10](../lesson-10-validation-exception-handling/README.md)) and the unified `RestTestClient` ([Lesson 11](../lesson-11-testing/README.md)) — both referenced above, since the book itself demonstrates its versioning example together with `RestTestClient`.
 
 ---
 
