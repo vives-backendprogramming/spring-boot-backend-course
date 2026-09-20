@@ -45,7 +45,7 @@ Before building our complete REST API, let's recap the key concepts from previou
 - ✅ Request handling with `@GetMapping`, `@PostMapping`, etc.
 - ✅ `ResponseEntity<T>` for full control over HTTP responses
 
-### From Lesson 6: Working with JPA
+### From Lesson 6a: Spring Data JPA
 - ✅ Entity relationships (@OneToOne, @OneToMany, @ManyToOne, @ManyToMany)
 - ✅ Spring Data JPA repositories
 - ✅ Custom queries and pagination
@@ -1096,8 +1096,8 @@ A complete, production-ready Spring Boot project demonstrating all concepts is a
 
 The project includes:
 - ✅ Complete CRUD operations for Pizza, Customer, and Order
-- ✅ All JPA relationships from Lesson 7
-- ✅ DTOs and MapStruct mappers from Lesson 6
+- ✅ All JPA relationships from Lesson 6a
+- ✅ DTOs and MapStruct mappers from Lesson 7
 - ✅ Pagination and sorting
 - ✅ Query parameters and filtering
 - ✅ Proper HTTP status codes and Location headers

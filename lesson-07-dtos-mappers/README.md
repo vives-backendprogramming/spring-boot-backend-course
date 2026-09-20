@@ -1292,7 +1292,7 @@ The project includes:
 - ✅ **Service Layer**: PizzaService, OrderService, CustomerService with business logic
 - ✅ **Transaction Management**: @Transactional annotations on service methods
 - ✅ **No Audit Fields**: createdAt, updatedAt, createdBy, updatedBy are never exposed in responses
-- ✅ Complete domain model with JPA relationships (from Lesson 6)
+- ✅ Complete domain model with JPA relationships (from Lesson 6a)
 - ✅ Comprehensive sample data (12 pizzas, 6 customers, 10 orders)
 
 ### How to Run

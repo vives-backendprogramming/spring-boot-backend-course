@@ -24,7 +24,9 @@ The finished reference solution lives in a separate repository, [**PizzaStore**]
 **Web & Data**
 
 5. **Spring MVC** - Web application architecture
-6. **Working with JPA** - Data persistence and entity relationships
+6. **Spring Data** - Shared repository abstraction, query methods, and exception translation, technology-independent
+   - **6a. Spring Data JPA** - Entity relationships and persistence on a relational database
+   - **6b. Spring Data MongoDB** - The same domain model, re-expressed as MongoDB documents
 7. **DTOs & Mappers** - Request/Response objects with MapStruct
 
 **REST API Development**
@@ -81,7 +83,9 @@ spring-boot-backend-course/
 ├── lesson-03-properties-profiles/   # Configuration
 ├── lesson-04-spring-boot-intro/     # 🍕 First PizzaStore
 ├── lesson-05-spring-mvc/            # MVC architecture
-├── lesson-06-working-with-jpa/      # 🍕 Full domain model
+├── lesson-06-spring-data/           # Spring Data common concepts (no project)
+├── lesson-06a-spring-data-jpa/      # 🍕 Domain model + repositories (JPA)
+├── lesson-06b-spring-data-mongodb/  # 🍕 Domain model + repositories (MongoDB)
 ├── lesson-07-dtos-mappers/          # 🍕 DTOs & Service layer
 ├── lesson-08-rest-principles/       # REST theory
 ├── lesson-09-complete-rest-api/     # 🍕 Complete CRUD API
