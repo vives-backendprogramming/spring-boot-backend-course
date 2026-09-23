@@ -2,6 +2,7 @@ package be.vives.pizzastore.repository;
 
 import be.vives.pizzastore.domain.Order;
 import be.vives.pizzastore.domain.OrderStatus;
+import be.vives.pizzastore.repository.projection.PizzaSalesStatistics;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -23,4 +24,14 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
 
     @Query("SELECT o FROM Order o JOIN FETCH o.customer WHERE o.customer.id = :customerId")
     List<Order> findByCustomerIdWithCustomer(@Param("customerId") Long customerId);
+
+    // DTO projection: the result is a PizzaSalesStatistics record, not an Order/OrderLine entity
+    @Query("""
+            SELECT new be.vives.pizzastore.repository.projection.PizzaSalesStatistics(
+                ol.pizza.name, COUNT(ol), SUM(ol.quantity), SUM(ol.subtotal))
+            FROM Order o JOIN o.orderLines ol
+            GROUP BY ol.pizza.name
+            ORDER BY SUM(ol.quantity) DESC
+            """)
+    List<PizzaSalesStatistics> findPizzaSalesStatistics();
 }

@@ -33,6 +33,7 @@ By the end of this lesson, you will be able to:
 - [🌊 Cascade Types](#-cascade-types)
 - [🗄️ The JpaRepository Interface](#️-the-jparepository-interface)
 - [🔍 Custom Queries](#-custom-queries)
+- [🧮 DTO Projections](#-dto-projections)
 - [📄 Pagination and Sorting](#-pagination-and-sorting)
 - [🎁 Optional Handling](#-optional-handling)
 - [🧪 Testing](#-testing)
@@ -432,6 +433,58 @@ int increasePrices(@Param("ids") List<Long> ids);
 
 ---
 
+## 🧮 DTO Projections
+
+Every query so far returns entities (`Pizza`, `Order`, …) or collections of them. But not everything you query for *is* an entity — sometimes you want a statistic computed *by the database*, not assembled afterwards in Java. Spring Data JPA calls the result of such a query a **projection**: a query result mapped into a shape that is not a managed `@Entity`.
+
+There are two ways to write one:
+
+**1. Interface-based projection** — declare an interface with getter methods matching the columns you want; Spring Data generates a proxy at runtime:
+
+```java
+public interface PizzaNameOnly {
+    String getName();
+    BigDecimal getPrice();
+}
+
+// repository/PizzaRepository.java
+List<PizzaNameOnly> findByAvailableTrue();
+```
+
+**2. DTO / record projection** — write the target type yourself (a `record` is a natural fit) and construct it directly in JPQL with `SELECT new fully.qualified.ClassName(...)`:
+
+```java
+// repository/projection/PizzaSalesStatistics.java
+public record PizzaSalesStatistics(
+        String pizzaName,
+        Long timesOrdered,
+        Long totalQuantitySold,
+        BigDecimal totalRevenue
+) {
+}
+
+// repository/OrderRepository.java
+@Query("""
+        SELECT new be.vives.pizzastore.repository.projection.PizzaSalesStatistics(
+            ol.pizza.name, COUNT(ol), SUM(ol.quantity), SUM(ol.subtotal))
+        FROM Order o JOIN o.orderLines ol
+        GROUP BY ol.pizza.name
+        ORDER BY SUM(ol.quantity) DESC
+        """)
+List<PizzaSalesStatistics> findPizzaSalesStatistics();
+```
+
+`PizzaSalesStatistics` is a plain record, not an `@Entity` — Hibernate never loads full `Order`/`OrderLine` rows into memory to compute this; the `COUNT`/`SUM`/`GROUP BY` run in the database, and only the aggregated numbers cross the wire.
+
+**When to reach for a projection instead of the full entity:**
+- A statistic or aggregate (totals, counts, averages) that doesn't correspond to any single entity.
+- A list view that only needs a few columns — skips loading (and lazy-fetching) the rest of a large entity graph.
+- The consumer only needs read-only data and will never turn it back into a persisted entity.
+
+**Don't confuse this with [Lesson 7](../lesson-07-dtos-mappers/README.md)'s DTOs**: there, a full entity is loaded first and then mapped to a DTO afterwards (in the mapper/service layer) — the mapping happens in Java, after the query. Here, the *query itself* never produces an entity in the first place; the projection is what the database handed back.
+
+---
+
 ## 📄 Pagination and Sorting
 
 ```java
@@ -542,7 +595,9 @@ pizzastore-jpa/
     └── repository/
         ├── CustomerRepository.java
         ├── OrderRepository.java
-        └── PizzaRepository.java
+        ├── PizzaRepository.java
+        └── projection/
+            └── PizzaSalesStatistics.java   (DTO projection, not an entity — see DTO Projections above)
 ```
 
 `config/JpaConfig.java` is the one file here that goes beyond "domain and repository" — it's required infrastructure, not a feature: without `@EnableJpaAuditing`, saving a fresh `Pizza`/`Order`/`Customer` would fail, because `createdAt` is a non-null column populated only through JPA Auditing.
@@ -567,6 +622,7 @@ Then open the H2 console at <http://localhost:8080/h2-console> with JDBC URL `jd
 5. Default to **`LAZY`** fetching for collections; use `JOIN FETCH` when you know you need the association.
 6. **`CascadeType.ALL` + `orphanRemoval`** for true parent-child relationships; no cascade on the owning `@ManyToOne` side.
 7. **`JpaRepository`** is the recommended base interface; derived queries, `@Query`, pagination, and `Optional` cover almost every data-access need.
+8. Not every query result needs to be an entity — **DTO/record projections** (`SELECT new ...(...)`) let the database compute an aggregate or a narrow view directly, without loading full entity graphs first.
 
 ---
 
@@ -578,6 +634,8 @@ Then open the H2 console at <http://localhost:8080/h2-console> with JDBC URL `jd
 - [Baeldung: Spring Data JPA](https://www.baeldung.com/the-persistence-layer-with-spring-data-jpa)
 
 **Note on the book**: This lesson corresponds to *Pro Spring Boot 4*, Chapter 6: *Spring Data with Spring Boot* — specifically the *Spring Data JPA with the Management CRM* section (entity annotations, relationships, the `JpaRepository` hierarchy, custom queries, and pagination). Two things the book covers at this point are deliberately not repeated here: its repository-testing walkthrough (see [Testing](#-testing) above — covered instead by [Lesson 11](../lesson-11-testing/README.md)), and its brief closing note on AOT-optimized repositories for GraalVM native images (*Advanced AOT: Optimizing for Native Images*), which points forward to the book's own Chapter 14 on Ahead-of-Time compilation — out of scope for this course.
+
+The book itself never teaches DTO/record projections as their own topic — it shows exactly one `SELECT new ...CustomerSummary(...)` query (Listing 6-16), and only as a vehicle to introduce `@RegisterReflectionForBinding` (an AOT/native-image reflection hint, itself out of scope here per the previous paragraph). The dedicated [DTO Projections](#-dto-projections) section above goes beyond the book: it names both projection styles (interface-based and DTO/record), explains *why* you'd reach for one instead of loading full entities, and gives PizzaStore its own worked example (`OrderRepository.findPizzaSalesStatistics()`), because this is a genuinely useful, commonly-needed Spring Data JPA feature the book only gestures at in passing.
 
 ---
 
