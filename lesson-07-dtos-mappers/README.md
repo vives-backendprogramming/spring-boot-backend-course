@@ -10,7 +10,8 @@ By the end of this lesson, you will be able to:
 - Understand why DTOs are essential and why entities should **never** be exposed directly
 - Differentiate between Request DTOs and Response DTOs
 - Implement DTOs for proper API design using Java Records
-- Use MapStruct for automatic mapping between entities and DTOs
+- Compare the mapping strategies (Jackson annotations, manual mapping, MapStruct) and know when to use which
+- Use MapStruct for automatic, compile-time mapping between entities and DTOs
 - Structure your Spring Boot project with proper layering (Service Layer)
 - Apply the DTO pattern to the PizzaStore application
 
@@ -22,18 +23,21 @@ By the end of this lesson, you will be able to:
 2. [What Are DTOs?](#-what-are-dtos)
 3. [Request vs Response DTOs](#-request-vs-response-dtos)
 4. [Java Records for DTOs](#-java-records-for-dtos)
-5. [Mapping Strategies](#-mapping-strategies)
+5. [Mapping Strategies](#%EF%B8%8F-mapping-strategies)
 6. [MapStruct: The Best Choice](#-mapstruct-the-best-choice)
 7. [Service Layer Pattern](#-service-layer-pattern)
 8. [Project Structure with DTOs](#-project-structure-with-dtos)
 9. [Best Practices](#-best-practices)
-10. [Common Pitfalls](#-common-pitfalls)
+10. [Common Pitfalls](#%EF%B8%8F-common-pitfalls)
 11. [Summary](#-summary)
-12. [Further Reading](#-further-reading)
+12. [Runnable Project](#-runnable-project)
+13. [Further Reading](#-further-reading)
 
 ---
 
 ## 🚫 The Problem: Why Not Expose Entities?
+
+In [Lesson 6a](../lesson-06a-spring-data-jpa/README.md) we built PizzaStore's data layer: JPA entities and Spring Data repositories. The tempting next step is to hand those entities straight to a controller.
 
 ### What's Wrong with This Code?
 
@@ -41,16 +45,19 @@ By the end of this lesson, you will be able to:
 @RestController
 @RequestMapping("/api/customers")
 public class CustomerController {
-    
-    @Autowired
-    private CustomerRepository customerRepository;
-    
+
+    private final CustomerRepository customerRepository;
+
+    public CustomerController(CustomerRepository customerRepository) {
+        this.customerRepository = customerRepository;
+    }
+
     // ❌ BAD: Returning entity directly
     @GetMapping("/{id}")
     public Customer getCustomer(@PathVariable Long id) {
         return customerRepository.findById(id).orElse(null);
     }
-    
+
     // ❌ BAD: Accepting entity directly
     @PostMapping
     public Customer createCustomer(@RequestBody Customer customer) {
@@ -63,7 +70,7 @@ public class CustomerController {
 
 #### 1. **Security & Privacy Risks** 🔒
 
-Entities often contain sensitive data that should never be exposed:
+Entities often contain sensitive data that should never be exposed. This is PizzaStore's actual `Customer` entity (from Lesson 6a, simplified):
 
 ```java
 @Entity
@@ -73,60 +80,54 @@ public class Customer {
     private String name;
     private String email;
     private String password;           // ❌ Exposed!
-    private String address;
     private String phone;
-    
+    private String address;
+    private Role role;                 // ❌ Clients could send "role": "ADMIN"!
+
     // Audit fields - internal information
     private LocalDateTime createdAt;   // ❌ Internal data exposed!
-    private String createdBy;          // ❌ Internal data exposed!
     private LocalDateTime updatedAt;   // ❌ Internal data exposed!
-    private String updatedBy;          // ❌ Internal data exposed!
-    
+
     @OneToMany(mappedBy = "customer")
     private List<Order> orders;        // ❌ Can cause circular references!
+
+    @ManyToMany
+    private Set<Pizza> favoritePizzas; // ❌ Pulls in half the database
 }
 ```
 
 When you return this entity, **all fields** are serialized to JSON, including:
 - Passwords (even if hashed!)
-- Audit fields (who created/updated the record)
+- Audit fields (when/by whom the record was created or updated)
 - Relationships that cause circular references
+
+And when you *accept* it with `@RequestBody Customer`, a client can set any field it likes — including `id`, `role` or `createdAt`. This is called **mass assignment** (or over-posting).
 
 #### 2. **Circular References** ♻️
 
-JPA relationships can cause infinite loops during JSON serialization:
+Bidirectional JPA relationships can cause infinite loops during JSON serialization:
 
 ```java
 @Entity
 public class Order {
-    private Long id;
-    
     @ManyToOne
-    private Customer customer;              // Customer → Order → Customer → Order → ...
-    
+    private Customer customer;           // Order → Customer → orders → Order → Customer → ...
+
     @OneToMany(mappedBy = "order")
-    private List<OrderLine> orderLines;  // Order → OrderLine → Order → ...
+    private List<OrderLine> orderLines;  // Order → OrderLine → order → Order → ...
 }
 ```
 
-Result:
-```
-java.lang.StackOverflowError: Cannot construct instance (no Creators, like default constructor, exist)
-```
+Jackson follows these references until it gives up: an infinite-recursion / "nesting depth exceeds the maximum allowed" error, and a `500 Internal Server Error` for your client.
 
-#### 3. **Lazy Loading Exceptions** 💥
+#### 3. **Lazy Loading Surprises** 💥
 
-When entities are serialized outside the transaction:
+`Order.customer` is `FetchType.LAZY` — Hibernate puts a *proxy* there instead of a real `Customer`. What happens when Jackson touches it depends on a Spring Boot setting:
 
-```java
-@GetMapping("/{id}")
-public Order getOrder(@PathVariable Long id) {
-    // Transaction ends here ↓
-    return orderRepository.findById(id).orElse(null);
-}
-// When Jackson tries to serialize orderLines:
-// LazyInitializationException: could not initialize proxy - no Session
-```
+- **`spring.jpa.open-in-view=false`** (the recommended setting): the transaction has already ended when Jackson serializes the result → `LazyInitializationException: could not initialize proxy - no Session`.
+- **`spring.jpa.open-in-view=true`** (Spring Boot's default — note the warning it logs at startup, `spring.jpa.open-in-view is enabled by default...`): the session stays open during serialization, so every lazy association Jackson touches fires *extra SQL queries* while the response is being written, and Hibernate's proxy internals (`hibernateLazyInitializer`) can end up in your JSON or break serialization.
+
+Neither is what you want. With DTOs, *you* decide inside the service's transaction exactly which data is loaded and copied.
 
 #### 4. **Tight Coupling** 🔗
 
@@ -151,27 +152,31 @@ GET /api/pizzas/1
 
 ## 🎯 What Are DTOs?
 
-**Data Transfer Objects (DTOs)** are simple objects designed specifically for transferring data between layers.
+**Data Transfer Objects (DTOs)** are simple objects designed specifically for transferring data between layers — here: between your service layer and the outside world (the JSON of your REST API).
 
 ### Key Characteristics
 
 | Aspect | Entity | DTO |
 |--------|--------|-----|
 | **Purpose** | Represent database table | Transfer data over API |
-| **Location** | Domain layer | DTO layer |
-| **Annotations** | `@Entity`, `@Table`, `@Column` | None (or validation) |
+| **Location** | `domain` package | `dto` package |
+| **Annotations** | `@Entity`, `@Table`, `@Column` | None (validation added in Lesson 10) |
 | **Relationships** | `@OneToMany`, `@ManyToOne` | Flat structure or nested DTOs |
-| **Mutability** | Mutable | Immutable (preferably) |
+| **Mutability** | Mutable | Immutable (Java record) |
 | **Contains** | All table columns | Only data needed for API |
 
 ### Benefits of DTOs
 
-✅ **Security**: Only expose what's needed  
+✅ **Security**: Only expose what's needed, only accept what's allowed  
 ✅ **Flexibility**: API independent from database  
 ✅ **Versioning**: Support multiple API versions  
 ✅ **Performance**: Fetch only required data  
 ✅ **Clarity**: Clear API contract  
-✅ **Validation**: Different rules for create/update  
+✅ **Validation**: Different rules for create/update
+
+### DTOs vs. Projections (Lesson 6a)
+
+Lesson 6a's [DTO Projections](../lesson-06a-spring-data-jpa/README.md#-dto-projections) (`PizzaSalesStatistics`) are also records that are not entities — but they are produced *by the query itself*. The DTOs in this lesson work the other way around: the repository returns full entities, and the service layer *maps* them to DTOs in Java afterwards. Projections are for read-only views and aggregates; mapped DTOs are for the regular request/response contract of your API. PizzaStore uses both.
 
 ---
 
@@ -181,11 +186,11 @@ GET /api/pizzas/1
 
 Different operations need different data:
 
-| Operation | Needs | Example                                                     |
-|-----------|-------|-------------------------------------------------------------|
-| **Create** | Data to create entity | Name, description, price                   |
-| **Update** | Data to update entity | Name, description, (ID not needed)         |
-| **Response** | Data to return | ID, name, description, price, timestamps, calculated fields |
+| Operation | Needs | Example |
+|-----------|-------|---------|
+| **Create** | Data to create entity | Name, description, price |
+| **Update** | Data to update entity | Name, description, price (ID comes from the URL) |
+| **Response** | Data to return | ID, name, description, price, calculated fields |
 
 ### Example: Pizza DTOs
 
@@ -194,23 +199,13 @@ Different operations need different data:
 ```java
 package be.vives.pizzastore.dto.request;
 
-import jakarta.validation.constraints.DecimalMin;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import java.math.BigDecimal;
 
 public record CreatePizzaRequest(
-        @NotBlank(message = "Pizza name is required")
         String name,
-
-        @NotNull(message = "Price is required")
-        @DecimalMin(value = "0.01", message = "Price must be positive")
         BigDecimal price,
-
         String description,
-
         Boolean available,
-
         NutritionalInfoRequest nutritionalInfo
 ) {
 }
@@ -218,36 +213,33 @@ public record CreatePizzaRequest(
 
 **Characteristics:**
 - No `id` (generated by database)
-- No audit fields (set by system)
-- Only data client can provide
+- No audit fields (set by JPA Auditing)
+- No `imageUrl` (set by a separate upload endpoint in Lesson 9)
+- Only data the client can provide
+
+> 💡 In [Lesson 10](../lesson-10-validation-exception-handling/README.md) we add Jakarta Bean Validation constraints (`@NotBlank`, `@NotNull`, `@DecimalMin`, ...) to exactly these request DTOs. That's no coincidence: validation belongs on the DTO that describes *incoming* data, not on the entity.
 
 #### Request DTO (Update)
 
 ```java
 package be.vives.pizzastore.dto.request;
 
-import jakarta.validation.constraints.DecimalMin;
 import java.math.BigDecimal;
 
 public record UpdatePizzaRequest(
         String name,
-
-        @DecimalMin(value = "0.01", message = "Price must be positive")
         BigDecimal price,
-
         String description,
-
-        Boolean available,  // Note: Boolean (nullable) for partial updates
-
+        Boolean available,
         NutritionalInfoRequest nutritionalInfo
 ) {
 }
 ```
 
 **Characteristics:**
-- Similar to Create but fields can be `null`
-- Enables partial updates
+- Same fields as Create, but a separate type — so create and update can evolve (and be validated) independently
 - No `id` (passed in URL)
+- Wrapper types (`Boolean`, `BigDecimal`) instead of primitives, so "not sent" (`null`) is distinguishable from `false`/`0` — see [pitfall 6](#6-null-values-in-update-mappings) for what the mapper does with those `null`s
 
 #### Response DTO
 
@@ -271,13 +263,14 @@ public record PizzaResponse(
 **Characteristics:**
 - Includes `id` (client needs to know it)
 - **Never** includes audit fields (internal data)
+- No `favoritedByCustomers` — no way to create a cycle
 - Read-only representation
 
 ---
 
 ## 📝 Java Records for DTOs
 
-Since Java 14, **Records** are the perfect choice for DTOs!
+Since Java 16, **Records** are the perfect choice for DTOs!
 
 ### Why Records?
 
@@ -287,23 +280,23 @@ public class PizzaResponse {
     private final Long id;
     private final String name;
     private final BigDecimal price;
-    
+
     public PizzaResponse(Long id, String name, BigDecimal price) {
         this.id = id;
         this.name = name;
         this.price = price;
     }
-    
+
     public Long getId() { return id; }
     public String getName() { return name; }
     public BigDecimal getPrice() { return price; }
-    
+
     @Override
     public boolean equals(Object o) { /* ... */ }
-    
+
     @Override
     public int hashCode() { /* ... */ }
-    
+
     @Override
     public String toString() { /* ... */ }
 }
@@ -317,22 +310,38 @@ public record PizzaResponse(
 ```
 
 Records automatically generate:
-- Constructor
-- Getters
+- A canonical constructor
+- Accessor methods (`id()`, `name()` — no `get` prefix!)
 - `equals()`, `hashCode()`, `toString()`
-- Immutability
+- Immutability (all fields are `final`)
+
+Records can also be **nested** when a type only makes sense inside another one. PizzaStore does this for the order lines of a new order:
+
+```java
+public record CreateOrderRequest(
+        Long customerId,
+        List<OrderLineRequest> orderLines
+) {
+    public record OrderLineRequest(
+            Long pizzaId,
+            Integer quantity
+    ) {
+    }
+}
+```
 
 ### Records Work Perfectly with Jackson
 
+Spring Boot 4 ships with **Jackson 3** (package `tools.jackson.databind`, central class `JsonMapper`). Just like Jackson 2 before it, it (de)serializes records out of the box: JSON → record via the canonical constructor, record → JSON via the accessors. No annotations, no default constructor, no setters needed.
+
 ```java
-// Jackson automatically serializes/deserializes records
+// Preview of Lesson 9 — the controller only ever sees DTOs
 @PostMapping
-public PizzaResponse createPizza(@RequestBody CreatePizzaRequest request) {
+public ResponseEntity<PizzaResponse> createPizza(@RequestBody CreatePizzaRequest request) {
     // Jackson deserializes JSON → CreatePizzaRequest
-    Pizza pizza = pizzaMapper.toEntity(request);
-    Pizza saved = pizzaRepository.save(pizza);
+    PizzaResponse created = pizzaService.create(request);
     // Jackson serializes PizzaResponse → JSON
-    return pizzaMapper.toResponse(saved);
+    return ResponseEntity.status(HttpStatus.CREATED).body(created);
 }
 ```
 
@@ -342,59 +351,71 @@ public PizzaResponse createPizza(@RequestBody CreatePizzaRequest request) {
 
 ### How to Convert Between Entities and DTOs?
 
-#### 1. **Manual Mapping** ❌
+#### 1. **Jackson Annotations on the Entity** ⚠️ (not a DTO at all)
+
+The quickest "fix" is to keep returning the entity and hide fields with Jackson annotations:
 
 ```java
-public PizzaResponse toResponse(Pizza pizza) {
-    NutritionalInfoResponse nutritionalInfo = null;
-    if (pizza.getNutritionalInfo() != null) {
-        nutritionalInfo = new NutritionalInfoResponse(
-            pizza.getNutritionalInfo().getCalories(),
-            pizza.getNutritionalInfo().getProtein(),
-            pizza.getNutritionalInfo().getCarbohydrates(),
-            pizza.getNutritionalInfo().getFat()
-        );
-    }
-    
-    return new PizzaResponse(
-        pizza.getId(),
-        pizza.getName(),
-        pizza.getPrice(),
-        pizza.getDescription(),
-        pizza.getImageUrl(),
-        pizza.getAvailable(),
-        nutritionalInfo
-    );
-}
+@Entity
+public class Customer {
+    @JsonIgnore
+    private String password;           // never serialized
 
-public Pizza toEntity(CreatePizzaRequest request) {
-    Pizza pizza = new Pizza();
-    pizza.setName(request.name());
-    pizza.setPrice(request.price());
-    pizza.setDescription(request.description());
-    pizza.setAvailable(request.available());
-    
-    if (request.nutritionalInfo() != null) {
-        NutritionalInfo nutritionalInfo = new NutritionalInfo();
-        nutritionalInfo.setCalories(request.nutritionalInfo().calories());
-        nutritionalInfo.setProtein(request.nutritionalInfo().protein());
-        nutritionalInfo.setCarbohydrates(request.nutritionalInfo().carbohydrates());
-        nutritionalInfo.setFat(request.nutritionalInfo().fat());
-        pizza.setNutritionalInfo(nutritionalInfo);
-    }
-    
-    return pizza;
+    @JsonIgnore
+    @OneToMany(mappedBy = "customer")
+    private List<Order> orders;        // breaks the cycle
 }
 ```
 
-**Problems:**
-- Tedious and error-prone
-- Must update manually when fields change
-- Lots of boilerplate code
+This works for a tiny demo, but your entity now serves two masters (the database *and* the JSON contract), all the other problems above (mass assignment, lazy loading, tight coupling) remain, and forgetting one annotation on a new field leaks it. Use `@JsonIgnore`/`@JsonProperty` to fine-tune the JSON of a **DTO**, not to turn an entity into one.
 
-#### 2. **MapStruct** ✅ (Recommended)
+#### 2. **Manual Mapping** ✅ (fine for small projects)
 
-MapStruct generates mapping code at **compile time**.
+You write the conversion yourself — typically as a static factory method on the record, or in a hand-written mapper class:
+
+```java
+public record PizzaResponse(Long id, String name, BigDecimal price, String description,
+                            String imageUrl, Boolean available,
+                            NutritionalInfoResponse nutritionalInfo) {
+
+    public static PizzaResponse from(Pizza pizza) {
+        NutritionalInfo info = pizza.getNutritionalInfo();
+        return new PizzaResponse(
+                pizza.getId(),
+                pizza.getName(),
+                pizza.getPrice(),
+                pizza.getDescription(),
+                pizza.getImageUrl(),
+                pizza.getAvailable(),
+                info == null ? null : new NutritionalInfoResponse(
+                        info.getCalories(), info.getProtein(),
+                        info.getCarbohydrates(), info.getFat())
+        );
+    }
+}
+
+public record CreatePizzaRequest(String name, BigDecimal price, String description,
+                                 Boolean available, NutritionalInfoRequest nutritionalInfo) {
+
+    public Pizza toEntity() {
+        Pizza pizza = new Pizza(name, price, description);
+        pizza.setAvailable(available);
+        // ... and the nutritional info, and ...
+        return pizza;
+    }
+}
+```
+
+**Pros:** no extra dependency, completely explicit, easy to debug.
+**Cons:** tedious for large models, and the compiler does **not** warn you when you add a field to the entity and forget to map it.
+
+#### 3. **Reflection-based Libraries** (e.g. ModelMapper) ❌
+
+Libraries like ModelMapper copy fields by matching names *at runtime* via reflection. Less code, but mapping errors only show up when the code runs, it's slower, and it's hard to see what actually happens. Not recommended.
+
+#### 4. **MapStruct** ✅ (PizzaStore's choice)
+
+MapStruct is an **annotation processor**: you write an interface, and MapStruct generates the plain-Java implementation (the same code you would write by hand in option 2) at **compile time**.
 
 ```java
 @Mapper(componentModel = "spring")
@@ -405,10 +426,10 @@ public interface PizzaMapper {
 ```
 
 **Benefits:**
-- Type-safe (compile-time checking)
-- Fast (no reflection at runtime)
-- Easy to use
-- Maintainable
+- Type-safe: compile-time checking, and **warnings for target fields you forgot to map**
+- Fast: generated plain Java code, no reflection at runtime
+- Transparent: you can open and read the generated code
+- Maintainable: new fields with the same name are mapped automatically
 
 ---
 
@@ -416,15 +437,16 @@ public interface PizzaMapper {
 
 ### Setup
 
-Add to `pom.xml`:
+Add to `pom.xml` (this is exactly what `pizzastore-with-dtos` and the final PizzaStore use):
 
 ```xml
 <properties>
+    <java.version>25</java.version>
     <org.mapstruct.version>1.6.3</org.mapstruct.version>
 </properties>
 
 <dependencies>
-    <!-- MapStruct -->
+    <!-- MapStruct annotations (@Mapper, @Mapping, ...) -->
     <dependency>
         <groupId>org.mapstruct</groupId>
         <artifactId>mapstruct</artifactId>
@@ -437,8 +459,11 @@ Add to `pom.xml`:
         <plugin>
             <groupId>org.apache.maven.plugins</groupId>
             <artifactId>maven-compiler-plugin</artifactId>
-            <version>3.13.0</version>
+            <version>3.11.0</version>
             <configuration>
+                <source>25</source>
+                <target>25</target>
+                <!-- The processor that generates the *MapperImpl classes -->
                 <annotationProcessorPaths>
                     <path>
                         <groupId>org.mapstruct</groupId>
@@ -452,6 +477,8 @@ Add to `pom.xml`:
 </build>
 ```
 
+MapStruct is not managed by Spring Boot's dependency management, so you specify the version yourself (both entries must use the same version).
+
 ### Basic Mapper
 
 ```java
@@ -461,7 +488,9 @@ import be.vives.pizzastore.domain.Pizza;
 import be.vives.pizzastore.dto.request.CreatePizzaRequest;
 import be.vives.pizzastore.dto.request.UpdatePizzaRequest;
 import be.vives.pizzastore.dto.response.PizzaResponse;
-import org.mapstruct.*;
+import org.mapstruct.Mapper;
+import org.mapstruct.Mapping;
+import org.mapstruct.MappingTarget;
 
 import java.util.List;
 
@@ -470,10 +499,10 @@ public interface PizzaMapper {
 
     // Entity → Response DTO
     PizzaResponse toResponse(Pizza pizza);
-    
+
     List<PizzaResponse> toResponseList(List<Pizza> pizzas);
 
-    // Request DTO → Entity
+    // Request DTO → new Entity
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "createdBy", ignore = true)
@@ -482,7 +511,7 @@ public interface PizzaMapper {
     @Mapping(target = "favoritedByCustomers", ignore = true)
     Pizza toEntity(CreatePizzaRequest request);
 
-    // Update existing entity from Request DTO
+    // Request DTO → existing Entity
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "createdBy", ignore = true)
@@ -493,33 +522,58 @@ public interface PizzaMapper {
 }
 ```
 
+### What MapStruct Generates
+
+Run `mvn compile` and open `target/generated-sources/annotations/be/vives/pizzastore/mapper/PizzaMapperImpl.java`. There's no magic — it's the code you'd otherwise write yourself (abridged):
+
+```java
+@Component
+public class PizzaMapperImpl implements PizzaMapper {
+
+    @Override
+    public PizzaResponse toResponse(Pizza pizza) {
+        if ( pizza == null ) {
+            return null;
+        }
+        // ... one local variable per record component ...
+        id = pizza.getId();
+        name = pizza.getName();
+        // ...
+        nutritionalInfo = nutritionalInfoToNutritionalInfoResponse( pizza.getNutritionalInfo() );
+
+        return new PizzaResponse( id, name, price, description, imageUrl, available, nutritionalInfo );
+    }
+
+    // Nested type → MapStruct generated a helper method for it automatically
+    protected NutritionalInfoResponse nutritionalInfoToNutritionalInfoResponse(NutritionalInfo nutritionalInfo) {
+        // ...
+    }
+}
+```
+
+Notice that MapStruct uses the record's **canonical constructor** for the response and the entity's **setters** for `toEntity`/`updateEntity`.
+
 ### Key Annotations
 
 #### `@Mapper(componentModel = "spring")`
 
-Makes MapStruct generate a Spring bean:
+Makes MapStruct put `@Component` on the generated class, so it becomes a Spring bean you can inject:
 
 ```java
-// Generated code:
-@Component
-public class PizzaMapperImpl implements PizzaMapper {
-    // Implementation...
-}
-
-// You can inject it:
 @Service
 public class PizzaService {
     private final PizzaMapper pizzaMapper;
-    
-    public PizzaService(PizzaMapper pizzaMapper) {
+
+    public PizzaService(PizzaRepository pizzaRepository, PizzaMapper pizzaMapper) {
+        // Spring injects the generated PizzaMapperImpl
         this.pizzaMapper = pizzaMapper;
     }
 }
 ```
 
-#### `@Mapping`
+#### `@Mapping(source = ..., target = ...)`
 
-Maps fields explicitly:
+Maps fields whose names differ, including **nested source properties** (flattening):
 
 ```java
 @Mapping(source = "customer.id", target = "customerId")
@@ -527,31 +581,28 @@ Maps fields explicitly:
 OrderResponse toResponse(Order order);
 ```
 
-- `source`: Field in source object (Entity)
-- `target`: Field in target object (DTO)
+- `source`: property path in the source object (the entity)
+- `target`: property in the target object (the DTO)
+
+Fields with the same name and a compatible type need no `@Mapping` at all. MapStruct also converts common types automatically — e.g. the `Role` enum on `Customer` becomes the `String role` in `CustomerResponse` (`"CUSTOMER"`, `"ADMIN"`).
 
 #### `@Mapping(target = "...", ignore = true)`
 
-Ignore fields that shouldn't be mapped:
+Explicitly *don't* fill a target field:
 
 ```java
-@Mapping(target = "id", ignore = true)        // ID generated by DB
-@Mapping(target = "createdAt", ignore = true) // Set by JPA auditing
-@Mapping(target = "password", ignore = true)  // Never map password from request
+@Mapping(target = "id", ignore = true)        // ID generated by the database
+@Mapping(target = "createdAt", ignore = true) // Set by JPA Auditing
 Pizza toEntity(CreatePizzaRequest request);
 ```
 
-#### `@BeanMapping(nullValuePropertyMappingStrategy = ...)`
+If a target field has no matching source and you did *not* ignore it, MapStruct prints a compiler **warning**, e.g.:
 
-For partial updates:
-
-```java
-@BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
-void updateEntity(UpdatePizzaRequest request, @MappingTarget Pizza pizza);
+```
+[WARNING] PizzaMapper.java:[26,11] Unmapped target property: "imageUrl".
 ```
 
-- `IGNORE`: Don't update if DTO field is `null`
-- Allows partial updates (only change provided fields)
+That's MapStruct's biggest advantage over manual mapping: add a field to `Pizza`, recompile, and you're told about every mapper that doesn't handle it yet. (Tip: read these warnings when you build `pizzastore-with-dtos` — you'll see exactly this one, because `imageUrl` is deliberately not part of `CreatePizzaRequest`.)
 
 #### `@MappingTarget`
 
@@ -560,15 +611,32 @@ Updates an existing object instead of creating a new one:
 ```java
 void updateEntity(UpdatePizzaRequest request, @MappingTarget Pizza pizza);
 
-// Usage:
-Pizza existing = pizzaRepository.findById(id).orElseThrow();
-pizzaMapper.updateEntity(updateRequest, existing);
-// existing is now updated with values from updateRequest
+// Usage in PizzaService:
+pizzaRepository.findById(id).map(pizza -> {
+    pizzaMapper.updateEntity(request, pizza);   // pizza is now updated in place
+    ...
+});
 ```
 
-### Using Other Mappers
+Why update the managed entity instead of creating a new one? Because it keeps its `id`, its audit fields and its relationships — and inside a `@Transactional` method Hibernate's dirty checking writes the changes to the database.
 
-When a DTO contains nested objects, MapStruct can use other mappers:
+#### `@BeanMapping(nullValuePropertyMappingStrategy = ...)`
+
+Controls what an update mapping does with `null` values in the source:
+
+```java
+@BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
+void updateEntity(UpdatePizzaRequest request, @MappingTarget Pizza pizza);
+```
+
+- `SET_TO_NULL` (**the default**): a `null` in the DTO overwrites the entity's value with `null`
+- `IGNORE`: a `null` in the DTO leaves the entity's value untouched → partial updates
+
+See [pitfall 6](#6-null-values-in-update-mappings) for why this matters.
+
+### Nested Objects and Collections
+
+When a DTO contains nested objects or lists, MapStruct looks for a method that can map the element type — first in the same mapper, then in the mappers listed in `@Mapper(uses = ...)` — and generates one itself if it finds none.
 
 ```java
 @Mapper(componentModel = "spring")
@@ -576,8 +644,8 @@ public interface OrderMapper {
 
     @Mapping(source = "customer.id", target = "customerId")
     @Mapping(source = "customer.name", target = "customerName")
-    OrderResponse toResponse(Order order);
-    
+    OrderResponse toResponse(Order order);          // orderLines → uses toOrderLineResponse below
+
     List<OrderResponse> toResponseList(List<Order> orders);
 
     @Mapping(source = "pizza.id", target = "pizzaId")
@@ -591,85 +659,103 @@ public interface OrderMapper {
 **How it works:**
 
 ```java
-// Order entity has a Customer
+// Order entity has a Customer and a list of OrderLines
 @Entity
 public class Order {
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     private Customer customer;
+
+    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<OrderLine> orderLines;
     // ...
 }
 
-// OrderResponse DTO flattens the customer data
+// OrderResponse DTO flattens the customer and nests the order lines
 public record OrderResponse(
-    Long id,
-    Long customerId,
-    String customerName,
-    List<OrderLineResponse> orderLines,
-    BigDecimal totalAmount,
-    OrderStatus status,
-    LocalDateTime orderDate
+        Long id,
+        String orderNumber,
+        Long customerId,
+        String customerName,
+        List<OrderLineResponse> orderLines,
+        BigDecimal totalAmount,
+        OrderStatus status,
+        LocalDateTime orderDate
 ) {}
 
-// MapStruct automatically maps customer.id → customerId
+// MapStruct maps customer.id → customerId, and every OrderLine via toOrderLineResponse()
 ```
 
-### Summary DTOs for Nested Objects
+`PizzaMapper` works the same way for `Pizza.nutritionalInfo`: it doesn't declare a mapper for `NutritionalInfo` in `uses`, so MapStruct generates a private helper method for it (that's the `nutritionalInfoToNutritionalInfoResponse` you saw above). PizzaStore also contains a standalone `NutritionalInfoMapper` you can inject wherever you need to map nutritional info on its own.
 
-To avoid circular references, use summary DTOs:
+### Flattening vs. Summary DTOs
 
-```java
-// Full response
-public record PizzaResponse(
-        Long id,
-        String name,
-        BigDecimal price,
-        String description,
-        String imageUrl,
-        Boolean available,
-        NutritionalInfoResponse nutritionalInfo
-) {}
-
-// Summary for nested objects (only essential fields)
-public record PizzaSummaryResponse(
-        Long id,
-        String name,
-        BigDecimal price
-) {}
-```
-
-**Usage:**
+Nested *entities* don't have to become nested *DTOs*. There are two common approaches:
 
 ```java
-// OrderLineResponse flattens pizza data (alternative approach)
+// Option A — flattening (what PizzaStore does): copy just the fields the client needs
 public record OrderLineResponse(
         Long id,
         Long pizzaId,
         String pizzaName,
-        int quantity,
+        Integer quantity,
+        BigDecimal unitPrice,
+        BigDecimal subtotal
+) {}
+
+// Option B — a small "summary" DTO for the nested object
+public record PizzaSummaryResponse(Long id, String name, BigDecimal price) {}
+
+public record OrderLineResponse(
+        Long id,
+        PizzaSummaryResponse pizza,
+        Integer quantity,
         BigDecimal unitPrice,
         BigDecimal subtotal
 ) {}
 ```
 
+Both avoid circular references and over-fetching; never nest the *full* response DTO of a related object. PizzaStore flattens (`customerId`/`customerName` in `OrderResponse`, `pizzaId`/`pizzaName` in `OrderLineResponse`): the client gets the id to fetch details if it needs them, and the name to display right away.
+
+### Not Everything Goes Through MapStruct
+
+MapStruct is ideal for *copying* data. When building an object requires **business logic** or **database lookups**, write that code in the service instead. `CreateOrderRequest` has no mapper method at all: `OrderService.create()` looks up the `Customer` and each `Pizza` by id, copies the pizza's current price into the order line, and lets `Order.addOrderLine()` recalculate the total:
+
+```java
+Customer customer = customerRepository.findById(request.customerId())
+        .orElseThrow(() -> new RuntimeException("Customer not found: " + request.customerId()));
+
+Order order = new Order(generateOrderNumber(), customer, OrderStatus.PENDING);
+
+for (CreateOrderRequest.OrderLineRequest lineRequest : request.orderLines()) {
+    Pizza pizza = pizzaRepository.findById(lineRequest.pizzaId())
+            .orElseThrow(() -> new RuntimeException("Pizza not found: " + lineRequest.pizzaId()));
+    order.addOrderLine(new OrderLine(pizza, lineRequest.quantity()));
+}
+
+return orderMapper.toResponse(orderRepository.save(order));   // back to MapStruct for the response
+```
+
+(The generic `RuntimeException` is temporary — Lesson 10 replaces it with PizzaStore's own exception classes.)
+
 ---
 
 ## 🏢 Service Layer Pattern
 
-The **Service Layer** sits between Controllers and Repositories.
+The **Service Layer** sits between Controllers and Repositories. It is the place where DTOs are converted to entities and back.
 
 ### Why a Service Layer?
 
 ```
 ┌─────────────────┐
-│   Controller    │  ← Handles HTTP, validates input
+│   Controller    │  ← Handles HTTP (Lesson 9)             ↕ DTOs
 └────────┬────────┘
          ↓
 ┌─────────────────┐
 │    Service      │  ← Business logic, DTO mapping, transactions
 └────────┬────────┘
-         ↓
+         ↓                                                  ↕ Entities
 ┌─────────────────┐
-│   Repository    │  ← Data access
+│   Repository    │  ← Data access (Lesson 6a)
 └────────┬────────┘
          ↓
 ┌─────────────────┐
@@ -682,10 +768,14 @@ The **Service Layer** sits between Controllers and Repositories.
 | Layer | Responsibility | Example |
 |-------|---------------|---------|
 | **Controller** | HTTP concerns | Parse request, return status codes |
-| **Service** | Business logic | Validate business rules, map DTOs, orchestrate |
+| **Service** | Business logic | Validate business rules, map DTOs, orchestrate, transactions |
 | **Repository** | Data access | CRUD operations, queries |
 
+Entities never leave the service layer; controllers only ever see DTOs.
+
 ### Service Layer Implementation
+
+This is `PizzaService` from `pizzastore-with-dtos`:
 
 ```java
 package be.vives.pizzastore.service;
@@ -757,12 +847,12 @@ public class PizzaService {
     public PizzaResponse create(CreatePizzaRequest request) {
         log.debug("Creating new pizza: {}", request.name());
         Pizza pizza = pizzaMapper.toEntity(request);
-        
+
         // Set bidirectional relationship for NutritionalInfo
         if (pizza.getNutritionalInfo() != null) {
             pizza.getNutritionalInfo().setPizza(pizza);
         }
-        
+
         Pizza savedPizza = pizzaRepository.save(pizza);
         log.info("Created pizza with id: {}", savedPizza.getId());
         return pizzaMapper.toResponse(savedPizza);
@@ -798,6 +888,8 @@ public class PizzaService {
 }
 ```
 
+Note the `setPizza(pizza)` after mapping: MapStruct only copies data, it knows nothing about JPA. Keeping both sides of the bidirectional `@OneToOne` in sync (the owning side `NutritionalInfo.pizza` holds the foreign key — see Lesson 6a) is the service's job.
+
 ### Key Patterns
 
 #### 1. **Constructor Injection**
@@ -814,23 +906,25 @@ public PizzaService(PizzaRepository pizzaRepository, PizzaMapper pizzaMapper) {
 
 **Benefits:**
 - Immutable dependencies (`final`)
-- Easy to test (can pass mocks)
+- Easy to test (can pass mocks — Lesson 11)
 - Explicit dependencies
 
 #### 2. **Transaction Management**
 
 ```java
 @Service
-@Transactional  // All methods are transactional
+@Transactional  // All public methods run in a transaction
 public class PizzaService {
-    
-    // Read method - uses transaction
+
+    // Read method - lazy associations can be loaded while mapping to DTOs
     public Optional<PizzaResponse> findById(Long id) { ... }
-    
-    // Write method - uses transaction
+
+    // Write method - all changes are committed together, or rolled back together
     public PizzaResponse create(CreatePizzaRequest request) { ... }
 }
 ```
+
+Because the mapping to DTOs happens *inside* the transaction, lazy associations (like `Order.customer` or `Customer.favoritePizzas`) can still be loaded. Once the DTO leaves the service, it is plain data — no proxies, no session needed.
 
 #### 3. **Always Return DTOs**
 
@@ -842,13 +936,22 @@ public Pizza findById(Long id) { ... }
 public Optional<PizzaResponse> findById(Long id) { ... }
 ```
 
+#### 4. **"Not Found" as `Optional` / `boolean` — for Now**
+
+At this point the services signal "not found" with `Optional.empty()` or `false`, so that the controllers in Lesson 9 can turn that into a `404 Not Found`. In [Lesson 10](../lesson-10-validation-exception-handling/README.md) this evolves into throwing a `ResourceNotFoundException` that a global exception handler converts into a proper error response — that's what the final PizzaStore does.
+
 ---
 
 ## 📁 Project Structure with DTOs
 
+Everything from Lesson 6a stays exactly as it was; this lesson adds the `dto`, `mapper` and `service` packages:
+
 ```
 src/main/java/be/vives/pizzastore/
-├── domain/                      # JPA Entities
+├── config/
+│   └── JpaConfig.java           # @EnableJpaAuditing (from Lesson 6a)
+│
+├── domain/                      # JPA Entities (from Lesson 6a)
 │   ├── Pizza.java
 │   ├── Order.java
 │   ├── OrderLine.java
@@ -857,39 +960,40 @@ src/main/java/be/vives/pizzastore/
 │   ├── OrderStatus.java         # Enum
 │   └── Role.java                # Enum
 │
-├── repository/                  # Spring Data JPA Repositories
+├── repository/                  # Spring Data JPA Repositories (from Lesson 6a)
 │   ├── PizzaRepository.java
 │   ├── OrderRepository.java
-│   └── CustomerRepository.java
+│   ├── CustomerRepository.java
+│   └── projection/
+│       └── PizzaSalesStatistics.java
 │
-├── dto/                         # Data Transfer Objects
+├── dto/                         # 🆕 Data Transfer Objects
 │   ├── request/                 # Request DTOs (incoming)
 │   │   ├── CreatePizzaRequest.java
 │   │   ├── UpdatePizzaRequest.java
+│   │   ├── NutritionalInfoRequest.java
 │   │   ├── CreateCustomerRequest.java
 │   │   ├── UpdateCustomerRequest.java
-│   │   ├── CreateOrderRequest.java
-│   │   ├── UpdateOrderStatusRequest.java
-│   │   ├── OrderLineRequest.java
-│   │   └── NutritionalInfoRequest.java
+│   │   ├── CreateOrderRequest.java      # contains nested record OrderLineRequest
+│   │   └── UpdateOrderStatusRequest.java
 │   │
 │   └── response/                # Response DTOs (outgoing)
 │       ├── PizzaResponse.java
-│       ├── PizzaSummaryResponse.java
-│       ├── OrderResponse.java
-│       ├── OrderLineResponse.java
+│       ├── NutritionalInfoResponse.java
 │       ├── CustomerResponse.java
-│       └── NutritionalInfoResponse.java
+│       ├── OrderResponse.java
+│       └── OrderLineResponse.java
 │
-├── mapper/                      # MapStruct Mappers
+├── mapper/                      # 🆕 MapStruct Mappers
 │   ├── PizzaMapper.java
-│   ├── OrderMapper.java
-│   └── CustomerMapper.java
+│   ├── NutritionalInfoMapper.java
+│   ├── CustomerMapper.java
+│   └── OrderMapper.java
 │
-├── service/                     # Service Layer
+├── service/                     # 🆕 Service Layer
 │   ├── PizzaService.java
-│   ├── OrderService.java
-│   └── CustomerService.java
+│   ├── CustomerService.java
+│   └── OrderService.java
 │
 └── PizzaStoreApplication.java   # Main application class
 ```
@@ -912,6 +1016,8 @@ PizzaSummaryResponse    // Minimal representation (for nested objects)
 PizzaDetailResponse     // Extra detailed representation (if needed)
 ```
 
+You'll also see the suffix `DTO` (`PizzaDTO`, `CustomerDetailsDTO`) in other code bases and in the book. PizzaStore prefers `...Request`/`...Response`, which says in which *direction* the data flows. Whatever you pick: be consistent.
+
 ### 2. **Package Structure**
 
 ```
@@ -921,7 +1027,7 @@ dto/
 │   └── UpdatePizzaRequest.java
 └── response/
     ├── PizzaResponse.java
-    └── PizzaSummaryResponse.java
+    └── NutritionalInfoResponse.java
 ```
 
 ### 3. **Immutability**
@@ -937,20 +1043,22 @@ public class PizzaResponse {
 }
 ```
 
-### 4. **Validation**
+### 4. **Validation Belongs on Request DTOs**
 
 ```java
-// Add validation to Request DTOs
+// Lesson 10 adds constraints like these to the request DTOs:
 public record CreatePizzaRequest(
-        @NotBlank(message = "Name is required")
-        @Size(max = 100, message = "Name must not exceed 100 characters")
+        @NotBlank(message = "Pizza name is required")
         String name,
-        
+
         @NotNull(message = "Price is required")
-        @DecimalMin(value = "0.0", inclusive = false, message = "Price must be greater than 0")
-        BigDecimal price
+        @DecimalMin(value = "0.01", message = "Price must be positive")
+        BigDecimal price,
+        ...
 ) {}
 ```
+
+Different DTOs can have different rules (a name is required on create, optional on update) — something you can't express on a single entity.
 
 ### 5. **Never Include Audit Fields in Response DTOs**
 
@@ -973,20 +1081,21 @@ public record PizzaResponse(
 ) {}
 ```
 
-### 6. **Use Summary DTOs for Nested Objects**
+### 6. **Flatten or Summarize Nested Objects**
 
 ```java
-// ✅ GOOD: Avoid circular references
+// ✅ GOOD: Only what the client needs about the customer
 public record OrderResponse(
         Long id,
-        UserSummaryResponse user,     // Summary, not full User
+        Long customerId,
+        String customerName,
         List<OrderLineResponse> orderLines
 ) {}
 
 // ❌ BAD: Can cause circular references or over-fetching
 public record OrderResponse(
         Long id,
-        UserResponse user,            // Full user with all orders → infinite loop!
+        CustomerResponse customer,    // If CustomerResponse ever gets a list of orders → loop!
         List<OrderLineResponse> orderLines
 ) {}
 ```
@@ -1020,7 +1129,7 @@ public class PizzaService {
 public class PizzaService {
     private final PizzaRepository repository;
     private final PizzaMapper mapper;
-    
+
     public PizzaService(PizzaRepository repository, PizzaMapper mapper) {
         this.repository = repository;
         this.mapper = mapper;
@@ -1032,7 +1141,7 @@ public class PizzaService {
 public class PizzaService {
     @Autowired
     private PizzaRepository repository;
-    
+
     @Autowired
     private PizzaMapper mapper;
 }
@@ -1069,7 +1178,7 @@ public class PizzaService {
     public Optional<PizzaResponse> update(Long id, UpdatePizzaRequest request) {
         Pizza pizza = repository.findById(id).orElseThrow();
         mapper.updateEntity(request, pizza);
-        return Optional.of(mapper.toResponse(pizza));  // Changes might not be saved!
+        return Optional.of(mapper.toResponse(pizza));  // Changes are never saved!
     }
 }
 
@@ -1081,7 +1190,7 @@ public class PizzaService {
         return repository.findById(id)
                 .map(pizza -> {
                     mapper.updateEntity(request, pizza);
-                    // Changes automatically saved when transaction commits
+                    // Changes automatically saved when transaction commits (dirty checking)
                     return mapper.toResponse(pizza);
                 });
     }
@@ -1095,7 +1204,7 @@ public class PizzaService {
 @Mapper(componentModel = "spring")
 public interface PizzaMapper {
     Pizza toEntity(CreatePizzaRequest request);
-    // This will try to map id, createdAt, etc. from request!
+    // MapStruct warns: Unmapped target properties: "id, createdAt, createdBy, ..."
 }
 
 // ✅ GOOD: Explicitly ignore generated fields
@@ -1106,9 +1215,12 @@ public interface PizzaMapper {
     @Mapping(target = "createdBy", ignore = true)
     @Mapping(target = "updatedAt", ignore = true)
     @Mapping(target = "updatedBy", ignore = true)
+    @Mapping(target = "favoritedByCustomers", ignore = true)
     Pizza toEntity(CreatePizzaRequest request);
 }
 ```
+
+Don't silence the warnings globally (`unmappedTargetPolicy = ReportingPolicy.IGNORE`) — they are your safety net. Ignoring a field *explicitly* documents that it's intentional.
 
 ### 4. **Exposing Passwords**
 
@@ -1130,14 +1242,23 @@ public record CustomerResponse(
         String address,
         String role
 ) {}
+```
 
-// And in mapper:
+The password *is* part of `CreateCustomerRequest` (you need one to register), but it only ever flows **in**. PizzaStore's `CustomerMapper` also guards the other direction on updates:
+
+```java
 @Mapper(componentModel = "spring")
 public interface CustomerMapper {
-    @Mapping(target = "password", ignore = true)  // Extra safety when creating
-    Customer toEntity(CreateCustomerRequest request);
+    // ...
+    @Mapping(target = "email", ignore = true)     // email can't be changed via a profile update
+    @Mapping(target = "password", ignore = true)  // password never changed via a profile update
+    @Mapping(target = "role", ignore = true)      // clients can never promote themselves to ADMIN
+    // ... (id, orders, favoritePizzas, audit fields also ignored)
+    void updateEntity(UpdateCustomerRequest request, @MappingTarget Customer customer);
 }
 ```
+
+(`UpdateCustomerRequest` doesn't even *have* those fields — the `ignore`s document the intent and keep MapStruct from warning.) Hashing the password before it's stored is part of the security lesson ([Lesson 12](../lesson-12-jwt-authentication/README.md)).
 
 ### 5. **Circular References in DTOs**
 
@@ -1158,6 +1279,7 @@ public record OrderResponse(
 // ✅ GOOD: Flatten customer data or use IDs
 public record OrderResponse(
         Long id,
+        String orderNumber,
         Long customerId,             // ← Just the ID
         String customerName,         // ← Just the name
         List<OrderLineResponse> orderLines,
@@ -1167,28 +1289,41 @@ public record OrderResponse(
 ) {}
 ```
 
-### 6. **Not Using `NullValuePropertyMappingStrategy.IGNORE` for Updates**
+### 6. **`null` Values in Update Mappings**
+
+MapStruct's default for `@MappingTarget` methods is `NullValuePropertyMappingStrategy.SET_TO_NULL`: **every** `null` in the request overwrites the corresponding entity field. You can see it in the generated `PizzaMapperImpl`:
 
 ```java
-// ❌ BAD: Null values overwrite existing data
-@Mapper(componentModel = "spring")
-public interface PizzaMapper {
-    void updateEntity(UpdatePizzaRequest request, @MappingTarget Pizza pizza);
+@Override
+public void updateEntity(UpdatePizzaRequest request, Pizza pizza) {
+    ...
+    pizza.setName( request.name() );             // no null check!
+    pizza.setPrice( request.price() );
+    pizza.setDescription( request.description() );
+    ...
+    pizza.setAvailable( request.available() );
 }
-
-// Request: { "name": "New Name", "description": null }
-// Result: description is set to null (data loss!)
-
-// ✅ GOOD: Ignore null values (MapStruct default behavior for Records)
-@Mapper(componentModel = "spring")
-public interface PizzaMapper {
-    @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
-    void updateEntity(UpdatePizzaRequest request, @MappingTarget Pizza pizza);
-}
-
-// Request: { "name": "New Name", "description": null }
-// Result: Only name is updated, description keeps its existing value
 ```
+
+So with PizzaStore's `PizzaMapper`, an update is a **full replacement**: the client must send *all* fields. That matches the semantics of HTTP `PUT` (Lesson 8/9), but it means a request that only contains a new price:
+
+```json
+{ "price": 10.00 }
+```
+
+sets `name` and `available` to `null` — and since those are `NOT NULL` columns, the save fails with a `DataIntegrityViolationException`.
+
+If you want **partial updates** (typically for HTTP `PATCH`), tell MapStruct to skip `null`s:
+
+```java
+@BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
+void updateEntity(UpdatePizzaRequest request, @MappingTarget Pizza pizza);
+
+// Request: { "price": 10.00 }
+// Result: only the price changes, every other field keeps its existing value
+```
+
+The trade-off: with `IGNORE`, a client can no longer *deliberately* clear a field by sending `null`. Choose the strategy that matches the HTTP semantics of your endpoint, and in Lesson 10 back it up with validation (e.g. `@NotBlank` on fields that a full update must contain).
 
 ---
 
@@ -1197,133 +1332,114 @@ public interface PizzaMapper {
 ### Key Takeaways
 
 1. **Never expose entities directly** in your API
-   - Security risks (passwords, audit fields)
+   - Security risks (passwords, audit fields, mass assignment)
    - Circular references
    - Tight coupling
-   - Lazy loading exceptions
+   - Lazy loading surprises
 
 2. **Use DTOs** for data transfer
    - Request DTOs for incoming data
    - Response DTOs for outgoing data
-   - Summary DTOs for nested objects
+   - Flatten (or summarize) nested objects
 
 3. **Use Java Records** for DTOs
    - Concise syntax
    - Immutable by default
-   - Perfect for data transfer
+   - (De)serialized out of the box by Jackson 3
 
 4. **Use MapStruct** for mapping
-   - Type-safe
-   - Compile-time generation
+   - Type-safe, with warnings for unmapped fields
+   - Compile-time generation — readable plain-Java code in `target/generated-sources`
    - No runtime reflection
-   - Easy to maintain
+   - Know its update default (`SET_TO_NULL`)
+   - Keep business logic (lookups, calculations) in the service
 
 5. **Implement a Service Layer**
    - Business logic
-   - DTO mapping
+   - DTO ↔ Entity mapping
    - Transaction management
-   - Sits between Controller and Repository
+   - Sits between Controller and Repository; entities never leave it
 
 6. **Best Practices**
    - Constructor injection
-   - `@Transactional` annotations
+   - `@Transactional` services
    - Never include audit fields in responses
    - Never include passwords in responses
-   - Use Summary DTOs for nested objects
+   - Validation on request DTOs (Lesson 10)
 
 ### Architecture
 
 ```
 ┌──────────────────────────────────────┐
-│         Controller Layer              │
-│  - HTTP concerns                      │
-│  - Request validation                 │
-│  - Response status codes              │
+│         Controller Layer             │
+│  - HTTP concerns                     │
+│  - Request validation                │
+│  - Response status codes             │
 └──────────────┬───────────────────────┘
                │ DTOs
                ↓
 ┌──────────────────────────────────────┐
-│          Service Layer                │
-│  - Business logic                     │
-│  - DTO ↔ Entity mapping               │
-│  - Transaction management             │
+│          Service Layer               │
+│  - Business logic                    │
+│  - DTO ↔ Entity mapping              │
+│  - Transaction management            │
 └──────────────┬───────────────────────┘
                │ Entities
                ↓
 ┌──────────────────────────────────────┐
-│        Repository Layer               │
-│  - Data access                        │
-│  - JPA queries                        │
+│        Repository Layer              │
+│  - Data access                       │
+│  - JPA queries                       │
 └──────────────┬───────────────────────┘
                │
                ↓
 ┌──────────────────────────────────────┐
-│            Database                   │
+│            Database                  │
 └──────────────────────────────────────┘
 ```
 
 ### What's Next?
 
-In **Lesson 8 (REST Principles)** we'll add:
-- Controllers to expose REST endpoints
-- HTTP methods (GET, POST, PUT, DELETE)
-- Status codes and error handling
-- REST best practices
+In **[Lesson 8 (REST Principles)](../lesson-08-rest-principles/README.md)** we look at how a good REST API is designed:
+- Resource-based URLs, HTTP methods and status codes
+- REST best practices and API versioning
 
-In **Lesson 9 (Complete REST API)** we'll:
-- Build a complete REST API for PizzaStore
-- Implement HATEOAS
-- Add pagination and filtering
-- Handle complex scenarios
+In **[Lesson 9 (Complete REST API)](../lesson-09-complete-rest-api/README.md)** we build on this lesson's project:
+- Controllers that expose the services from this lesson as REST endpoints
+- Full CRUD, pagination and filtering
+- File upload for pizza images
+
+In **[Lesson 10 (Validation & Exception Handling)](../lesson-10-validation-exception-handling/README.md)** we:
+- Add Bean Validation to the request DTOs
+- Replace the `Optional`/`boolean`/`RuntimeException` "not found" handling with proper exceptions and a global exception handler
 
 ---
 
 ## 🚀 Runnable Project
 
-A complete, runnable Spring Boot project demonstrating **DTOs, MapStruct, and Service Layer** from this lesson is available in:
-
-**`pizzastore-with-dtos/`**
+**`pizzastore-with-dtos/`** is Lesson 6a's `pizzastore-jpa` project plus the `dto`, `mapper` and `service` packages of this lesson. It's a step on the way to the final PizzaStore: the `domain`, `repository`, `dto` and `mapper` packages are the same as in the final project — except that validation (Lesson 10) and OpenAPI annotations (Lesson 13) have not been added to the DTOs yet.
 
 The project includes:
-- ✅ **Request DTOs**: PizzaRequest, OrderRequest, OrderLineRequest for incoming data
-- ✅ **Response DTOs**: PizzaResponse, OrderResponse, OrderLineResponse for outgoing data
-- ✅ **Summary DTOs**: CustomerSummary, PizzaSummary for nested objects
-- ✅ **MapStruct Mappers**: Automatic, type-safe entity-DTO conversion
-- ✅ **Service Layer**: PizzaService, OrderService, CustomerService with business logic
-- ✅ **Transaction Management**: @Transactional annotations on service methods
-- ✅ **No Audit Fields**: createdAt, updatedAt, createdBy, updatedBy are never exposed in responses
-- ✅ Complete domain model with JPA relationships (from Lesson 6a)
-- ✅ Comprehensive sample data (12 pizzas, 6 customers, 10 orders)
-
-### How to Run
-
-```bash
-cd pizzastore-with-dtos
-mvn clean install
-mvn spring-boot:run
-```
-
-The application starts on `http://localhost:8080` with H2 in-memory database.
-
-### Verify the Service Layer
-
-Once running, you can test the service layer by temporarily adding a simple test endpoint or by checking the logs during startup. The sample data is automatically loaded via `data.sql`.
-
-You can also access the H2 console at `http://localhost:8080/h2-console`:
-- JDBC URL: `jdbc:h2:mem:pizzastore`
-- Username: `sa`
-- Password: *(leave empty)*
-
-See the project README for more details on testing the service methods.
+- ✅ **Spring Boot 4** on **Java 25** (`spring-boot-starter-webmvc`, `spring-boot-starter-data-jpa`, H2)
+- ✅ The complete domain model, repositories and seed data from Lesson 6a
+- ✅ **Request DTOs**: `CreatePizzaRequest`, `UpdatePizzaRequest`, `NutritionalInfoRequest`, `CreateCustomerRequest`, `UpdateCustomerRequest`, `CreateOrderRequest` (with nested `OrderLineRequest`), `UpdateOrderStatusRequest`
+- ✅ **Response DTOs**: `PizzaResponse`, `NutritionalInfoResponse`, `CustomerResponse`, `OrderResponse`, `OrderLineResponse`
+- ✅ **MapStruct 1.6.3 Mappers**: `PizzaMapper`, `NutritionalInfoMapper`, `CustomerMapper`, `OrderMapper`
+- ✅ **Service Layer**: `PizzaService`, `CustomerService`, `OrderService` with `@Transactional`
+- ✅ **No audit fields and no passwords** are ever exposed in responses
+- ❌ No controllers yet — those follow in Lesson 9
 
 ---
 
 ## 🎓 Further Reading
 
-- [MapStruct Documentation](https://mapstruct.org/)
-- [Spring Boot Best Practices](https://docs.spring.io/spring-boot/docs/current/reference/html/)
-- [Java Records](https://docs.oracle.com/en/java/javase/17/language/records.html)
-- [Transaction Management](https://docs.spring.io/spring-framework/docs/current/reference/html/data-access.html#transaction)
+- [MapStruct Reference Guide](https://mapstruct.org/documentation/stable/reference/html/)
+- [Java Records (Java 25)](https://docs.oracle.com/en/java/javase/25/language/records.html)
+- [Spring Framework: Transaction Management](https://docs.spring.io/spring-framework/reference/data-access/transaction.html)
+- [Spring Boot Reference Documentation](https://docs.spring.io/spring-boot/)
+
+**Note on the book**: *Pro Spring Boot 4* has no dedicated chapter on DTOs or mapping, and doesn't mention MapStruct at all. The idea shows up in a few places instead: Chapter 2's JSON section shows `@JsonProperty`/`@JsonIgnore` to shape the JSON of a type (e.g. to hide a password) — the approach [Mapping Strategies](#%EF%B8%8F-mapping-strategies) warns against for entities; Chapter 3's validation best practices advise to "prefer applying validation on Data Transfer Objects (DTOs)" rather than on domain entities (Lesson 10 does exactly that); and the book's Management CRM (Chapter 1, and again in Chapters 5–8) uses a `CustomerDetailsDTO` record that its service layer assembles by hand from several domain objects — manual mapping, as in [option 2](#2-manual-mapping--fine-for-small-projects). This lesson goes beyond the book by separating request and response DTOs and by generating the mapping code with MapStruct, which PizzaStore uses because it scales better to a larger domain model and catches forgotten fields at compile time.
 
 ---
 
+**Great work!** 🎉 PizzaStore now has a clean boundary between its database model and the outside world. Continue to [Lesson 8: REST Principles](../lesson-08-rest-principles/README.md).
