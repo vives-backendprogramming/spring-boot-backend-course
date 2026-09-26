@@ -1,6 +1,6 @@
-# Lesson 7: DTOs & Mappers
+# Lesson 7: DTOs, Mappers & the Service Layer
 
-**Data Transfer Objects and Entity-DTO Mapping**
+**Data Transfer Objects, Entity-DTO Mapping, the Service Layer and Transactions**
 
 ---
 
@@ -12,7 +12,9 @@ By the end of this lesson, you will be able to:
 - Implement DTOs for proper API design using Java Records
 - Compare the mapping strategies (Jackson annotations, manual mapping, MapStruct) and know when to use which
 - Use MapStruct for automatic, compile-time mapping between entities and DTOs
-- Structure your Spring Boot project with proper layering (Service Layer)
+- Structure your Spring Boot project with proper layering and explain the responsibilities of the service layer
+- Explain what a transaction is (ACID) and why the service method is the natural transaction boundary
+- Use `@Transactional` and explain how it works (proxy, commit/rollback, dirty checking, rollback rules, `readOnly`, propagation, isolation)
 - Apply the DTO pattern to the PizzaStore application
 
 ---
@@ -26,12 +28,13 @@ By the end of this lesson, you will be able to:
 5. [Mapping Strategies](#%EF%B8%8F-mapping-strategies)
 6. [MapStruct: The Best Choice](#-mapstruct-the-best-choice)
 7. [Service Layer Pattern](#-service-layer-pattern)
-8. [Project Structure with DTOs](#-project-structure-with-dtos)
-9. [Best Practices](#-best-practices)
-10. [Common Pitfalls](#%EF%B8%8F-common-pitfalls)
-11. [Summary](#-summary)
-12. [Runnable Project](#-runnable-project)
-13. [Further Reading](#-further-reading)
+8. [Transactions](#-transactions)
+9. [Project Structure with DTOs](#-project-structure-with-dtos)
+10. [Best Practices](#-best-practices)
+11. [Common Pitfalls](#%EF%B8%8F-common-pitfalls)
+12. [Summary](#-summary)
+13. [Runnable Project](#-runnable-project)
+14. [Further Reading](#-further-reading)
 
 ---
 
@@ -196,6 +199,8 @@ Different operations need different data:
 
 #### Request DTO (Create)
 
+[`CreatePizzaRequest.java`](pizzastore-with-dtos/src/main/java/be/vives/pizzastore/dto/request/CreatePizzaRequest.java):
+
 ```java
 package be.vives.pizzastore.dto.request;
 
@@ -221,6 +226,8 @@ public record CreatePizzaRequest(
 
 #### Request DTO (Update)
 
+[`UpdatePizzaRequest.java`](pizzastore-with-dtos/src/main/java/be/vives/pizzastore/dto/request/UpdatePizzaRequest.java):
+
 ```java
 package be.vives.pizzastore.dto.request;
 
@@ -242,6 +249,8 @@ public record UpdatePizzaRequest(
 - Wrapper types (`Boolean`, `BigDecimal`) instead of primitives, so "not sent" (`null`) is distinguishable from `false`/`0` — see [pitfall 6](#6-null-values-in-update-mappings) for what the mapper does with those `null`s
 
 #### Response DTO
+
+[`PizzaResponse.java`](pizzastore-with-dtos/src/main/java/be/vives/pizzastore/dto/response/PizzaResponse.java):
 
 ```java
 package be.vives.pizzastore.dto.response;
@@ -522,6 +531,17 @@ public interface PizzaMapper {
 }
 ```
 
+It's an interface with four methods — MapStruct writes the implementation:
+
+| Method | Direction | Purpose |
+|--------|-----------|---------|
+| `PizzaResponse toResponse(Pizza pizza)` | Entity → Response DTO | Every read operation |
+| `List<PizzaResponse> toResponseList(List<Pizza> pizzas)` | Entity list → DTO list | Search results |
+| `Pizza toEntity(CreatePizzaRequest request)` | Request DTO → **new** entity | Create |
+| `void updateEntity(UpdatePizzaRequest request, @MappingTarget Pizza pizza)` | Request DTO → **existing** entity | Update |
+
+The two "Request DTO → entity" methods carry a list of `@Mapping(target = "...", ignore = true)` annotations for the fields a client may never set (`id`, the audit fields, `favoritedByCustomers`). Open the file next to this section; the annotations it uses are explained [below](#key-annotations).
+
 ### What MapStruct Generates
 
 Run `mvn compile` and open `target/generated-sources/annotations/be/vives/pizzastore/mapper/PizzaMapperImpl.java`. There's no magic — it's the code you'd otherwise write yourself (abridged):
@@ -741,7 +761,19 @@ return orderMapper.toResponse(orderRepository.save(order));   // back to MapStru
 
 ## 🏢 Service Layer Pattern
 
-The **Service Layer** sits between Controllers and Repositories. It is the place where DTOs are converted to entities and back.
+PizzaStore is built from the bottom up. [Lesson 6a](../lesson-06a-spring-data-jpa/README.md) laid the foundation: the domain model and the repositories that store it. This lesson adds the next layer on top of that: the **service layer**, which implements the application's use cases and is also the place where DTOs are converted to entities and back. The web layer comes last: in [Lesson 9](../lesson-09-complete-rest-api/README.md), controllers expose these services as a REST API.
+
+### What Is a Service?
+
+A service is a Spring bean, annotated with `@Service`, that implements **one use case of your application per public method**: "create a pizza", "place an order", "add a pizza to a customer's favorites". As the book puts it, the service layer "acts as an orchestrator": a single business request often needs several repositories, a few business rules and some mapping — the service puts those together.
+
+```java
+@Service
+@Transactional
+public class OrderService { ... }
+```
+
+`@Service` is one of the stereotype annotations from [Lesson 2](../lesson-02-spring-di-ioc/README.md#-spring-stereotype-annotations). Technically it's just a `@Component`, so component scanning picks it up and it can be injected everywhere — but the name tells every reader (and tools) that this class holds business logic.
 
 ### Why a Service Layer?
 
@@ -765,128 +797,87 @@ The **Service Layer** sits between Controllers and Repositories. It is the place
 
 **Responsibilities:**
 
-| Layer | Responsibility | Example |
-|-------|---------------|---------|
-| **Controller** | HTTP concerns | Parse request, return status codes |
-| **Service** | Business logic | Validate business rules, map DTOs, orchestrate, transactions |
-| **Repository** | Data access | CRUD operations, queries |
+| Layer | Responsibility | Knows about | Must *not* know about |
+|-------|----------------|-------------|------------------------|
+| **Controller** | HTTP concerns: URLs, request parsing, status codes, headers | Services, DTOs | Repositories, entities, SQL |
+| **Service** | Business logic: use cases, business rules, orchestration, DTO ↔ entity mapping, transactions | Repositories, mappers, entities, DTOs | HTTP (`ResponseEntity`, status codes, `HttpServletRequest`) |
+| **Repository** | Data access: CRUD, queries | Entities | Business rules, DTOs, HTTP |
 
-Entities never leave the service layer; controllers only ever see DTOs.
+Each layer only talks to the layer directly below it. Entities never leave the service layer; controllers only ever see DTOs.
+
+Why go to this trouble instead of calling repositories directly from the controller?
+
+1. **One place for business logic.** "An order must contain existing pizzas", "a delivered order can no longer be cancelled" (Lesson 10) — these rules belong to the application, not to one HTTP endpoint. In a controller they would get copied every time a second endpoint needs them.
+2. **Reuse beyond HTTP.** The same `OrderService.create()` can be called by a REST controller, a scheduled job, a message listener or a test. None of those care about HTTP.
+3. **A clear transaction boundary.** One service method = one use case = one transaction (see [Transactions](#-transactions)).
+4. **A clear mapping boundary.** Entities go in and out of the repositories, DTOs go in and out of the services. The controller never sees a lazy-loading proxy.
+5. **Testability.** A service has no HTTP dependency: you can unit-test it with mocked repositories (Lesson 11).
+
+### Business Logic: Service or Entity?
+
+Not all logic belongs in the service. A good rule of thumb:
+
+- Logic that is about **one object and its own data** belongs in the **entity**. `Order.addOrderLine()` adds the line, sets the back-reference and recalculates the total, and `Customer.addFavoritePizza()` keeps both sides of the many-to-many in sync. These rules must hold *no matter who* changes the order.
+- Logic that **coordinates** several objects, repositories or other services belongs in the **service**. `OrderService.create()` looks up a customer and several pizzas, builds an order from them and saves it.
+
+```java
+// CustomerService: orchestration (look up two aggregates, save)
+public boolean addFavoritePizza(Long customerId, Long pizzaId) {
+    Optional<Customer> customerOpt = customerRepository.findById(customerId);
+    Optional<Pizza> pizzaOpt = pizzaRepository.findById(pizzaId);
+
+    if (customerOpt.isPresent() && pizzaOpt.isPresent()) {
+        Customer customer = customerOpt.get();
+        Pizza pizza = pizzaOpt.get();
+        customer.addFavoritePizza(pizza);   // ← domain logic lives in the entity
+        customerRepository.save(customer);
+        return true;
+    }
+    return false;
+}
+```
+
+### PizzaStore's Services
+
+| Service | Uses | Use cases |
+|---------|------|-----------|
+| `PizzaService` | `PizzaRepository`, `PizzaMapper` | list (paginated), find by id / price / name, create, update, delete |
+| `CustomerService` | `CustomerRepository`, `PizzaRepository`, `CustomerMapper`, `PizzaMapper` | list, find, create, update, delete, list/add/remove favorite pizzas |
+| `OrderService` | `OrderRepository`, `CustomerRepository`, `PizzaRepository`, `OrderMapper` | list, find by id / customer / status, place an order, change status, cancel |
+
+A service may use *several* repositories (`OrderService` needs customers and pizzas to build an order). Services can also call other services, but avoid circular dependencies between them — if two services need each other, some logic is probably in the wrong place.
+
+> 💡 **Interface + implementation?** You'll often see a `PizzaService` interface with a `PizzaServiceImpl` class. With only one implementation that adds little: Spring can proxy classes directly and Mockito can mock them. PizzaStore uses plain classes; introduce an interface when you really have more than one implementation.
 
 ### Service Layer Implementation
 
-This is `PizzaService` from `pizzastore-with-dtos`:
+Open [`service/PizzaService.java`](pizzastore-with-dtos/src/main/java/be/vives/pizzastore/service/PizzaService.java) and read it alongside this section. Its structure is typical for every PizzaStore service:
+
+- `@Service` + `@Transactional` on the class
+- `final` fields for the repository and the mapper, filled through the constructor
+- **read methods** (`findAll(Pageable)`, `findById`, `findByPriceLessThan`, `findByPriceBetween`, `findByNameContaining`): call the repository, map the entities to `PizzaResponse`s
+- **write methods** (`create`, `update`, `delete`): map the request to an entity (or look up the existing one), save it, map the result back
+- logging with SLF4J (Lesson 3): `debug` on entry, `info` after a successful change
+
+A typical write method, `create()`:
 
 ```java
-package be.vives.pizzastore.service;
+public PizzaResponse create(CreatePizzaRequest request) {
+    log.debug("Creating new pizza: {}", request.name());
+    Pizza pizza = pizzaMapper.toEntity(request);                 // DTO → entity
 
-import be.vives.pizzastore.domain.Pizza;
-import be.vives.pizzastore.dto.request.CreatePizzaRequest;
-import be.vives.pizzastore.dto.request.UpdatePizzaRequest;
-import be.vives.pizzastore.dto.response.PizzaResponse;
-import be.vives.pizzastore.mapper.PizzaMapper;
-import be.vives.pizzastore.repository.PizzaRepository;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
-import java.math.BigDecimal;
-import java.util.List;
-import java.util.Optional;
-
-@Service
-@Transactional
-public class PizzaService {
-
-    private static final Logger log = LoggerFactory.getLogger(PizzaService.class);
-
-    private final PizzaRepository pizzaRepository;
-    private final PizzaMapper pizzaMapper;
-
-    // Constructor injection (best practice)
-    public PizzaService(PizzaRepository pizzaRepository, PizzaMapper pizzaMapper) {
-        this.pizzaRepository = pizzaRepository;
-        this.pizzaMapper = pizzaMapper;
+    // Set bidirectional relationship for NutritionalInfo
+    if (pizza.getNutritionalInfo() != null) {
+        pizza.getNutritionalInfo().setPizza(pizza);
     }
 
-    // Read operations with pagination
-    public Page<PizzaResponse> findAll(Pageable pageable) {
-        log.debug("Finding pizzas with pagination: {}", pageable);
-        Page<Pizza> pizzaPage = pizzaRepository.findAll(pageable);
-        return pizzaPage.map(pizzaMapper::toResponse);
-    }
-
-    public Optional<PizzaResponse> findById(Long id) {
-        log.debug("Finding pizza with id: {}", id);
-        return pizzaRepository.findById(id)
-                .map(pizzaMapper::toResponse);
-    }
-
-    public List<PizzaResponse> findByPriceLessThan(BigDecimal maxPrice) {
-        log.debug("Finding pizzas with price less than: {}", maxPrice);
-        List<Pizza> pizzas = pizzaRepository.findByPriceLessThan(maxPrice);
-        return pizzaMapper.toResponseList(pizzas);
-    }
-
-    public List<PizzaResponse> findByPriceBetween(BigDecimal minPrice, BigDecimal maxPrice) {
-        log.debug("Finding pizzas with price between {} and {}", minPrice, maxPrice);
-        List<Pizza> pizzas = pizzaRepository.findByPriceBetween(minPrice, maxPrice);
-        return pizzaMapper.toResponseList(pizzas);
-    }
-
-    public List<PizzaResponse> findByNameContaining(String name) {
-        log.debug("Finding pizzas with name containing: {}", name);
-        List<Pizza> pizzas = pizzaRepository.findByNameContainingIgnoreCase(name);
-        return pizzaMapper.toResponseList(pizzas);
-    }
-
-    // Write operations
-    public PizzaResponse create(CreatePizzaRequest request) {
-        log.debug("Creating new pizza: {}", request.name());
-        Pizza pizza = pizzaMapper.toEntity(request);
-
-        // Set bidirectional relationship for NutritionalInfo
-        if (pizza.getNutritionalInfo() != null) {
-            pizza.getNutritionalInfo().setPizza(pizza);
-        }
-
-        Pizza savedPizza = pizzaRepository.save(pizza);
-        log.info("Created pizza with id: {}", savedPizza.getId());
-        return pizzaMapper.toResponse(savedPizza);
-    }
-
-    public Optional<PizzaResponse> update(Long id, UpdatePizzaRequest request) {
-        log.debug("Updating pizza with id: {}", id);
-        return pizzaRepository.findById(id)
-                .map(pizza -> {
-                    pizzaMapper.updateEntity(request, pizza);
-
-                    // Set bidirectional relationship for NutritionalInfo
-                    if (pizza.getNutritionalInfo() != null) {
-                        pizza.getNutritionalInfo().setPizza(pizza);
-                    }
-
-                    Pizza updatedPizza = pizzaRepository.save(pizza);
-                    log.info("Updated pizza with id: {}", id);
-                    return pizzaMapper.toResponse(updatedPizza);
-                });
-    }
-
-    public boolean delete(Long id) {
-        log.debug("Deleting pizza with id: {}", id);
-        if (pizzaRepository.existsById(id)) {
-            pizzaRepository.deleteById(id);
-            log.info("Deleted pizza with id: {}", id);
-            return true;
-        }
-        log.warn("Pizza with id {} not found for deletion", id);
-        return false;
-    }
+    Pizza savedPizza = pizzaRepository.save(pizza);             // persist
+    log.info("Created pizza with id: {}", savedPizza.getId());
+    return pizzaMapper.toResponse(savedPizza);                   // entity → DTO
 }
 ```
+
+[`CustomerService.java`](pizzastore-with-dtos/src/main/java/be/vives/pizzastore/service/CustomerService.java) and [`OrderService.java`](pizzastore-with-dtos/src/main/java/be/vives/pizzastore/service/OrderService.java) follow the same pattern.
 
 Note the `setPizza(pizza)` after mapping: MapStruct only copies data, it knows nothing about JPA. Keeping both sides of the bidirectional `@OneToOne` in sync (the owning side `NutritionalInfo.pizza` holds the foreign key — see Lesson 6a) is the service's job.
 
@@ -909,24 +900,7 @@ public PizzaService(PizzaRepository pizzaRepository, PizzaMapper pizzaMapper) {
 - Easy to test (can pass mocks — Lesson 11)
 - Explicit dependencies
 
-#### 2. **Transaction Management**
-
-```java
-@Service
-@Transactional  // All public methods run in a transaction
-public class PizzaService {
-
-    // Read method - lazy associations can be loaded while mapping to DTOs
-    public Optional<PizzaResponse> findById(Long id) { ... }
-
-    // Write method - all changes are committed together, or rolled back together
-    public PizzaResponse create(CreatePizzaRequest request) { ... }
-}
-```
-
-Because the mapping to DTOs happens *inside* the transaction, lazy associations (like `Order.customer` or `Customer.favoritePizzas`) can still be loaded. Once the DTO leaves the service, it is plain data — no proxies, no session needed.
-
-#### 3. **Always Return DTOs**
+#### 2. **Always Return DTOs**
 
 ```java
 // ❌ NEVER return entities from service
@@ -936,9 +910,226 @@ public Pizza findById(Long id) { ... }
 public Optional<PizzaResponse> findById(Long id) { ... }
 ```
 
+#### 3. **Map Inside the Transaction**
+
+The service maps entities to DTOs *before* the method returns — i.e. while the transaction is still open (next section). Lazy associations like `Order.customer` or `Customer.favoritePizzas` can still be loaded at that moment. Once the DTO leaves the service, it is plain data: no proxies, no session needed.
+
 #### 4. **"Not Found" as `Optional` / `boolean` — for Now**
 
 At this point the services signal "not found" with `Optional.empty()` or `false`, so that the controllers in Lesson 9 can turn that into a `404 Not Found`. In [Lesson 10](../lesson-10-validation-exception-handling/README.md) this evolves into throwing a `ResourceNotFoundException` that a global exception handler converts into a proper error response — that's what the final PizzaStore does.
+
+---
+
+## 🔁 Transactions
+
+Every PizzaStore service is annotated with `@Transactional`. This section explains what that means and why it belongs on the service layer.
+
+### What Is a Transaction?
+
+A **transaction** groups several database operations into one unit of work that either **completely succeeds** (commit) or **completely fails** (rollback). Relational databases guarantee the **ACID** properties for a transaction:
+
+| Property | Meaning | PizzaStore example |
+|----------|---------|--------------------|
+| **Atomicity** | All or nothing | An order is saved *with* all its order lines, or not at all |
+| **Consistency** | The database goes from one valid state to another; constraints hold | No order line without an existing order and pizza |
+| **Isolation** | Concurrent transactions don't see each other's half-finished work | Nobody reads an order whose lines are only half inserted |
+| **Durability** | Once committed, the data survives a crash | A confirmed order doesn't disappear after a restart |
+
+### The Problem: Atomicity
+
+A use case often needs **more than one** database operation. Suppose a (hypothetical) "place order and remember the pizzas as favorites" use case:
+
+```java
+public OrderResponse createAndRememberFavorites(CreateOrderRequest request) {
+    Order order = ...;                        // build the order
+    orderRepository.save(order);              // ① INSERT order + order lines
+    customer.addFavoritePizza(pizza);
+    customerRepository.save(customer);        // ② INSERT into customer_favorite_pizzas
+    // What if ② fails?
+}
+```
+
+If ① succeeds and ② throws an exception, you're left with half a use case in the database. Every Spring Data repository method is already transactional *on its own* (`SimpleJpaRepository` is annotated with `@Transactional`), so without a transaction around the whole method, ① has already been committed when ② fails. The **use case** has to be the unit of work — and use cases live in the service layer.
+
+### Declarative Transactions with `@Transactional`
+
+Spring's solution is **declarative transaction management**: you *declare* that a method is transactional with an annotation, and Spring takes care of the rest.
+
+```java
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+@Transactional            // on the class: applies to every public method
+public class OrderService {
+
+    public OrderResponse create(CreateOrderRequest request) {
+        // everything in here runs in ONE transaction
+    }
+}
+```
+
+**How it works:**
+
+1. Spring **opens a transaction** before the method starts.
+2. The method runs. Every repository call inside it **joins** that same transaction.
+3. If the method completes normally, Spring **commits** the transaction.
+4. If the method throws a `RuntimeException` (or an `Error`), Spring **rolls back** the transaction.
+
+### Behind the Scenes: a Proxy
+
+How does an annotation open and close a transaction? At startup, Spring doesn't inject your `OrderService` itself, but a **proxy** — a generated subclass that wraps every call in transaction logic. This is *aspect-oriented programming* (AOP): transaction management is a "cross-cutting concern" that Spring adds around your business logic without you writing it.
+
+```
+ OrderController                OrderService proxy                    OrderService
+      │  create(request)               │                                   │
+      │ ─────────────────────────────► │  begin transaction                │
+      │                                │ ────────────────────────────────► │  create(request)
+      │                                │                                   │  repositories join
+      │                                │ ◄──────────────────────────────── │  the transaction
+      │                                │  commit (or rollback on exception)│
+      │ ◄───────────────────────────── │                                   │
+```
+
+You can see the proxy by printing the class of an injected service:
+
+```java
+System.out.println(pizzaService.getClass().getName());
+// be.vives.pizzastore.service.PizzaService$$SpringCGLIB$$0
+```
+
+### See It Happen: Transaction Logging
+
+Add this line to `application.properties` of `pizzastore-with-dtos` to watch Spring's transaction manager at work:
+
+```properties
+logging.level.org.springframework.orm.jpa.JpaTransactionManager=DEBUG
+```
+
+This is the (abridged) output of `customerService.addFavoritePizza(2L, 1L)`:
+
+```
+Creating new transaction with name [be.vives.pizzastore.service.CustomerService.addFavoritePizza]: PROPAGATION_REQUIRED,ISOLATION_DEFAULT
+Opened new EntityManager [SessionImpl(461445108<open>)] for JPA transaction
+Participating in existing transaction          ← customerRepository.findById(2)
+Participating in existing transaction          ← pizzaRepository.findById(1)
+Participating in existing transaction          ← customerRepository.save(customer)
+Added pizza 1 to customer 2 favorites
+Initiating transaction commit
+Committing JPA transaction on EntityManager [SessionImpl(461445108<open>)]
+```
+
+One transaction, three repository calls that join it, one commit. And this is `orderService.create(...)` for an order whose second line refers to a pizza that doesn't exist (id `999`):
+
+```
+Creating new transaction with name [be.vives.pizzastore.service.OrderService.create]: PROPAGATION_REQUIRED,ISOLATION_DEFAULT
+Participating in existing transaction          ← customer, count() for the order number, pizza 1, pizza 999
+Initiating transaction rollback
+Rolling back JPA transaction on EntityManager [SessionImpl(1695983081<open>)]
+```
+
+The `RuntimeException("Pizza not found: 999")` triggers a rollback; the number of orders in the database stays exactly the same.
+
+### Where to Put `@Transactional`
+
+- **On the service layer** — on the class, or on individual public methods. The service method is the use case, so it's the natural transaction boundary.
+- **Not on controllers**: HTTP handling doesn't belong in a transaction, and a controller would have to know which operations belong together.
+- **Not needed on repositories**: Spring Data's repository methods are already transactional; when they're called from a transactional service method, they simply join its transaction (`Participating in existing transaction`).
+- A `@Transactional` on a **method** overrides the one on the **class**.
+
+⚠️ Use **Spring's** annotation, `org.springframework.transaction.annotation.Transactional`. There's also a `jakarta.transaction.Transactional` which Spring understands too, but it lacks options like `readOnly`.
+
+### Dirty Checking: Changes Are Saved Automatically
+
+Inside a transaction, every entity you load is **managed** by JPA's *persistence context* (Lesson 6a). At commit, Hibernate compares each managed entity with its original state and automatically executes an `UPDATE` for everything that changed — this is called **dirty checking**.
+
+```java
+@Transactional
+public Optional<PizzaResponse> update(Long id, UpdatePizzaRequest request) {
+    return pizzaRepository.findById(id)            // pizza is now managed
+            .map(pizza -> {
+                pizzaMapper.updateEntity(request, pizza);   // just change the Java object...
+                return pizzaMapper.toResponse(pizza);       // ...Hibernate UPDATEs it at commit
+            });
+}
+```
+
+So `pizzaRepository.save(pizza)` in PizzaStore's `update()` isn't strictly needed for a managed entity. PizzaStore still calls it because it makes the intent explicit — and it's harmless. Without a transaction, however, the entity is no longer managed after `findById()` returns, and your changes are silently lost ([pitfall 2](#2-forgetting-transactional-on-write-operations)).
+
+### Rollback Rules
+
+By default Spring rolls back on **unchecked** exceptions only:
+
+| Thrown by the method | Default behavior |
+|----------------------|------------------|
+| `RuntimeException` (and subclasses) | **Rollback** |
+| `Error` | **Rollback** |
+| Checked `Exception` (e.g. `IOException`) | **Commit!** |
+| An exception you catch yourself inside the method | Nothing — Spring never sees it → **Commit** |
+
+That's one reason why PizzaStore's own exceptions (Lesson 10) extend `RuntimeException`. If a checked exception must cause a rollback, say so explicitly:
+
+```java
+@Transactional(rollbackFor = IOException.class)
+public void importPizzas(Path file) throws IOException { ... }
+```
+
+### Read-Only Transactions
+
+```java
+@Transactional(readOnly = true)
+public Optional<PizzaResponse> findById(Long id) { ... }
+```
+
+`readOnly = true` is a hint that the method doesn't change data. Hibernate then skips dirty checking and flushing for that transaction (less work, less memory), and the JDBC driver/database can optimize too. Spring Data uses it itself: in the log you'll see `SimpleJpaRepository.count ... readOnly`. The book applies the same idea to its read methods (`@Transactional(readOnly = true)` on `getCustomerDetails` in Chapter 8).
+
+A common pattern is read-only as the class default, overridden by the write methods:
+
+```java
+@Service
+@Transactional(readOnly = true)             // default for all methods: read-only
+public class PizzaService {
+
+    public Optional<PizzaResponse> findById(Long id) { ... }
+
+    @Transactional                          // write methods: read-write
+    public PizzaResponse create(CreatePizzaRequest request) { ... }
+}
+```
+
+PizzaStore keeps it simpler with one read-write `@Transactional` on each service class, which is perfectly correct — `readOnly` is an optimization, not a requirement.
+
+### Propagation: Calling a Transactional Method from Another One
+
+What happens when a transactional method calls another transactional method (in another bean)? That's decided by the **propagation**:
+
+| Propagation | Behavior |
+|-------------|----------|
+| `REQUIRED` (**default**) | Join the existing transaction; start a new one if there is none |
+| `REQUIRES_NEW` | Always start a new, independent transaction (the outer one is suspended), e.g. for an audit log entry that must be saved even if the outer transaction rolls back |
+
+That's what the log line `Participating in existing transaction` means: the repository methods have the default `REQUIRED` propagation and join the service's transaction. In PizzaStore the default is all you need.
+
+### Transaction Pitfalls
+
+1. **Self-invocation.** A call from one method to another method *in the same class* doesn't go through the proxy, so the `@Transactional` settings of the called method are ignored:
+
+   ```java
+   @Service
+   public class OrderService {
+       public void importOrders(List<CreateOrderRequest> requests) {
+           requests.forEach(this::create);      // ❌ this.create() bypasses the proxy
+       }
+
+       @Transactional(propagation = Propagation.REQUIRES_NEW)
+       public OrderResponse create(CreateOrderRequest request) { ... }   // REQUIRES_NEW is ignored here
+   }
+   ```
+
+   Move the method to another bean if it really needs its own transaction settings.
+2. **Private methods.** `@Transactional` on a `private` method has no effect — the proxy can't override it.
+3. **Catching the exception yourself.** If you `catch` an exception inside the transactional method and don't rethrow it, Spring doesn't know anything went wrong and commits.
+4. **Checked exceptions** don't trigger a rollback by default (see [Rollback Rules](#rollback-rules)).
+5. **Long transactions.** A transaction holds a database connection (and possibly locks) until it ends. Don't call slow external systems (HTTP calls, sending e-mails) inside one.
 
 ---
 
@@ -1197,6 +1388,8 @@ public class PizzaService {
 }
 ```
 
+Without a transaction, `findById()` runs in its own short transaction and returns an entity that is no longer managed once it returns — nothing tracks your changes anymore. See [Dirty Checking](#dirty-checking-changes-are-saved-automatically) and the other [transaction pitfalls](#transaction-pitfalls).
+
 ### 3. **Not Ignoring Fields in Mappers**
 
 ```java
@@ -1355,12 +1548,21 @@ The trade-off: with `IGNORE`, a client can no longer *deliberately* clear a fiel
    - Keep business logic (lookups, calculations) in the service
 
 5. **Implement a Service Layer**
-   - Business logic
+   - One public method per use case; orchestrates repositories, mappers and business rules
    - DTO ↔ Entity mapping
-   - Transaction management
-   - Sits between Controller and Repository; entities never leave it
+   - Transaction boundary
+   - Sits between Controller and Repository; entities never leave it, HTTP never enters it
 
-6. **Best Practices**
+6. **Use `@Transactional` on the service layer**
+   - A transaction is all-or-nothing (ACID)
+   - Spring wraps the service in a proxy: begin → method → commit, or rollback on a `RuntimeException`
+   - Repository calls join the service's transaction (propagation `REQUIRED`)
+   - Managed entities are saved automatically at commit (dirty checking)
+   - Checked exceptions commit by default 
+   - `readOnly = true` for read methods is an optimization
+   - Watch out for self-invocation and private methods — they bypass the proxy
+
+7. **Best Practices**
    - Constructor injection
    - `@Transactional` services
    - Never include audit fields in responses
@@ -1438,7 +1640,9 @@ The project includes:
 - [Spring Framework: Transaction Management](https://docs.spring.io/spring-framework/reference/data-access/transaction.html)
 - [Spring Boot Reference Documentation](https://docs.spring.io/spring-boot/)
 
-**Note on the book**: *Pro Spring Boot 4* has no dedicated chapter on DTOs or mapping, and doesn't mention MapStruct at all. The idea shows up in a few places instead: Chapter 2's JSON section shows `@JsonProperty`/`@JsonIgnore` to shape the JSON of a type (e.g. to hide a password) — the approach [Mapping Strategies](#%EF%B8%8F-mapping-strategies) warns against for entities; Chapter 3's validation best practices advise to "prefer applying validation on Data Transfer Objects (DTOs)" rather than on domain entities (Lesson 10 does exactly that); and the book's Management CRM (Chapter 1, and again in Chapters 5–8) uses a `CustomerDetailsDTO` record that its service layer assembles by hand from several domain objects — manual mapping, as in [option 2](#2-manual-mapping--fine-for-small-projects). This lesson goes beyond the book by separating request and response DTOs and by generating the mapping code with MapStruct, which PizzaStore uses because it scales better to a larger domain model and catches forgotten fields at compile time.
+**Note on the book**: *Pro Spring Boot 4* has no dedicated chapter on DTOs or mapping, and doesn't mention MapStruct at all. The idea shows up in a few places instead: Chapter 2's JSON section shows `@JsonProperty`/`@JsonIgnore` to shape the JSON of a type (e.g. to hide a password) — the approach [Mapping Strategies](#%EF%B8%8F-mapping-strategies) warns against for entities; Chapter 3's validation best practices advise to "prefer applying validation on Data Transfer Objects (DTOs)" rather than on domain entities (Lesson 10 does exactly that); and the book's Management CRM (Chapter 1, and again in Chapters 5–8) uses a `CustomerDetailsDTO` record that its service layer assembles by hand from several domain objects — manual mapping, as in [option 2](#2-manual-mapping--fine-for-small-projects). For the service layer and transactions the book is much closer to this lesson: Chapter 1's *Creating the Service Layer* introduces its `ManagementService` as the orchestrator between several repositories, and Chapter 5's *Managing Transactions and Concurrency* (atomicity, declarative `@Transactional`, isolation levels, programmatic `TransactionTemplate`) is the basis for the [Transactions](#-transactions) section — translated to PizzaStore's JPA services instead of the book's `JdbcClient` repositories. The book's Chapter 2 names transaction management as a classic example of a cross-cutting concern handled with AOP (the proxy explained above), and Chapter 8 uses `@Transactional(readOnly = true)` on read methods. This lesson adds dirty checking, rollback rules, propagation and the common proxy pitfalls, which the book doesn't cover explicitly.
+
+On DTOs, this lesson goes beyond the book by separating request and response DTOs and by generating the mapping code with MapStruct, which PizzaStore uses because it scales better to a larger domain model and catches forgotten fields at compile time.
 
 ---
 
