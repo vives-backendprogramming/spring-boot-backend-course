@@ -27,7 +27,7 @@ The finished reference solution lives in a separate repository, [**PizzaStore**]
 6. **Spring Data** - Shared repository abstraction, query methods, and exception translation, technology-independent
    - **6a. Spring Data JPA** - Entity relationships and persistence on a relational database
    - **6b. Spring Data MongoDB** - The same domain model, re-expressed as MongoDB documents
-7. **DTOs & Mappers** - Request/Response objects with MapStruct
+7. **DTOs, Mappers & the Service Layer** - Request/Response objects with MapStruct, service layer and transactions
 
 **REST API Development**
 
@@ -78,21 +78,21 @@ Each lesson has its own folder with a README explaining the lesson's topic, and 
 
 ```
 spring-boot-backend-course/
-├── lesson-01-servlets/              # Context for Spring Boot
-├── lesson-02-spring-di-ioc/         # Dependency Injection
-├── lesson-03-properties-profiles/   # Configuration
-├── lesson-04-spring-boot-intro/     # 🍕 First PizzaStore
-├── lesson-05-spring-mvc/            # MVC architecture
-├── lesson-06-spring-data/           # Spring Data common concepts (no project)
-├── lesson-06a-spring-data-jpa/      # 🍕 Domain model + repositories (JPA)
-├── lesson-06b-spring-data-mongodb/  # 🍕 Domain model + repositories (MongoDB)
-├── lesson-07-dtos-mappers/          # 🍕 DTOs & Service layer
-├── lesson-08-rest-principles/       # REST theory
-├── lesson-09-complete-rest-api/     # 🍕 Complete CRUD API
-├── lesson-10-validation-exception-handling/  # 🍕 With validation
-├── lesson-11-testing/               # 🍕 With comprehensive tests
-├── lesson-12-jwt-authentication/    # 🍕 With JWT authentication
-└── lesson-13-swagger-openapi/       # 🍕 With API documentation
+├── lesson-01-servlets/                            # Context for Spring Boot
+├── lesson-02-spring-di-ioc/                       # Dependency Injection
+├── lesson-03-properties-profiles/                 # Configuration
+├── lesson-04-spring-boot-intro/                   # 🍕 First PizzaStore
+├── lesson-05-spring-mvc/                          # MVC architecture
+├── lesson-06-spring-data/                         # Spring Data common concepts (no project)
+├── lesson-06a-spring-data-jpa/                    # 🍕 Domain model + repositories (JPA)
+├── lesson-06b-spring-data-mongodb/                # 🍕 Domain model + repositories (MongoDB)
+├── lesson-07-dtos-mappers/                        # 🍕 DTOs, Service layer & transactions
+├── lesson-08-rest-principles/                     # REST theory
+├── lesson-09-complete-rest-api/                   # 🍕 Complete CRUD API
+├── lesson-10-validation-exception-handling/       # 🍕 With validation
+├── lesson-11-testing/                             # 🍕 With comprehensive tests
+├── lesson-12-jwt-authentication/                  # 🍕 With JWT authentication
+└── lesson-13-swagger-openapi/                     # 🍕 With API documentation
 ```
 
 The complete, final version of the project (used as the reference solution) lives in a **separate repository**: [PizzaStore](https://github.com/vives-backendprogramming/PizzaStore).

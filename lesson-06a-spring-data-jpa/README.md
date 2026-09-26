@@ -422,14 +422,15 @@ List<Pizza> findCheapPizzasNative(@Param("maxPrice") BigDecimal maxPrice);
 
 ### 4. Modifying Queries
 
-`UPDATE`/`DELETE` queries need `@Modifying` and `@Transactional`, and return the number of affected rows:
+`UPDATE`/`DELETE` queries need `@Modifying`, must run inside a transaction, and return the number of affected rows:
 
 ```java
 @Modifying
-@Transactional
 @Query("UPDATE Pizza p SET p.price = p.price * 1.1 WHERE p.id IN :ids")
 int increasePrices(@Param("ids") List<Long> ids);
 ```
+
+**The transaction usually comes from the caller.** A `@Transactional` service method starts the transaction, and the repository call joins it (transactions are explained in detail in [Lesson 7](../lesson-07-dtos-mappers/README.md#-transactions)). Adding `@Transactional` on the repository method itself is optional. It's a safety net for callers that don't start a transaction, such as a test or a `CommandLineRunner`. Without any transaction you get `TransactionRequiredException: Executing an update/delete query`.
 
 ---
 

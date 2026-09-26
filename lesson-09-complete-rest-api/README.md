@@ -51,11 +51,12 @@ Before building our complete REST API, let's recap the key concepts from previou
 - ✅ Custom queries and pagination
 - ✅ JOIN FETCH to avoid N+1 problems
 
-### From Lesson 7: DTOs & Mappers
+### From Lesson 7: DTOs, Mappers & the Service Layer
 - ✅ Never expose entities directly
 - ✅ Request DTOs for input (CreatePizzaRequest, UpdatePizzaRequest)
 - ✅ Response DTOs for output (PizzaResponse)
 - ✅ MapStruct for entity ↔ DTO mapping
+- ✅ Service layer (`PizzaService`, `CustomerService`, `OrderService`) with `@Transactional`
 
 ### From Lesson 8: REST Principles
 - ✅ Resource-based URLs (`/api/pizzas`, not `/api/getPizzas`)
@@ -1097,7 +1098,7 @@ A complete, production-ready Spring Boot project demonstrating all concepts is a
 The project includes:
 - ✅ Complete CRUD operations for Pizza, Customer, and Order
 - ✅ All JPA relationships from Lesson 6a
-- ✅ DTOs and MapStruct mappers from Lesson 7
+- ✅ DTOs, MapStruct mappers and transactional services from Lesson 7
 - ✅ Pagination and sorting
 - ✅ Query parameters and filtering
 - ✅ Proper HTTP status codes and Location headers
