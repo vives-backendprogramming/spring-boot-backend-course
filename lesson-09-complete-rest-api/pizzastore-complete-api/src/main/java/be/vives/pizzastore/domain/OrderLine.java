@@ -1,6 +1,7 @@
 package be.vives.pizzastore.domain;
 
 import jakarta.persistence.*;
+
 import java.math.BigDecimal;
 
 @Entity

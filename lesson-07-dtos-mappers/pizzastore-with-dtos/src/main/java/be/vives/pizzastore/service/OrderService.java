@@ -47,11 +47,8 @@ public class OrderService {
 
     public Page<OrderResponse> findByCustomerId(Long customerId, Pageable pageable) {
         log.debug("Finding orders for customer: {}", customerId);
-        Page<Order> orderPage = orderRepository.findAll(pageable);
-        Page<Order> filteredOrders = orderPage
-                .map(order -> order.getCustomer().getId().equals(customerId) ? order : null)
-                .map(order -> order);
-        return filteredOrders.map(orderMapper::toResponse);
+        Page<Order> orderPage = orderRepository.findByCustomerId(customerId, pageable);
+        return orderPage.map(orderMapper::toResponse);
     }
 
     public Page<OrderResponse> findByStatus(OrderStatus status, Pageable pageable) {

@@ -498,7 +498,14 @@ Pageable pageable = PageRequest.of(0, 10, Sort.by("price"));
 Page<Pizza> page = pizzaRepository.findAll(pageable);
 ```
 
-`Page<T>` carries the content plus metadata (`totalPages`, `totalElements`, `first`, `last`, …) — essential for any list endpoint on a growing table. Pagination and sorting also work with custom `@Query` methods, simply by adding a `Pageable` parameter.
+`Page<T>` carries the content plus metadata (`totalPages`, `totalElements`, `first`, `last`, …) — essential for any list endpoint on a growing table. Pagination and sorting also work with derived query methods and custom `@Query` methods, simply by adding a `Pageable` parameter. PizzaStore's `OrderRepository` has both variants of the same query:
+
+```java
+List<Order> findByCustomerId(Long customerId);                     // all orders of a customer
+Page<Order> findByCustomerId(Long customerId, Pageable pageable);  // one page of them
+```
+
+With the `Pageable` variant the filtering, sorting and `LIMIT`/`OFFSET` all happen in the database. Don't be tempted to page over *all* orders with `findAll(pageable)` and filter the result in Java afterwards: the pages would contain fewer (or no) matching orders and `totalElements` would count the wrong rows.
 
 ---
 
