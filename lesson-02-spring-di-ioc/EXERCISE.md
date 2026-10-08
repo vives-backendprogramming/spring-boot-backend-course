@@ -41,7 +41,7 @@ By the end of this exercise, you will have:
 | `TeacherService` | Business logic for sending messages, orchestrates `TeacherDao`, `StudentService`, `DummyEmailService` |
 | `StudentService` | Business logic for looking up students, orchestrates `StudentDao` |
 | `TeacherDao` / `StudentDao` | "Database access" (via the dummy datasource below) |
-| `DummyDataSource` | Fake `javax.sql.DataSource` — simulates a DB connection that doesn't really exist |
+| `DummyDataSource` | Fake Datasource — simulates a DB connection that doesn't really exist |
 | `SchoolDatabaseStub` | In-memory fake database (hardcoded students & teachers) |
 | `DummyEmailService` | Fakes sending an email by printing it to the console, using `TemplateService` for the header/footer |
 | `TemplateService` | Formats the email header/footer from a `MailTemplate` |

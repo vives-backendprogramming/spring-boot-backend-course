@@ -36,7 +36,6 @@ By the end of this lesson, you will:
 - Use Spring annotations: `@Component`, `@Service`, `@Repository`, `@Controller`
 - Understand `@Autowired` and how Spring resolves dependencies
 - Create beans with `@Configuration` and `@Bean`
-- Choose between **constructor injection** and **setter injection**
 
 ---
 
@@ -539,6 +538,7 @@ Use `@Bean` when:
 - **Complex initialization** logic needed
 - **Multiple instances** of same type with different configs
 - **Conditional bean creation**
+- Spring is unable to automatically initialize the bean
 
 ---
 
