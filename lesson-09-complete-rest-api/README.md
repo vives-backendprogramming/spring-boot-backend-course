@@ -100,7 +100,7 @@ The project in this lesson, [`pizzastore-complete-api`](pizzastore-complete-api)
 | [`service/PizzaService.java`](pizzastore-complete-api/src/main/java/be/vives/pizzastore/service/PizzaService.java) | One new method: `uploadImage(id, file)` |
 | [`application.properties`](pizzastore-complete-api/src/main/resources/application.properties) | Multipart limits, upload directory, pretty-printed JSON, DEBUG logging for our own code |
 
-Everything else — `domain`, `repository`, `dto`, `mapper`, the other service methods and `data.sql` — is **unchanged** from Lesson 7. The controllers are the same as in the final PizzaStore, minus two things that later lessons add: `@Valid` on the request bodies (Lesson 10) and the OpenAPI annotations like `@Operation` and `@Tag` (Lesson 13).
+Everything else — `domain`, `repository`, `dto`, `mapper`, the other service methods and `data.sql` — is **unchanged** from Lesson 7. The controllers have the same endpoints as in the final PizzaStore, minus what later lessons add: `@Valid` on the request bodies and exception-based error handling (Lesson 10) — here they still turn an empty `Optional` or `false` into a `404` themselves — and the OpenAPI annotations like `@Operation` and `@Tag` (Lesson 13).
 
 ---
 
@@ -991,7 +991,7 @@ So far every controller handles "not found" by checking an `Optional` or `boolea
 | `GET /api/pizzas/abc` | `400` (type conversion) | ✅ |
 | `POST /api/pizzas` with malformed JSON | `400` | ✅ (with details) |
 | `PUT /api/pizzas/1` with `{ "price": 12 }` | `500` (`DataIntegrityViolationException`) | `400` — "name is required" |
-| `POST /api/orders` with an unknown `customerId` | `500` (`RuntimeException("Customer not found")`) | `404` |
+| `POST /api/orders` with an unknown `customerId` | `500` (`RuntimeException("Customer not found")`) | `422` — the request is fine, but can't be processed |
 | `DELETE /api/pizzas/1` (pizza is someone's favorite) | `500` (foreign-key violation) | `409 Conflict` |
 | Upload a 6 MB image | `413 Payload Too Large` | ✅ |
 
@@ -1126,7 +1126,6 @@ return pizzaService.findById(id)
 
 ## 🚀 Runnable Project
 
-**[`pizzastore-complete-api/`](pizzastore-complete-api)** is Lesson 7's [`pizzastore-with-dtos`](../lesson-07-dtos-mappers/pizzastore-with-dtos) plus the web layer described in [What This Lesson Adds to PizzaStore](#-what-this-lesson-adds-to-pizzastore). It's the next step towards the final PizzaStore: the `controller` package, `FileStorageService` and `WebConfig` are the same as in the final project, except that `@Valid` (Lesson 10) and the OpenAPI annotations (Lesson 13) have not been added yet, and the services still use `Optional`/`boolean` instead of exceptions (Lesson 10).
 
 The project includes:
 - ✅ **Spring Boot 4.0** on **Java 25** (`spring-boot-starter-webmvc`, `spring-boot-starter-data-jpa`, H2, MapStruct 1.6.3)
