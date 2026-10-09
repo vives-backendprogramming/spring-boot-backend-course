@@ -6,6 +6,7 @@ import be.vives.pizzastore.dto.request.CreateCustomerRequest;
 import be.vives.pizzastore.dto.request.UpdateCustomerRequest;
 import be.vives.pizzastore.dto.response.CustomerResponse;
 import be.vives.pizzastore.dto.response.PizzaResponse;
+import be.vives.pizzastore.exception.DuplicateResourceException;
 import be.vives.pizzastore.exception.ResourceNotFoundException;
 import be.vives.pizzastore.mapper.CustomerMapper;
 import be.vives.pizzastore.mapper.PizzaMapper;
@@ -65,6 +66,9 @@ public class CustomerService {
 
     public CustomerResponse create(CreateCustomerRequest request) {
         log.debug("Creating new customer: {}", request.name());
+        if (customerRepository.existsByEmail(request.email())) {
+            throw new DuplicateResourceException("Customer with email " + request.email() + " already exists");
+        }
         Customer customer = customerMapper.toEntity(request);
         Customer savedCustomer = customerRepository.save(customer);
         log.info("Created customer with id: {}", savedCustomer.getId());

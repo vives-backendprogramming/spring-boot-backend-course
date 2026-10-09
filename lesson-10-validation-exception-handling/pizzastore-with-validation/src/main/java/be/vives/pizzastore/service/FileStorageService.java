@@ -1,5 +1,6 @@
 package be.vives.pizzastore.service;
 
+import be.vives.pizzastore.exception.InvalidFileException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -67,27 +68,27 @@ public class FileStorageService {
 
     private void validateFile(MultipartFile file) {
         if (file.isEmpty()) {
-            throw new IllegalArgumentException("Failed to store empty file");
+            throw new InvalidFileException("Failed to store empty file");
         }
         
         if (file.getSize() > MAX_FILE_SIZE) {
-            throw new IllegalArgumentException("File size exceeds maximum limit of 5MB");
+            throw new InvalidFileException("File size exceeds maximum limit of 5MB");
         }
         
         String originalFilename = file.getOriginalFilename();
         if (originalFilename == null) {
-            throw new IllegalArgumentException("File name is invalid");
+            throw new InvalidFileException("File name is invalid");
         }
         
         String extension = getFileExtension(originalFilename);
         if (!ALLOWED_EXTENSIONS.contains(extension.toLowerCase())) {
-            throw new IllegalArgumentException("Only JPG, JPEG, and PNG files are allowed");
+            throw new InvalidFileException("Only JPG, JPEG, and PNG files are allowed");
         }
     }
 
     private String getFileExtension(String filename) {
         if (filename == null || !filename.contains(".")) {
-            throw new IllegalArgumentException("File has no extension");
+            throw new InvalidFileException("File has no extension");
         }
         return filename.substring(filename.lastIndexOf(".") + 1);
     }

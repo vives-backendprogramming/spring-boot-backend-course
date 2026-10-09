@@ -1,5 +1,6 @@
 package be.vives.pizzastore.dto.request;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -17,8 +18,10 @@ public record CreatePizzaRequest(
 
         String description,
 
+        @NotNull(message = "Availability is required")
         Boolean available,
 
+        @Valid
         NutritionalInfoRequest nutritionalInfo
 ) {
 }

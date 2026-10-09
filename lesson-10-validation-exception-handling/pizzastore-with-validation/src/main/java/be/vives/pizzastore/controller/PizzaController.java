@@ -4,6 +4,7 @@ import be.vives.pizzastore.dto.request.CreatePizzaRequest;
 import be.vives.pizzastore.dto.request.UpdatePizzaRequest;
 import be.vives.pizzastore.dto.response.PizzaResponse;
 import be.vives.pizzastore.service.PizzaService;
+import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
@@ -65,13 +66,12 @@ public class PizzaController {
     @GetMapping("/{id}")
     public ResponseEntity<PizzaResponse> getPizza(@PathVariable Long id) {
         log.debug("GET /api/pizzas/{}", id);
-        return pizzaService.findById(id)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+        PizzaResponse pizza = pizzaService.findById(id);
+        return ResponseEntity.ok(pizza);
     }
 
     @PostMapping
-    public ResponseEntity<PizzaResponse> createPizza(@RequestBody CreatePizzaRequest request) {
+    public ResponseEntity<PizzaResponse> createPizza(@Valid @RequestBody CreatePizzaRequest request) {
         log.debug("POST /api/pizzas - {}", request);
 
         PizzaResponse created = pizzaService.create(request);
@@ -88,23 +88,20 @@ public class PizzaController {
     @PutMapping("/{id}")
     public ResponseEntity<PizzaResponse> updatePizza(
             @PathVariable Long id,
-            @RequestBody UpdatePizzaRequest request) {
+            @Valid @RequestBody UpdatePizzaRequest request) {
 
         log.debug("PUT /api/pizzas/{} - {}", id, request);
 
-        return pizzaService.update(id, request)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+        PizzaResponse updated = pizzaService.update(id, request);
+        return ResponseEntity.ok(updated);
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deletePizza(@PathVariable Long id) {
         log.debug("DELETE /api/pizzas/{}", id);
 
-        if (pizzaService.delete(id)) {
-            return ResponseEntity.noContent().build();
-        }
-        return ResponseEntity.notFound().build();
+        pizzaService.delete(id);
+        return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/{id}/image")
@@ -114,16 +111,7 @@ public class PizzaController {
         
         log.debug("POST /api/pizzas/{}/image", id);
 
-        try {
-            return pizzaService.uploadImage(id, file)
-                    .map(ResponseEntity::ok)
-                    .orElse(ResponseEntity.notFound().build());
-        } catch (IllegalArgumentException e) {
-            log.warn("Invalid file upload: {}", e.getMessage());
-            return ResponseEntity.badRequest().build();
-        } catch (RuntimeException e) {
-            log.error("Error uploading file: {}", e.getMessage());
-            return ResponseEntity.internalServerError().build();
-        }
+        PizzaResponse updated = pizzaService.uploadImage(id, file);
+        return ResponseEntity.ok(updated);
     }
 }
