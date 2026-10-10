@@ -37,7 +37,7 @@ The finished reference solution lives in a separate repository, [**PizzaStore**]
 
 **Integrating External Services**
 
-11. **Calling an External API** - Spring's HTTP clients, a declarative `@HttpExchange` client for Open Food Facts, timeouts and `422`/`502` error handling
+11. **Calling an External API** - Spring's HTTP clients, a declarative `@HttpExchange` client, timeouts and `422`/`502` error handling
 
 **Testing, Security & Documentation**
 
@@ -97,7 +97,7 @@ spring-boot-backend-course/
 ├── lesson-08-rest-principles/                     # REST theory
 ├── lesson-09-complete-rest-api/                   # 🍕 Complete CRUD API
 ├── lesson-10-validation-exception-handling/       # 🍕 With validation
-├── lesson-11-external-api/                        # 🍕 Calling the Open Food Facts API
+├── lesson-11-external-api/                        # 🍕 Calling an external API
 ├── lesson-12-testing/                             # 🍕 With comprehensive tests
 ├── lesson-13-jwt-authentication/                  # 🍕 With JWT authentication
 └── lesson-14-swagger-openapi/                     # 🍕 With API documentation
