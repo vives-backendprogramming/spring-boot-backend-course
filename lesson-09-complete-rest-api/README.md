@@ -100,7 +100,7 @@ The project in this lesson, [`pizzastore-complete-api`](pizzastore-complete-api)
 | [`service/PizzaService.java`](pizzastore-complete-api/src/main/java/be/vives/pizzastore/service/PizzaService.java) | One new method: `uploadImage(id, file)` |
 | [`application.properties`](pizzastore-complete-api/src/main/resources/application.properties) | Multipart limits, upload directory, pretty-printed JSON, DEBUG logging for our own code |
 
-Everything else — `domain`, `repository`, `dto`, `mapper`, the other service methods and `data.sql` — is **unchanged** from Lesson 7. The controllers have the same endpoints as in the final PizzaStore, minus what later lessons add: `@Valid` on the request bodies and exception-based error handling (Lesson 10) — here they still turn an empty `Optional` or `false` into a `404` themselves — and the OpenAPI annotations like `@Operation` and `@Tag` (Lesson 13).
+Everything else — `domain`, `repository`, `dto`, `mapper`, the other service methods and `data.sql` — is **unchanged** from Lesson 7. The controllers have the same endpoints as in the final PizzaStore, minus what later lessons add: `@Valid` on the request bodies and exception-based error handling (Lesson 10) — here they still turn an empty `Optional` or `false` into a `404` themselves — and the OpenAPI annotations like `@Operation` and `@Tag` (Lesson 14).
 
 ---
 
@@ -932,7 +932,7 @@ The image is now available at the returned URL. Uploading a `.txt` file returns 
 
 ## 🍕 Complete PizzaStore API
 
-All endpoints of this lesson's project. This is the same set of endpoints as the final PizzaStore, apart from `/api/auth/**`, which is added in Lesson 12.
+All endpoints of this lesson's project. This is the same set of endpoints as the final PizzaStore, apart from `/api/auth/**`, which is added in Lesson 13.
 
 #### Pizza API — [`PizzaController`](pizzastore-complete-api/src/main/java/be/vives/pizzastore/controller/PizzaController.java)
 ```
@@ -1135,7 +1135,7 @@ The project includes:
 - ✅ Proper HTTP status codes and `Location` headers
 - ✅ File upload for pizza images, served as static files
 - ❌ No validation or global exception handling yet — Lesson 10
-- ❌ No security — every endpoint is open until Lesson 12
+- ❌ No security — every endpoint is open until Lesson 13
 
 ### Running It
 

@@ -13,8 +13,7 @@ By the end of this lesson, you will be able to:
 - Design a small exception hierarchy and let the service layer throw exceptions instead of returning `Optional`/`boolean`/`null`
 - Handle all exceptions in one place with `@RestControllerAdvice` and `@ExceptionHandler`
 - Return RFC 7807 `ProblemDetail` responses, also for the exceptions Spring MVC throws itself (`ResponseEntityExceptionHandler`)
-- Call an external REST API (Open Food Facts) with a declarative `@HttpExchange` client and turn its failures into a clean `502 Bad Gateway`
-- Pick the right status code: 400, 404, 409, 422, 500 or 502
+- Pick the right status code: 400, 404, 409, 422 or 500
 - Avoid leaking internal details (SQL errors, stack traces) to API clients
 
 ---
@@ -31,13 +30,12 @@ By the end of this lesson, you will be able to:
 8. [Part 2: Exceptions Instead of Optional](#-part-2-exceptions-instead-of-optional)
 9. [Global Exception Handling with @RestControllerAdvice](#%EF%B8%8F-global-exception-handling-with-restcontrolleradvice)
 10. [Problem Details (RFC 7807)](#-problem-details-rfc-7807)
-11. [Part 3: Calling an External API](#-part-3-calling-an-external-api)
-12. [Choosing the Right Status Code](#-choosing-the-right-status-code)
-13. [Before and After](#-before-and-after)
-14. [Best Practices](#-best-practices)
-15. [Summary](#-summary)
-16. [Additional Resources](#-additional-resources)
-17. [Runnable Project](#-runnable-project)
+11. [Choosing the Right Status Code](#-choosing-the-right-status-code)
+12. [Before and After](#-before-and-after)
+13. [Best Practices](#-best-practices)
+14. [Summary](#-summary)
+15. [Additional Resources](#-additional-resources)
+16. [Runnable Project](#-runnable-project)
 
 ---
 
@@ -88,7 +86,6 @@ The project in this lesson, [`pizzastore-with-validation`](pizzastore-with-valid
 | [`service/PizzaService.java`](pizzastore-with-validation/src/main/java/be/vives/pizzastore/service/PizzaService.java), [`CustomerService.java`](pizzastore-with-validation/src/main/java/be/vives/pizzastore/service/CustomerService.java), [`OrderService.java`](pizzastore-with-validation/src/main/java/be/vives/pizzastore/service/OrderService.java) | Throw exceptions instead of returning `Optional`/`boolean`; new business rules (unavailable pizza, cancelling a delivered order, duplicate email) |
 | [`service/FileStorageService.java`](pizzastore-with-validation/src/main/java/be/vives/pizzastore/service/FileStorageService.java) | Throws `InvalidFileException` instead of `IllegalArgumentException` |
 | [`controller/*.java`](pizzastore-with-validation/src/main/java/be/vives/pizzastore/controller) | `@Valid` on every `@RequestBody`; "not found" handling and the `try/catch` around the upload removed |
-| [`client/`](pizzastore-with-validation/src/main/java/be/vives/pizzastore/client), [`config/HttpClientConfig.java`](pizzastore-with-validation/src/main/java/be/vives/pizzastore/config/HttpClientConfig.java), [`service/NutritionImportService.java`](pizzastore-with-validation/src/main/java/be/vives/pizzastore/service/NutritionImportService.java) (new), `POST /api/pizzas/{id}/nutritional-info/import` | [Part 3](#-part-3-calling-an-external-api): PizzaStore's first call to somebody else's API (Open Food Facts), with `spring-boot-starter-restclient` in the `pom.xml` and `spring.http.serviceclient.openfoodfacts.*` in `application.properties` |
 
 The `domain`, `repository`, `mapper`, `dto/response` packages and `data.sql` are **unchanged**.
 
@@ -289,7 +286,7 @@ Optional fields (`description`, `nutritionalInfo`) keep their PUT meaning: leavi
 
 **Why is `available` required on create?** The `Pizza` entity initialises `available = true`, but the generated `PizzaMapper.toEntity` calls `pizza.setAvailable(request.available())` unconditionally, so a missing value overwrites that default with `null` and the insert fails on the `NOT NULL` column. Requiring the field makes the contract explicit. (A mapper default, `@Mapping(target = "available", defaultValue = "true")`, would be the alternative if the API should accept it being left out.)
 
-**The email of a customer can't be changed.** `CustomerMapper.updateEntity` ignores `email` (it becomes the login in Lesson 12), so `UpdateCustomerRequest` only checks the format if one is sent.
+**The email of a customer can't be changed.** `CustomerMapper.updateEntity` ignores `email` (it becomes the login in Lesson 13), so `UpdateCustomerRequest` only checks the format if one is sent.
 
 > 💡 Validation checks the **shape** of a single request: required fields, lengths, ranges, formats. Rules that need the database or the current state — "does customer 7 exist?", "is this pizza available?", "is this email already taken?" — are **business rules**. They belong in the service layer and are signalled with exceptions, which is Part 2.
 
@@ -381,7 +378,6 @@ RuntimeException
     ├── ResourceNotFoundException  → 404 Not Found
     ├── DuplicateResourceException → 409 Conflict
     ├── BusinessException          → 422 Unprocessable Content
-    ├── ExternalServiceException   → 502 Bad Gateway (Part 3)
     └── InvalidFileException       → 400 Bad Request (via the PizzaStoreException handler)
 ```
 
@@ -409,8 +405,6 @@ They extend `RuntimeException` (unchecked) on purpose: callers don't have to dec
 | Cancelling an order that is delivered or already cancelled | `OrderService.cancel` | `BusinessException` |
 | Creating a customer with an email that already exists | `CustomerService.create` | `DuplicateResourceException` |
 | Uploading an empty file or a file that isn't JPG/PNG | `FileStorageService` | `InvalidFileException` |
-| Open Food Facts doesn't know the barcode, or has no complete nutrition data for it | `NutritionImportService` | `BusinessException` |
-| Open Food Facts is down, too slow or rate-limiting us | `NutritionImportService` | `ExternalServiceException` |
 
 An example business rule from [`OrderService`](pizzastore-with-validation/src/main/java/be/vives/pizzastore/service/OrderService.java):
 
@@ -604,370 +598,13 @@ The book's `GlobalExceptionHandler` (Listing 3-4) uses the same building blocks 
 
 ---
 
-## 🌐 Part 3: Calling an External API
-
-Until now PizzaStore only *answered* requests. Real back-ends also *make* them: a payment provider, an address lookup, a nutrition database. This part adds PizzaStore's first outgoing call, to the free [Open Food Facts](https://world.openfoodfacts.org) database. It also shows the new problem that comes with it: **the other side can fail, and that must not break your API**.
-
-### The Feature: Importing Nutrition Data
-
-Every pizza has an optional `NutritionalInfo` (calories, protein, carbohydrates, fat) since Lesson 6a. Until now somebody had to type those numbers in a `POST` or `PUT`. With the new endpoint the pizzeria gives a **barcode** instead, and PizzaStore fetches the values from Open Food Facts:
-
-```
-POST /api/pizzas/1/nutritional-info/import
-Content-Type: application/json
-
-{ "barcode": "3017620422003" }
-```
-
-```json
-HTTP/1.1 200 OK
-
-{
-  "id" : 1,
-  "name" : "Margherita",
-  "price" : 8.99,
-  ...
-  "nutritionalInfo" : {
-    "calories" : 539,
-    "protein" : 6.30,
-    "carbohydrates" : 57.50,
-    "fat" : 30.90
-  }
-}
-```
-
-A few things to know about the data:
-
-- **Open Food Facts** is a free, open, crowd-sourced database of millions of *packaged* food products, identified by the barcode on the package (EAN-13, EAN-8, UPC-A). Anyone can read it without an account or API key.
-- A pizza from our own oven has no barcode, so the pizzeria uses the barcode of a **comparable packaged product** (a frozen Margherita, for instance). The example barcode `3017620422003` is a jar of Nutella: not a pizza, but a product whose data is complete and stable, which makes it handy for trying out the endpoint.
-- The values are **per 100 g**, exactly as Open Food Facts publishes them. An existing `NutritionalInfo` is overwritten.
-
-### How It Works
-
-```
- Client                PizzaStore                                            Open Food Facts
-   │                                                                               │
-   │ POST /api/pizzas/1/nutritional-info/import  {"barcode":"3017620422003"}       │
-   ├──────────► PizzaController   @Valid ImportNutritionRequest  (400 if invalid)  │
-   │                 │                                                             │
-   │                 ▼                                                             │
-   │           NutritionImportService                                              │
-   │                 │ 1. pizzaService.findById(1)               (404 if unknown)  │
-   │                 │ 2. openFoodFactsClient.getProduct(barcode) ────────────────►│
-   │                 │      GET /api/v2/product/3017620422003.json?fields=...      │
-   │                 │◄──────────────────────────────── JSON with "nutriments" ────┤
-   │                 │ 3. check and convert the values           (422 / 502)       │
-   │                 │ 4. pizzaService.updateNutritionalInfo(1, values)            │
-   │                 ▼                                                             │
-   │◄──────── 200 PizzaResponse with the new nutritionalInfo                       │
-```
-
-The new and changed files, in the order you would write them:
-
-| Step | File | What it does |
-|------|------|--------------|
-| 1 | [`pom.xml`](pizzastore-with-validation/pom.xml) | adds `spring-boot-starter-restclient` |
-| 2 | [`client/OpenFoodFactsResponse.java`](pizzastore-with-validation/src/main/java/be/vives/pizzastore/client/OpenFoodFactsResponse.java) | record for the part of the JSON we use |
-| 3 | [`client/OpenFoodFactsClient.java`](pizzastore-with-validation/src/main/java/be/vives/pizzastore/client/OpenFoodFactsClient.java) | the declarative client: an interface, no implementation |
-| 4 | [`config/HttpClientConfig.java`](pizzastore-with-validation/src/main/java/be/vives/pizzastore/config/HttpClientConfig.java) + [`application.properties`](pizzastore-with-validation/src/main/resources/application.properties) | lets Spring generate the client, with base URL, `User-Agent` and timeouts |
-| 5 | [`dto/request/ImportNutritionRequest.java`](pizzastore-with-validation/src/main/java/be/vives/pizzastore/dto/request/ImportNutritionRequest.java) | the request body, with a barcode constraint |
-| 6 | [`exception/ExternalServiceException.java`](pizzastore-with-validation/src/main/java/be/vives/pizzastore/exception/ExternalServiceException.java) + [`GlobalExceptionHandler`](pizzastore-with-validation/src/main/java/be/vives/pizzastore/exception/GlobalExceptionHandler.java) | "the other side failed" → `502 Bad Gateway` |
-| 7 | [`service/PizzaService.java`](pizzastore-with-validation/src/main/java/be/vives/pizzastore/service/PizzaService.java) | new method `updateNutritionalInfo` |
-| 8 | [`service/NutritionImportService.java`](pizzastore-with-validation/src/main/java/be/vives/pizzastore/service/NutritionImportService.java) | calls the client, checks the answer, translates the failures |
-| 9 | [`controller/PizzaController.java`](pizzastore-with-validation/src/main/java/be/vives/pizzastore/controller/PizzaController.java) | the endpoint |
-
-### Step 1: The Dependency
-
-```xml
-<dependency>
-    <groupId>org.springframework.boot</groupId>
-    <artifactId>spring-boot-starter-restclient</artifactId>
-</dependency>
-```
-
-Spring Boot 4 has its own starter for **outgoing** HTTP calls: `RestClient` (Spring's synchronous HTTP client, the successor of `RestTemplate`) plus the auto-configuration for declarative clients. `spring-boot-starter-webmvc` only covers the incoming side.
-
-### Step 2: A Record for the Response
-
-What Open Food Facts returns for `GET /api/v2/product/3017620422003.json?fields=code,product_name,nutriments` looks like this (shortened, the real `nutriments` object has more than 50 fields):
-
-```json
-{
-  "code": "3017620422003",
-  "status": 1,
-  "status_verbose": "product found",
-  "product": {
-    "product_name": "Nutella",
-    "nutriments": {
-      "energy-kcal_100g": 539,
-      "proteins_100g": 6.3,
-      "carbohydrates_100g": 57.5,
-      "fat_100g": 30.9,
-      "salt_100g": 0.107,
-      ...
-    }
-  }
-}
-```
-
-We model only what we need, as nested records ([`OpenFoodFactsResponse`](pizzastore-with-validation/src/main/java/be/vives/pizzastore/client/OpenFoodFactsResponse.java)):
-
-```java
-public record OpenFoodFactsResponse(String code, Integer status, Product product) {
-
-    public record Product(@JsonProperty("product_name") String productName, Nutriments nutriments) { }
-
-    public record Nutriments(
-            @JsonProperty("energy-kcal_100g") BigDecimal energyKcal100g,
-            @JsonProperty("proteins_100g") BigDecimal proteins100g,
-            @JsonProperty("carbohydrates_100g") BigDecimal carbohydrates100g,
-            @JsonProperty("fat_100g") BigDecimal fat100g) { }
-}
-```
-
-- Jackson **ignores the JSON fields that have no record component** (`status_verbose`, `salt_100g`, ...), so the record stays small and does not break when Open Food Facts adds fields.
-- `@JsonProperty` maps names that are not valid Java identifiers (`energy-kcal_100g`) or that don't follow Java naming (`product_name`).
-- This record is a DTO of *someone else's* API. It lives in the `client` package and never leaves the service layer: our own clients keep seeing `PizzaResponse`.
-
-### Step 3: The Declarative Client
-
-*Pro Spring Boot 4* (Chapter 3, *Declarative HTTP Service Clients*) shows the zero-implementation way to call another API: write an **interface**, annotate it like a controller, and let Spring generate the implementation ([`OpenFoodFactsClient`](pizzastore-with-validation/src/main/java/be/vives/pizzastore/client/OpenFoodFactsClient.java)):
-
-```java
-@HttpExchange(url = "/api/v2", accept = "application/json")
-public interface OpenFoodFactsClient {
-
-    @GetExchange("/product/{barcode}.json?fields=code,product_name,nutriments")
-    OpenFoodFactsResponse getProduct(@PathVariable String barcode);
-}
-```
-
-| Annotation | On | Means |
-|------------|----|-------|
-| `@HttpExchange(url = "/api/v2", accept = ...)` | the interface | common path and `Accept` header for every method |
-| `@GetExchange("/product/{barcode}.json?...")` | a method | send a `GET` to this path (also `@PostExchange`, `@PutExchange`, `@DeleteExchange`, ...) |
-| `@PathVariable` | a parameter | fill `{barcode}` with the argument, URL-encoded |
-| return type | the method | the JSON body is converted to `OpenFoodFactsResponse` with Jackson |
-
-It reads like a `@RestController` turned inside out: the same annotations describe an **outgoing** request instead of an incoming one. Calling `getProduct("3017620422003")` sends `GET https://world.openfoodfacts.org/api/v2/product/3017620422003.json?fields=code,product_name,nutriments`. The `fields` parameter asks Open Food Facts to send only those three fields, instead of a product document of tens of kilobytes.
-
-What you do **not** write: building the URL, sending the request, checking the status code, parsing JSON. A `4xx`/`5xx` answer arrives as an exception (`HttpClientErrorException`, `HttpServerErrorException`), a network problem as `ResourceAccessException`; all of them extend `RestClientException`. Step 8 uses that.
-
-### Step 4: Registering the Client and Configuring the Connection
-
-An interface alone is not a bean. [`HttpClientConfig`](pizzastore-with-validation/src/main/java/be/vives/pizzastore/config/HttpClientConfig.java) tells Spring Boot to generate one:
-
-```java
-@Configuration
-@ImportHttpServices(group = "openfoodfacts", types = OpenFoodFactsClient.class)
-public class HttpClientConfig { }
-```
-
-`@ImportHttpServices` creates a proxy that implements `OpenFoodFactsClient` on top of a `RestClient`, and registers it as a bean you can inject anywhere. The **group** name `openfoodfacts` links the client to its configuration in `application.properties`:
-
-```properties
-spring.http.serviceclient.openfoodfacts.base-url=https://world.openfoodfacts.org
-spring.http.serviceclient.openfoodfacts.default-header.User-Agent=PizzaStore/1.0 (pizzastore-course@example.com)
-spring.http.serviceclient.openfoodfacts.connect-timeout=2s
-spring.http.serviceclient.openfoodfacts.read-timeout=5s
-```
-
-| Property | Why |
-|----------|-----|
-| `base-url` | Put in front of the `@HttpExchange` paths. Outside the code, so a test or another environment can point the client elsewhere (the book hard-codes the URL in `@HttpExchange` and advises to externalize it, which is what this does). |
-| `default-header.User-Agent` | **Required by Open Food Facts**, in the form `AppName/Version (contact)`. Anonymous clients risk being blocked. Use your own contact address in a real project. |
-| `connect-timeout`, `read-timeout` | **Not optional.** Without timeouts a hanging server keeps the request thread waiting indefinitely, and a handful of slow calls can use up all of Tomcat's threads. 5 seconds is generous for a lookup. |
-
-### Step 5: Validating the Barcode
-
-The barcode comes from our own client, so it is validated like any other request body ([`ImportNutritionRequest`](pizzastore-with-validation/src/main/java/be/vives/pizzastore/dto/request/ImportNutritionRequest.java)):
-
-```java
-public record ImportNutritionRequest(
-
-        @NotBlank(message = "Barcode is required")
-        @Pattern(regexp = "\\d{8}|\\d{12,14}", message = "Barcode must be an EAN-8, UPC-A, EAN-13 or GTIN-14 number (digits only)")
-        String barcode
-) { }
-```
-
-Rejecting `"abc"` with a `400` costs nothing; sending it to Open Food Facts would waste a request of a **rate limit of 15 product lookups per minute per IP address**. Validating before calling out is the same idea as Part 1, with an extra reason.
-
-### Step 6: A New Exception for "The Other Side Failed"
-
-Every failure so far was either the client's fault (`400`, `404`, `409`, `422`) or a bug of ours (`500`). A broken external service is neither, so it gets its own exception and status code:
-
-```java
-/** An API that PizzaStore depends on failed or could not be reached: not the client's fault, so 502 Bad Gateway. */
-public class ExternalServiceException extends PizzaStoreException {
-
-    public ExternalServiceException(String message, Throwable cause) {
-        super(message, cause);
-    }
-}
-```
-
-```java
-@ExceptionHandler(ExternalServiceException.class)
-public ProblemDetail handleExternalServiceException(ExternalServiceException ex, WebRequest request) {
-    log.warn("External service failure: {}", ex.getMessage());
-    return buildProblemDetail(HttpStatus.BAD_GATEWAY, ex.getMessage(), "external-service", request);
-}
-```
-
-**`502 Bad Gateway`** means "the server, while acting as a gateway or proxy, received an invalid response from an upstream server". Why not `500`? A `500` says *our* code is broken and should alarm the developers; a `502` says the problem is upstream, so a client can simply try again later. The cause (timeout, `503`, ...) is kept in the exception for our logs, but the client only sees the generic message: never forward someone else's error page or host names.
-
-### Step 7: Storing the Values
-
-[`PizzaService`](pizzastore-with-validation/src/main/java/be/vives/pizzastore/service/PizzaService.java) gets one method that creates or overwrites a pizza's `NutritionalInfo`:
-
-```java
-public PizzaResponse updateNutritionalInfo(Long id, NutritionalInfoRequest request) {
-    Pizza pizza = pizzaRepository.findById(id)
-            .orElseThrow(() -> new ResourceNotFoundException("Pizza", id));
-
-    NutritionalInfo info = pizza.getNutritionalInfo();
-    if (info == null) {                      // first import: create the row and link both sides
-        info = new NutritionalInfo();
-        info.setPizza(pizza);
-        pizza.setNutritionalInfo(info);
-    }
-    info.setCalories(request.calories());    // later imports: update the existing row in place
-    info.setProtein(request.protein());
-    info.setCarbohydrates(request.carbohydrates());
-    info.setFat(request.fat());
-
-    return pizzaMapper.toResponse(pizzaRepository.save(pizza));
-}
-```
-
-It takes the existing `NutritionalInfoRequest`, so it knows nothing about Open Food Facts: the service layer stays independent of where the numbers come from. Updating the existing row instead of replacing the object avoids deleting and re-inserting it (`orphanRemoval` on `Pizza.nutritionalInfo`).
-
-### Step 8: The Import Service
-
-[`NutritionImportService`](pizzastore-with-validation/src/main/java/be/vives/pizzastore/service/NutritionImportService.java) puts it together:
-
-```java
-@Service
-public class NutritionImportService {
-
-    private final OpenFoodFactsClient openFoodFactsClient;   // the generated proxy, injected like any bean
-    private final PizzaService pizzaService;
-    ...
-
-    public PizzaResponse importFromBarcode(Long pizzaId, String barcode) {
-        pizzaService.findById(pizzaId);   // 404 for an unknown pizza BEFORE we spend a request of our limited quota
-
-        OpenFoodFactsResponse response = fetchProduct(barcode);
-        NutritionalInfoRequest nutrition = toNutritionalInfo(barcode, response);
-
-        return pizzaService.updateNutritionalInfo(pizzaId, nutrition);
-    }
-}
-```
-
-**Calling the client** and turning its exceptions into ours:
-
-```java
-private OpenFoodFactsResponse fetchProduct(String barcode) {
-    try {
-        return openFoodFactsClient.getProduct(barcode);
-    } catch (HttpClientErrorException.NotFound e) {
-        throw unknownBarcode(barcode);                                   // 422
-    } catch (RestClientException e) {
-        // 5xx, 429 (rate limit), timeouts, connection refused, unreadable body, ...
-        log.error("Open Food Facts call failed for barcode {}", barcode, e);
-        throw new ExternalServiceException("Open Food Facts is currently unavailable, please try again later", e);   // 502
-    }
-}
-```
-
-The order of the `catch` blocks matters: `HttpClientErrorException.NotFound` is a subclass of `RestClientException`, so the specific case comes first.
-
-**Checking the answer**, because a successful HTTP call does not mean usable data:
-
-```java
-private NutritionalInfoRequest toNutritionalInfo(String barcode, OpenFoodFactsResponse response) {
-    // Open Food Facts can answer HTTP 200 with status 0 for an unknown barcode
-    if (response == null || response.product() == null || Integer.valueOf(0).equals(response.status())) {
-        throw unknownBarcode(barcode);
-    }
-    OpenFoodFactsResponse.Nutriments n = response.product().nutriments();
-    if (n == null || n.energyKcal100g() == null || n.proteins100g() == null
-            || n.carbohydrates100g() == null || n.fat100g() == null) {
-        throw new BusinessException("Open Food Facts has no complete nutritional data (kcal, protein, carbohydrates, fat) for barcode " + barcode);
-    }
-    return new NutritionalInfoRequest(
-            n.energyKcal100g().setScale(0, RoundingMode.HALF_UP).intValueExact(),   // the calories column is an Integer
-            scale(n.proteins100g()), scale(n.carbohydrates100g()), scale(n.fat100g()));
-}
-```
-
-Two design decisions to remember:
-
-1. **`NutritionImportService` is not `@Transactional`** (unlike `PizzaService`, which is `@Transactional` on the class). A transaction holds a database connection for as long as it is open. Keeping one open while we wait up to 5 seconds for another server would let a slow Open Food Facts drain the connection pool and block requests that have nothing to do with nutrition. The database work happens in two short transactions, `findById` before and `updateNutritionalInfo` after the call.
-2. **Never trust external data.** It can be missing, incomplete or in another format than your columns: values are rounded (`538.6` kcal becomes `539`), and an incomplete product is refused instead of stored half-filled.
-
-### Step 9: The Endpoint
-
-[`PizzaController`](pizzastore-with-validation/src/main/java/be/vives/pizzastore/controller/PizzaController.java) gets `NutritionImportService` as a second constructor argument, and one method:
-
-```java
-@PostMapping("/{id}/nutritional-info/import")
-public ResponseEntity<PizzaResponse> importNutritionalInfo(
-        @PathVariable Long id,
-        @Valid @RequestBody ImportNutritionRequest request) {
-
-    PizzaResponse updated = nutritionImportService.importFromBarcode(id, request.barcode());
-    return ResponseEntity.ok(updated);
-}
-```
-
-Why `POST` and not `PUT`? The client does not send the new state of the resource (that would be a `PUT /api/pizzas/1` with the numbers); it asks the server to **perform an operation** that fetches and stores data, and doing it twice may give a different result if Open Food Facts changed the product in between. Lesson 8 asks for nouns in URIs; an operation that is not a plain create/read/update/delete is the accepted exception, modelled as a sub-resource of the pizza and sent with `POST`, just like the image upload `POST /api/pizzas/{id}/image` of Lesson 9.
-
-### Everything That Can Go Wrong
-
-| Situation | Example barcode | Detected by | PizzaStore answers |
-|-----------|-----------------|-------------|--------------------|
-| Not a barcode | `abc` | `@Pattern` (step 5) | `400` Validation failed, the service is never called |
-| Unknown pizza | pizza `999` | `pizzaService.findById` (step 8) | `404`, Open Food Facts is never called |
-| Unknown barcode, HTTP 404 | `5412345678901` | `catch NotFound` (step 8) | `422` "Open Food Facts does not know a product with barcode ..." |
-| Unknown barcode, **HTTP 200 with `"status": 0`** | `0000000000017` | status check (step 8) | `422`, same message |
-| Product exists, but has no nutrition data | `1234567890128` | completeness check (step 8) | `422` "Open Food Facts has no complete nutritional data ..." |
-| Open Food Facts down (`5xx`), rate limit (`429`), timeout, no network | — | `catch RestClientException` (step 8) | `502 Bad Gateway` "Open Food Facts is currently unavailable, please try again later" |
-
-The rows with the **unknown barcode** show why you must read the documentation *and* try the real API: Open Food Facts answers some unknown barcodes with a `404` and others with `200` plus `"status": 0` in the body. A client that only checks the HTTP status would store `null` values.
-
-Why `422` and not `404` for an unknown barcode? The URL `/api/pizzas/1/nutritional-info/import` exists and the request is valid; it just can't be carried out with this data. That's the rule from [400, 404 or 422?](#400-404-or-422).
-
-### Trying It Out
-
-Start the application and import the data of barcode `3017620422003` into pizza 1 (needs internet access):
-
-```bash
-curl -X POST http://localhost:8080/api/pizzas/1/nutritional-info/import \
-  -H "Content-Type: application/json" -d '{"barcode":"3017620422003"}'
-```
-
-Then try the barcodes of the table above. To see the `502`, start the application with a base URL where nothing listens:
-
-```bash
-mvn spring-boot:run -Dspring-boot.run.arguments=--spring.http.serviceclient.openfoodfacts.base-url=http://localhost:1
-```
-
-How to test this client **without** calling the real server is part of [Lesson 11](../lesson-11-testing/README.md) (`@RestClientTest` and `MockRestServiceServer`).
-
-> **Terms of use.** Open Food Facts data is available under the Open Database License (ODbL) and is crowd-sourced without guarantees of accuracy. For anything bigger than a course project, read [their API documentation](https://openfoodfacts.github.io/openfoodfacts-server/api/): use the staging server `world.openfoodfacts.net` while developing, and download their data dumps instead of calling the API for bulk use.
-
----
-
 ## 🎯 Choosing the Right Status Code
 
 | Status | Meaning | PizzaStore example |
 |--------|---------|--------------------|
 | **400** Bad Request | The request itself is malformed or invalid | Validation failed, malformed JSON, `abc` as ID, file isn't an image |
-| **401** Unauthorized | Not authenticated | Lesson 12 |
-| **403** Forbidden | Authenticated, but not allowed | Lesson 12 |
+| **401** Unauthorized | Not authenticated | Lesson 13 |
+| **403** Forbidden | Authenticated, but not allowed | Lesson 13 |
 | **404** Not Found | The resource in the URL doesn't exist | `GET /api/pizzas/999` |
 | **405** Method Not Allowed | The URL exists, the method doesn't | `PUT /api/pizzas` |
 | **409** Conflict | Conflicts with the current state of the data | Email already exists, pizza still referenced |
@@ -975,7 +612,7 @@ How to test this client **without** calling the real server is part of [Lesson 1
 | **415** Unsupported Media Type | Body format not supported | `Content-Type: text/plain` |
 | **422** Unprocessable Content | Well-formed and valid, but breaks a business rule | Unavailable pizza, cancelling a delivered order, unknown customer in a new order |
 | **500** Internal Server Error | A bug or an outage on our side | Anything unexpected |
-| **502** Bad Gateway | An API we depend on failed | Open Food Facts is down or too slow ([Part 3](#-part-3-calling-an-external-api)) |
+| **502** Bad Gateway | An API we depend on failed | Lesson 11 (Open Food Facts is down or too slow) |
 
 ### 400, 404 or 422?
 
@@ -1070,23 +707,17 @@ Every error response is now an `application/problem+json` body.
    - `type`, `title`, `status`, `detail`, `instance` and extensions like `errors`
    - `application/problem+json`
 
-5. **Calling an external API**
-   - A declarative client: `@HttpExchange`/`@GetExchange` interface + `@ImportHttpServices`
-   - Base URL, `User-Agent` and timeouts in `spring.http.serviceclient.<group>.*`
-   - Failures of the other side: `422` for unusable data, `502` for outages, never a hanging request
-   - No database transaction around a remote call
 
 ### Key Takeaways
 
 - ✅ **Invalid input → 400 before your code runs**
-- 🎯 **Every error has the right status code: 400, 404, 409, 422, 500 or 502**
-- 🌐 **An external API will fail: set timeouts and decide what the client sees**
+- 🎯 **Every error has the right status code: 400, 404, 409, 422 or 500**
 - 📄 **Every error body is a `ProblemDetail`**
 - 🛡️ **Never expose internal details**
 
 ### What's Next?
 
-PizzaStore now behaves correctly for valid *and* invalid requests — but we've only checked that by hand with `curl`. [Lesson 11](../lesson-11-testing/README.md) turns these checks into automated tests.
+PizzaStore now behaves correctly for valid *and* invalid requests. So far it only *answers* requests, though. [Lesson 11](../lesson-11-external-api/README.md) makes PizzaStore call somebody else's API for the first time (Open Food Facts), and uses this lesson's exception handling to deal with the new kind of failure that comes with it: the other side that is down or too slow. After that, [Lesson 12](../lesson-12-testing/README.md) turns all the `curl` checks of these lessons into automated tests.
 
 ---
 
@@ -1102,13 +733,13 @@ PizzaStore now behaves correctly for valid *and* invalid requests — but we've 
 
 ---
 
-**Note on the book**: *Pro Spring Boot 4* covers this lesson in Chapter 3. Part 3 follows its *Declarative HTTP Service Clients* section (`@HttpExchange`, `@GetExchange`, `@ImportHttpServices`), applied to Open Food Facts instead of an exchange-rate API; the book hard-codes the URL and only mentions timeouts in passing, while this course puts the connection settings in `spring.http.serviceclient.<group>.*` and shows how the failures of the other side surface as `422`/`502`. *Validating the Domain Model* (inside *Implementing Full CRUD*) adds `spring-boot-starter-validation`, puts `@NotBlank`, `@Email` and `@Pattern` on the `Customer` record, and gives the three best practices quoted above: fail fast, specific messages, and validation on DTOs rather than entities. *The Complete CustomerController* triggers it with `@Valid @RequestBody` and explains the resulting `MethodArgumentNotValidException`. *Global Exception Handling with @ControllerAdvice* (inside *Exception Handling and Content Negotiation*) is the counterpart of `GlobalExceptionHandler`: `@RestControllerAdvice`, `@ExceptionHandler`, `ProblemDetail` with a custom `type` and an `errors` extension, the Problem Detail flow of Figure 3-2, and the best practices "Standardize Errors", "Don't Leak Internals" and "Use Specific Exceptions". Chapter 3's versioning example returns to the same handler for its strict v2 API, Chapter 6 (Listing 6-4) uses `ResponseStatusException` for a 404, Chapter 9 shows the WebFlux variant (`WebExchangeBindException`), and Chapter 18 lists *First-Class Problem Details Support* among the Spring Boot 4 highlights, with the `ErrorResponse.builder` example. Where PizzaStore goes further than the book: a custom exception hierarchy thrown from the service layer, separate create/update DTOs with nested (`@Valid`) validation, and `ResponseEntityExceptionHandler` for Spring's own exceptions. The book's error status codes are limited to **400** (validation), **404** (a resource that doesn't exist, always identified by the URL) and **500** (unexpected errors); **409 Conflict and 422 Unprocessable Content don't appear anywhere in the book**, and its examples never reference another resource from a request body. The 409/422 distinction and the "404 only for IDs in the path" rule in [400, 404 or 422?](#400-404-or-422) are this course's addition, based on the HTTP specification (RFC 9110) rather than on the book. Note that, despite the book's wording, Spring Boot 4 does **not** return problem details by default: without your own handler (or `spring.mvc.problemdetails.enabled=true`) errors still get the `{ timestamp, status, error, path }` body.
+**Note on the book**: *Pro Spring Boot 4* covers this lesson in Chapter 3. The *Declarative HTTP Service Clients* section of the same chapter has a lesson of its own: [Lesson 11](../lesson-11-external-api/README.md). *Validating the Domain Model* (inside *Implementing Full CRUD*) adds `spring-boot-starter-validation`, puts `@NotBlank`, `@Email` and `@Pattern` on the `Customer` record, and gives the three best practices quoted above: fail fast, specific messages, and validation on DTOs rather than entities. *The Complete CustomerController* triggers it with `@Valid @RequestBody` and explains the resulting `MethodArgumentNotValidException`. *Global Exception Handling with @ControllerAdvice* (inside *Exception Handling and Content Negotiation*) is the counterpart of `GlobalExceptionHandler`: `@RestControllerAdvice`, `@ExceptionHandler`, `ProblemDetail` with a custom `type` and an `errors` extension, the Problem Detail flow of Figure 3-2, and the best practices "Standardize Errors", "Don't Leak Internals" and "Use Specific Exceptions". Chapter 3's versioning example returns to the same handler for its strict v2 API, Chapter 6 (Listing 6-4) uses `ResponseStatusException` for a 404, Chapter 9 shows the WebFlux variant (`WebExchangeBindException`), and Chapter 18 lists *First-Class Problem Details Support* among the Spring Boot 4 highlights, with the `ErrorResponse.builder` example. Where PizzaStore goes further than the book: a custom exception hierarchy thrown from the service layer, separate create/update DTOs with nested (`@Valid`) validation, and `ResponseEntityExceptionHandler` for Spring's own exceptions. The book's error status codes are limited to **400** (validation), **404** (a resource that doesn't exist, always identified by the URL) and **500** (unexpected errors); **409 Conflict and 422 Unprocessable Content don't appear anywhere in the book**, and its examples never reference another resource from a request body. The 409/422 distinction and the "404 only for IDs in the path" rule in [400, 404 or 422?](#400-404-or-422) are this course's addition, based on the HTTP specification (RFC 9110) rather than on the book. Note that, despite the book's wording, Spring Boot 4 does **not** return problem details by default: without your own handler (or `spring.mvc.problemdetails.enabled=true`) errors still get the `{ timestamp, status, error, path }` body.
 
 ---
 
 ## 🚀 Runnable Project
 
-**[`pizzastore-with-validation/`](pizzastore-with-validation)** is Lesson 9's [`pizzastore-complete-api`](../lesson-09-complete-rest-api/pizzastore-complete-api) plus the changes listed in [What This Lesson Adds to PizzaStore](#-what-this-lesson-adds-to-pizzastore). Its request DTOs, `exception` package, services and controllers are the same as in the final PizzaStore, minus the security handler (Lesson 12) and the OpenAPI annotations (Lesson 13).
+**[`pizzastore-with-validation/`](pizzastore-with-validation)** is Lesson 9's [`pizzastore-complete-api`](../lesson-09-complete-rest-api/pizzastore-complete-api) plus the changes listed in [What This Lesson Adds to PizzaStore](#-what-this-lesson-adds-to-pizzastore). Its request DTOs, `exception` package, services and controllers are the same as in the final PizzaStore, minus the Open Food Facts import (Lesson 11), the security handler (Lesson 13) and the OpenAPI annotations (Lesson 14).
 
 The project includes:
 - ✅ **Spring Boot 4.0** on **Java 25** (`spring-boot-starter-webmvc`, `spring-boot-starter-data-jpa`, `spring-boot-starter-validation`, H2, MapStruct 1.6.3)
@@ -1116,9 +747,9 @@ The project includes:
 - ✅ Jakarta Bean Validation on all request DTOs, including nested objects and lists
 - ✅ A custom exception hierarchy and business rules in the services
 - ✅ A global `@RestControllerAdvice` returning RFC 7807 `ProblemDetail` for every error
-- ✅ A declarative `@HttpExchange` client for Open Food Facts (needs internet access to try it out)
-- ❌ No automated tests yet — Lesson 11
-- ❌ No security — every endpoint is open until Lesson 12
+- ❌ No calls to external APIs yet — Lesson 11
+- ❌ No automated tests yet — Lesson 12
+- ❌ No security — every endpoint is open until Lesson 13
 
 ### Running It
 
@@ -1140,14 +771,6 @@ curl http://localhost:8080/api/pizzas/999
 # 422 - business rule: order 1 is already delivered
 curl -X DELETE http://localhost:8080/api/orders/1
 
-# 200 - fill the nutritional info of pizza 1 with the data of Open Food Facts product 3017620422003 (needs internet)
-curl -X POST http://localhost:8080/api/pizzas/1/nutritional-info/import \
-  -H "Content-Type: application/json" -d '{"barcode":"3017620422003"}'
-
-# 400 - not a barcode (the 404, 422 and 502 cases of this endpoint are listed in Part 3)
-curl -X POST http://localhost:8080/api/pizzas/1/nutritional-info/import \
-  -H "Content-Type: application/json" -d '{"barcode":"abc"}'
-
 # 409 - email already in use
 curl -X POST http://localhost:8080/api/customers \
   -H "Content-Type: application/json" \
@@ -1158,4 +781,4 @@ The H2 console is available at http://localhost:8080/h2-console (JDBC URL `jdbc:
 
 ---
 
-**Congratulations!** 🎉 PizzaStore now rejects invalid input and explains every error in a standard format. Continue to [Lesson 11: Testing](../lesson-11-testing/README.md) to prove it with automated tests.
+**Congratulations!** 🎉 PizzaStore now rejects invalid input and explains every error in a standard format. Continue to [Lesson 11: Calling an External API](../lesson-11-external-api/README.md) to let PizzaStore fetch data from another service.

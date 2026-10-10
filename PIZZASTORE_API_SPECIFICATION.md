@@ -158,7 +158,7 @@ The PizzaStore REST API is a backend service for a pizza ordering system. It sup
 
 The PizzaStore API supports two authentication methods. **These are mutually exclusive** - choose one based on your requirements and learning objectives.
 
-#### Method 1: JWT Authentication (Lessons 12-13)
+#### Method 1: JWT Authentication (Lessons 13-14)
 **Self-managed authentication with email/password**
 
 This is the **primary method** for the course as it teaches fundamental authentication concepts.
@@ -195,7 +195,7 @@ private Role role;
 
 ---
 
-#### Method 2: OAuth2/OIDC with Dex Identity Provider (Lesson 14 - Advanced/Optional)
+#### Method 2: OAuth2/OIDC with Dex Identity Provider (Lesson 15 - Advanced/Optional)
 **Delegated authentication via external identity provider**
 
 This is an **advanced, optional method** that demonstrates modern SSO (Single Sign-On) patterns.
@@ -260,11 +260,11 @@ Customer customer = customerRepo.findBySub(oidcUser.getSub())
 | **Learning Value** | Fundamentals of auth | Modern SSO patterns |
 | **Production Suitable** | ✅ Yes | ✅ Yes (better for SSO) |
 | **Mobile App Ready** | ✅ Yes | ✅ Yes |
-| **Course Level** | Primary (Lessons 12-13) | Advanced (Lesson 14) |
+| **Course Level** | Primary (Lessons 13-14) | Advanced (Lesson 15) |
 
 **Recommendation for the course:**
 1. **Start with JWT** to understand authentication fundamentals
-2. **Optionally add OIDC** in Lesson 14 to learn modern patterns
+2. **Optionally add OIDC** in Lesson 15 to learn modern patterns
 3. Use Spring profiles to switch between them without code changes
 
 ---
@@ -1606,7 +1606,7 @@ Image naming convention: `{pizzaId}-{timestamp}.{extension}`
 
 ### Security Implementation
 
-#### JWT Authentication (Lessons 12-13)
+#### JWT Authentication (Lessons 13-14)
 
 **Dependencies:**
 ```xml
@@ -1658,7 +1658,7 @@ private String password; // BCrypt hashed
 
 ---
 
-#### OAuth2/OIDC with Dex (Lesson 14 - Optional)
+#### OAuth2/OIDC with Dex (Lesson 15 - Optional)
 
 **Dependencies:**
 ```xml

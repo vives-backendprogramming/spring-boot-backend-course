@@ -1,4 +1,4 @@
-# Lesson 12: Securing Web Applications - JWT Authentication
+# Lesson 13: Securing Web Applications - JWT Authentication
 
 **Who Are You and What May You Do? Stateless JWT Authentication and Role-Based Access for PizzaStore**
 
@@ -6,7 +6,7 @@
 
 ## 📋 Table of Contents
 - [Learning Objectives](#-learning-objectives)
-- [Recap: Where Lesson 11 Left Us](#-recap-where-lesson-11-left-us)
+- [Recap: Where Lesson 12 Left Us](#-recap-where-lesson-12-left-us)
 - [What This Lesson Adds to PizzaStore](#-what-this-lesson-adds-to-pizzastore)
 - [Introduction to Spring Security](#-introduction-to-spring-security)
 - [What is JWT?](#-what-is-jwt)
@@ -42,9 +42,9 @@ By the end of this lesson, you will be able to:
 
 ---
 
-## 🔄 Recap: Where Lesson 11 Left Us
+## 🔄 Recap: Where Lesson 12 Left Us
 
-After [Lesson 11](../lesson-11-testing/README.md) PizzaStore is a complete, tested REST API: pizzas, customers and orders, validation, `ProblemDetail` errors, the Open Food Facts import of Lesson 10, and 226 automated tests. But **every endpoint is open to everybody**: anyone can delete a pizza, read all customers or change the status of somebody else's order. The `Customer` entity already has a `password` and a `role` column (since Lesson 6a), and `data.sql` already contains an admin account, but nothing uses them yet.
+After [Lesson 12](../lesson-12-testing/README.md) PizzaStore is a complete, tested REST API: pizzas, customers and orders, validation, `ProblemDetail` errors, the Open Food Facts import of Lesson 11, and 226 automated tests. But **every endpoint is open to everybody**: anyone can delete a pizza, read all customers or change the status of somebody else's order. The `Customer` entity already has a `password` and a `role` column (since Lesson 6a), and `data.sql` already contains an admin account, but nothing uses them yet.
 
 This lesson answers two questions for every request:
 
@@ -55,7 +55,7 @@ This lesson answers two questions for every request:
 
 ## 🧱 What This Lesson Adds to PizzaStore
 
-The project of this lesson, [`pizzastore-with-jwt`](pizzastore-with-jwt), is **Lesson 11's [`pizzastore-with-tests`](../lesson-11-testing/pizzastore-with-tests) plus exactly these changes**:
+The project of this lesson, [`pizzastore-with-jwt`](pizzastore-with-jwt), is **Lesson 12's [`pizzastore-with-tests`](../lesson-12-testing/pizzastore-with-tests) plus exactly these changes**:
 
 | Added / changed | What it does |
 |-----------------|--------------|
@@ -72,7 +72,7 @@ The project of this lesson, [`pizzastore-with-jwt`](pizzastore-with-jwt), is **L
 
 The controllers, services, repositories, entities, mappers, request/response DTOs, the Open Food Facts client and `data.sql` are **unchanged**. That is the point of the design: security is added *around* the application, in one configuration class and one filter, not inside every controller (see [Keep Controllers Clean](#7-keep-controllers-clean---centralized-security-configuration)).
 
-The Open Food Facts import of Lesson 10, `POST /api/pizzas/{id}/nutritional-info/import`, needs no extra rule either: it changes the menu, so the existing rule *"`POST /api/pizzas/**` is for admins"* covers it.
+The Open Food Facts import of Lesson 11, `POST /api/pizzas/{id}/nutritional-info/import`, needs no extra rule either: it changes the menu, so the existing rule *"`POST /api/pizzas/**` is for admins"* covers it.
 
 ---
 
@@ -354,7 +354,7 @@ Update your `pom.xml` to include Spring Security and JWT dependencies:
 </dependencies>
 ```
 
-The versions of `spring-boot-starter-security` (Spring Security 7) and of the test starter come from the Spring Boot 4 parent; JJWT is not managed by Spring Boot, so its version is set in `<properties>`. Only `jjwt-api` is needed at compile time: the implementation and its Jackson binding are `runtime` dependencies, so your code cannot accidentally depend on JJWT internals. As with the other test starters of Lesson 11, `spring-boot-starter-security-test` is the Spring Boot 4 way to get `spring-security-test`.
+The versions of `spring-boot-starter-security` (Spring Security 7) and of the test starter come from the Spring Boot 4 parent; JJWT is not managed by Spring Boot, so its version is set in `<properties>`. Only `jjwt-api` is needed at compile time: the implementation and its Jackson binding are `runtime` dependencies, so your code cannot accidentally depend on JJWT internals. As with the other test starters of Lesson 12, `spring-boot-starter-security-test` is the Spring Boot 4 way to get `spring-security-test`.
 
 ---
 
@@ -1080,7 +1080,7 @@ curl -X POST http://localhost:8080/api/pizzas \
 
 ### 8. Import Nutrition Data (Admin Only)
 
-The Open Food Facts import of [Lesson 10](../lesson-10-validation-exception-handling/README.md#-part-3-calling-an-external-api) changes the menu, so it follows the same rule as creating a pizza:
+The Open Food Facts import of [Lesson 11](../lesson-11-external-api/README.md) changes the menu, so it follows the same rule as creating a pizza:
 
 ```bash
 # with the customer token: 403 Forbidden
@@ -1248,7 +1248,7 @@ public class PizzaController {
 
 #### Clean Controller Example
 
-PizzaStore's [`PizzaController`](pizzastore-with-jwt/src/main/java/be/vives/pizzastore/controller/PizzaController.java) is **byte-for-byte the same** as in Lesson 11: not a single line changed to secure it.
+PizzaStore's [`PizzaController`](pizzastore-with-jwt/src/main/java/be/vives/pizzastore/controller/PizzaController.java) is **byte-for-byte the same** as in Lesson 12: not a single line changed to secure it.
 
 ```java
 @RestController
@@ -1297,7 +1297,7 @@ For most REST APIs with standard URL-based security, **centralized configuration
 
 ## 🧪 Testing Secured Controllers
 
-Add Spring Security to a tested application and many of the tests of [Lesson 11](../lesson-11-testing/README.md) turn red: a `POST /api/pizzas` without a user now gets `401`, and full-stack tests that create data need a token. That is the safety net doing its job. This section shows how the test suite of [`pizzastore-with-jwt`](pizzastore-with-jwt/src/test/java/be/vives/pizzastore) deals with security, at two levels:
+Add Spring Security to a tested application and many of the tests of [Lesson 12](../lesson-12-testing/README.md) turn red: a `POST /api/pizzas` without a user now gets `401`, and full-stack tests that create data need a token. That is the safety net doing its job. This section shows how the test suite of [`pizzastore-with-jwt`](pizzastore-with-jwt/src/test/java/be/vives/pizzastore) deals with security, at two levels:
 
 | Level | How the user is simulated | Proves |
 |-------|---------------------------|--------|
@@ -1306,7 +1306,7 @@ Add Spring Security to a tested application and many of the tests of [Lesson 11]
 
 ### Slice Tests: `@WithMockUser`
 
-[`PizzaControllerTest`](pizzastore-with-jwt/src/test/java/be/vives/pizzastore/controller/PizzaControllerTest.java) is a `@WebMvcTest` with `RestTestClient`, as in Lesson 11, plus the real security configuration:
+[`PizzaControllerTest`](pizzastore-with-jwt/src/test/java/be/vives/pizzastore/controller/PizzaControllerTest.java) is a `@WebMvcTest` with `RestTestClient`, as in Lesson 12, plus the real security configuration:
 
 ```java
 @WebMvcTest(controllers = PizzaController.class)
@@ -1336,7 +1336,7 @@ class PizzaControllerTest {
 
 Four things to understand:
 
-1. **`@Import(SecurityConfig.class)`**: a slice does not scan `@Configuration` classes (the same lesson as `@Import(JpaConfig.class)` in Lesson 11). Without the import the slice would use Spring Boot's default security (every request needs a login, CSRF protection on), and the tests would check rules PizzaStore does not have.
+1. **`@Import(SecurityConfig.class)`**: a slice does not scan `@Configuration` classes (the same lesson as `@Import(JpaConfig.class)` in Lesson 12). Without the import the slice would use Spring Boot's default security (every request needs a login, CSRF protection on), and the tests would check rules PizzaStore does not have.
 2. **`JwtAuthenticationFilter` *is* part of the slice**: `@WebMvcTest` includes every `Filter` bean, and our filter is a `@Component`. Its constructor needs a `JwtUtil` and a `UserDetailsService`, which are not in the slice, hence the two `@MockitoBean`s. They are never really called: no request in these tests carries a token.
 3. **`@WithMockUser(roles = "ADMIN")`** (from `spring-security-test`) puts an authenticated user with `ROLE_ADMIN` straight into the `SecurityContext`, without passwords or tokens. On the class it is the default; a test overrides it with its own annotation.
 4. **The service is a mock**, so a denied request can be proven by `verify(..., never())`: the controller was never reached.
@@ -1387,7 +1387,7 @@ An anonymous `POST` gets `401` (`createPizza_Anonymous_ReturnsUnauthorized`): `@
 
 [`OrderControllerTest`](pizzastore-with-jwt/src/test/java/be/vives/pizzastore/controller/OrderControllerTest.java) and [`CustomerControllerTest`](pizzastore-with-jwt/src/test/java/be/vives/pizzastore/controller/CustomerControllerTest.java) follow the same pattern, with `@WithMockUser` per test. They check the less obvious rules of the [access table](#access-control-summary): a customer may place an order, but an **admin may not** (`createOrder_withAdminRole_returnsForbidden`), and a customer may not list, read, update or cancel orders. [`AuthControllerTest`](pizzastore-with-jwt/src/test/java/be/vives/pizzastore/controller/AuthControllerTest.java) tests the public `/api/auth` endpoints without any user: a duplicate e-mail address gives a `409` and invalid registration data a `400`, both as `ProblemDetail`.
 
-> **Multipart in a slice.** The four image-upload tests are in a separate class, [`PizzaImageUploadControllerTest`](pizzastore-with-jwt/src/test/java/be/vives/pizzastore/controller/PizzaImageUploadControllerTest.java), that uses MockMvc instead of `RestTestClient`: a `RestTestClient` bound to MockMvc does not turn a multipart body into request parts (Lesson 11, *Which one should I use?*). `@WithMockUser` works with both.
+> **Multipart in a slice.** The four image-upload tests are in a separate class, [`PizzaImageUploadControllerTest`](pizzastore-with-jwt/src/test/java/be/vives/pizzastore/controller/PizzaImageUploadControllerTest.java), that uses MockMvc instead of `RestTestClient`: a `RestTestClient` bound to MockMvc does not turn a multipart body into request parts (Lesson 12, *Which one should I use?*). `@WithMockUser` works with both.
 
 ### Full-Stack Tests: Real Tokens
 
@@ -1437,7 +1437,7 @@ void customer_CannotListAllOrders_ButAdminCan() {
 
 The other tests of the class: anonymous users can read pizzas but get `401` when they try to create one, a customer gets `403` and an admin `201`, a garbage token gives `401` (not a `500`), a wrong password gives `401`, and the token returned by `register` works immediately.
 
-The full-stack tests of Lesson 11 needed the same change: [`PizzaStoreApiIntegrationTest`](pizzastore-with-jwt/src/test/java/be/vives/pizzastore/integration/PizzaStoreApiIntegrationTest.java) creates an admin and a customer in `@BeforeEach` and sends their tokens with every request that needs one, and the MockMvc-based [`PizzaIntegrationTest`](pizzastore-with-jwt/src/test/java/be/vives/pizzastore/integration/PizzaIntegrationTest.java) uses `@WithMockUser(roles = "ADMIN")`, which works because MockMvc runs on the test thread.
+The full-stack tests of Lesson 12 needed the same change: [`PizzaStoreApiIntegrationTest`](pizzastore-with-jwt/src/test/java/be/vives/pizzastore/integration/PizzaStoreApiIntegrationTest.java) creates an admin and a customer in `@BeforeEach` and sends their tokens with every request that needs one, and the MockMvc-based [`PizzaIntegrationTest`](pizzastore-with-jwt/src/test/java/be/vives/pizzastore/integration/PizzaIntegrationTest.java) uses `@WithMockUser(roles = "ADMIN")`, which works because MockMvc runs on the test thread.
 
 ### The Test Suite of This Lesson
 
@@ -1451,7 +1451,7 @@ The full-stack tests of Lesson 11 needed the same change: [`PizzaStoreApiIntegra
 | | `PizzaJsonTest`, `PizzaMapperTest`, `OpenFoodFactsClientTest` | 13 |
 | Full stack | `ApplicationSmokeTest`, `PizzaIntegrationTest`, `PizzaStoreApiIntegrationTest`, `BeanOverrideIntegrationTest`, `SecurityIntegrationTest` | 28 |
 
-Compared with Lesson 11, this is the test suite of the final PizzaStore: the controller tests are written with `RestTestClient` only (Lesson 11's side-by-side comparison classes `PizzaControllerRestTestClientTest` and `PizzaControllerMockMvcTesterTest` have done their job and are not carried over), and `AuthControllerTest`, `SecurityIntegrationTest` and the role tests are new.
+Compared with Lesson 12, this is the test suite of the final PizzaStore: the controller tests are written with `RestTestClient` only (Lesson 12's side-by-side comparison classes `PizzaControllerRestTestClientTest` and `PizzaControllerMockMvcTesterTest` have done their job and are not carried over), and `AuthControllerTest`, `SecurityIntegrationTest` and the role tests are new.
 
 ### Best Practices for Security Testing
 
@@ -1492,7 +1492,7 @@ In this lesson, you learned:
 
 ## 🚀 Runnable Project
 
-**[`pizzastore-with-jwt/`](pizzastore-with-jwt)** is Lesson 11's [`pizzastore-with-tests`](../lesson-11-testing/pizzastore-with-tests) plus the changes listed in [What This Lesson Adds to PizzaStore](#-what-this-lesson-adds-to-pizzastore). Apart from the OpenAPI documentation of Lesson 13, it is the final PizzaStore.
+**[`pizzastore-with-jwt/`](pizzastore-with-jwt)** is Lesson 12's [`pizzastore-with-tests`](../lesson-12-testing/pizzastore-with-tests) plus the changes listed in [What This Lesson Adds to PizzaStore](#-what-this-lesson-adds-to-pizzastore). Apart from the OpenAPI documentation of Lesson 14, it is the final PizzaStore.
 
 ### Features
 
@@ -1501,9 +1501,9 @@ In this lesson, you learned:
 ✅ **User Registration & Login**: `POST /api/auth/register`, `POST /api/auth/login`  
 ✅ **Role-Based Access Control**: CUSTOMER and ADMIN roles, see the [access table](#access-control-summary)  
 ✅ **Password Encryption**: BCrypt password hashing  
-✅ **Everything from Lessons 6a-11**, including the Open Food Facts import (admin only)  
+✅ **Everything from Lessons 6a-12**, including the Open Food Facts import (admin only)  
 ✅ **236 tests**, including role tests in the web slice and end-to-end tests with real tokens  
-❌ No API documentation yet: Lesson 13
+❌ No API documentation yet: Lesson 14
 
 ### Test Accounts
 
@@ -1541,4 +1541,4 @@ curl -X POST http://localhost:8080/api/pizzas \
 
 ---
 
-🎉 You've successfully implemented JWT authentication in your Spring Boot application! Continue to [Lesson 13: Swagger/OpenAPI](../lesson-13-swagger-openapi/README.md) to document the secured API.
+🎉 You've successfully implemented JWT authentication in your Spring Boot application! Continue to [Lesson 14: Swagger/OpenAPI](../lesson-14-swagger-openapi/README.md) to document the secured API.

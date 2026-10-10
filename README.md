@@ -4,7 +4,7 @@
 
 **Comprehensive Spring Boot 4 Course for Building REST API Backends**
 
-This course teaches students to build production-ready Java backend applications for mobile applications using modern Spring Boot practices. Students learn by building one evolving **PizzaStore REST API** from scratch, lesson by lesson, until it becomes a complete backend with persistence, validation, testing, authentication, and API documentation.
+This course teaches students to build production-ready Java backend applications for mobile applications using modern Spring Boot practices. Students learn by building one evolving **PizzaStore REST API** from scratch, lesson by lesson, until it becomes a complete backend with persistence, validation, calls to an external API, testing, authentication, and API documentation.
 
 The finished reference solution lives in a separate repository, [**PizzaStore**](https://github.com/vives-backendprogramming/PizzaStore): a Spring Boot REST API for managing pizzas, orders and customers, secured with JWT authentication, backed by an H2 database via Spring Data JPA, and documented with Swagger/OpenAPI.
 
@@ -33,10 +33,17 @@ The finished reference solution lives in a separate repository, [**PizzaStore**]
 
 8. **REST Principles** - HTTP methods, status codes, resource design
 9. **Building a Complete REST API** - Full CRUD, pagination, image upload
-10. **Validation & Exception Handling** - Input validation, error responses, and calling an external API (Open Food Facts) with a declarative `@HttpExchange` client
-11. **Testing Spring Boot Applications** - Unit tests, test slices (`@DataJpaTest`, `@WebMvcTest`, `@JsonTest`, `@RestClientTest`), `RestTestClient`, integration tests
-12. **JWT Authentication** - Token-based authentication with roles
-13. **Swagger/OpenAPI** - API documentation and Swagger UI
+10. **Validation & Exception Handling** - Input validation, a custom exception hierarchy and RFC 7807 `ProblemDetail` error responses
+
+**Integrating External Services**
+
+11. **Calling an External API** - Spring's HTTP clients, a declarative `@HttpExchange` client for Open Food Facts, timeouts and `422`/`502` error handling
+
+**Testing, Security & Documentation**
+
+12. **Testing Spring Boot Applications** - Unit tests, test slices (`@DataJpaTest`, `@WebMvcTest`, `@JsonTest`, `@RestClientTest`), `RestTestClient`, integration tests
+13. **JWT Authentication** - Token-based authentication with roles
+14. **Swagger/OpenAPI** - API documentation and Swagger UI
 
 ---
 
@@ -90,9 +97,10 @@ spring-boot-backend-course/
 ├── lesson-08-rest-principles/                     # REST theory
 ├── lesson-09-complete-rest-api/                   # 🍕 Complete CRUD API
 ├── lesson-10-validation-exception-handling/       # 🍕 With validation
-├── lesson-11-testing/                             # 🍕 With comprehensive tests
-├── lesson-12-jwt-authentication/                  # 🍕 With JWT authentication
-└── lesson-13-swagger-openapi/                     # 🍕 With API documentation
+├── lesson-11-external-api/                        # 🍕 Calling the Open Food Facts API
+├── lesson-12-testing/                             # 🍕 With comprehensive tests
+├── lesson-13-jwt-authentication/                  # 🍕 With JWT authentication
+└── lesson-14-swagger-openapi/                     # 🍕 With API documentation
 ```
 
 The complete, final version of the project (used as the reference solution) lives in a **separate repository**: [PizzaStore](https://github.com/vives-backendprogramming/PizzaStore).
@@ -116,10 +124,11 @@ By completing this course, students will:
 2. Build complete REST APIs with proper design principles
 3. Implement data persistence with JPA and complex relationships
 4. Apply validation and comprehensive error handling
-5. Write thorough tests (unit, integration, and E2E)
-6. Secure applications with JWT and OAuth2/OIDC
-7. Document APIs with OpenAPI/Swagger
-8. Prepare applications for production with monitoring
+5. Call external REST APIs with declarative HTTP clients, and handle their failures
+6. Write thorough tests (unit, integration, and E2E)
+7. Secure applications with JWT and OAuth2/OIDC
+8. Document APIs with OpenAPI/Swagger
+9. Prepare applications for production with monitoring
 
 **Final Goal**: Students can build and deploy a production-ready Spring Boot REST API backend for mobile applications, ready for the final exam.
 

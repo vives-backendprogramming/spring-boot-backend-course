@@ -811,7 +811,7 @@ Why go to this trouble instead of calling repositories directly from the control
 2. **Reuse beyond HTTP.** The same `OrderService.create()` can be called by a REST controller, a scheduled job, a message listener or a test. None of those care about HTTP.
 3. **A clear transaction boundary.** One service method = one use case = one transaction (see [Transactions](#-transactions)).
 4. **A clear mapping boundary.** Entities go in and out of the repositories, DTOs go in and out of the services. The controller never sees a lazy-loading proxy.
-5. **Testability.** A service has no HTTP dependency: you can unit-test it with mocked repositories (Lesson 11).
+5. **Testability.** A service has no HTTP dependency: you can unit-test it with mocked repositories (Lesson 12).
 
 ### Business Logic: Service or Entity?
 
@@ -897,7 +897,7 @@ public PizzaService(PizzaRepository pizzaRepository, PizzaMapper pizzaMapper) {
 
 **Benefits:**
 - Immutable dependencies (`final`)
-- Easy to test (can pass mocks — Lesson 11)
+- Easy to test (can pass mocks — Lesson 12)
 - Explicit dependencies
 
 #### 2. **Always Return DTOs**
@@ -1451,7 +1451,7 @@ public interface CustomerMapper {
 }
 ```
 
-(`UpdateCustomerRequest` doesn't even *have* those fields — the `ignore`s document the intent and keep MapStruct from warning.) Hashing the password before it's stored is part of the security lesson ([Lesson 12](../lesson-12-jwt-authentication/README.md)).
+(`UpdateCustomerRequest` doesn't even *have* those fields — the `ignore`s document the intent and keep MapStruct from warning.) Hashing the password before it's stored is part of the security lesson ([Lesson 13](../lesson-13-jwt-authentication/README.md)).
 
 ### 5. **Circular References in DTOs**
 
@@ -1619,7 +1619,7 @@ In **[Lesson 10 (Validation & Exception Handling)](../lesson-10-validation-excep
 
 ## 🚀 Runnable Project
 
-**`pizzastore-with-dtos/`** is Lesson 6a's `pizzastore-jpa` project plus the `dto`, `mapper` and `service` packages of this lesson. It's a step on the way to the final PizzaStore: the `domain`, `repository`, `dto` and `mapper` packages are the same as in the final project — except that validation (Lesson 10) and OpenAPI annotations (Lesson 13) have not been added to the DTOs yet.
+**`pizzastore-with-dtos/`** is Lesson 6a's `pizzastore-jpa` project plus the `dto`, `mapper` and `service` packages of this lesson. It's a step on the way to the final PizzaStore: the `domain`, `repository`, `dto` and `mapper` packages are the same as in the final project — except that validation (Lesson 10) and OpenAPI annotations (Lesson 14) have not been added to the DTOs yet.
 
 The project includes:
 - ✅ **Spring Boot 4** on **Java 25** (`spring-boot-starter-webmvc`, `spring-boot-starter-data-jpa`, H2)

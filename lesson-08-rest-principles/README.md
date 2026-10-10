@@ -262,7 +262,7 @@ If a client sends an invalid request (e.g. a blank `name`) to `/api/v1/pizzas`, 
 
 ### Verifying Both Versions Behave Differently
 
-Once the unified `RestTestClient` is introduced in [Lesson 11](../lesson-11-testing/README.md), this dual behavior is easy to assert in a single test class — exactly the way *Pro Spring Boot 4* verifies its own `CustomerControllerV1`/`CustomerControllerV2` pair:
+Once the unified `RestTestClient` is introduced in [Lesson 12](../lesson-12-testing/README.md), this dual behavior is easy to assert in a single test class — exactly the way *Pro Spring Boot 4* verifies its own `CustomerControllerV1`/`CustomerControllerV2` pair:
 
 ```java
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
@@ -718,7 +718,7 @@ spring.web.cors.max-age=3600
 6. **Use filtering via query parameters** (`?available=true`)
 7. **Include pagination** for large collections
 8. **Use consistent naming conventions** (camelCase or snake_case)
-9. **Document your API** (Swagger/OpenAPI - covered in Lesson 13)
+9. **Document your API** (Swagger/OpenAPI - covered in Lesson 14)
 10. **Configure CORS** for mobile apps
 
 ### ❌ DON'T
@@ -818,7 +818,7 @@ Resources include links to related resources
 
 **Note on the book**: This lesson corresponds to *Pro Spring Boot 4*, Chapter 3: *Web Development with Spring Boot* — specifically the *RESTful API Design and Native Versioning* section, covering both its *Core REST Principles* subsection (resources as nouns, standard HTTP methods, meaningful status codes) and its *API Versioning Strategy* subsection (URL path vs. header vs. media type versioning, and the book's own `CustomerControllerV1`/`CustomerControllerV2` example, mirrored above as `PizzaControllerV1`/`PizzaControllerV2`). 
 
-Chapter 3 goes on to cover Jakarta Bean Validation and `ProblemDetail`/`@RestControllerAdvice` exception handling ([Lesson 10](../lesson-10-validation-exception-handling/README.md)) and the unified `RestTestClient` ([Lesson 11](../lesson-11-testing/README.md)) — both referenced above, since the book itself demonstrates its versioning example together with `RestTestClient`.
+Chapter 3 goes on to cover Jakarta Bean Validation and `ProblemDetail`/`@RestControllerAdvice` exception handling ([Lesson 10](../lesson-10-validation-exception-handling/README.md)), declarative HTTP service clients ([Lesson 11](../lesson-11-external-api/README.md)) and the unified `RestTestClient` ([Lesson 12](../lesson-12-testing/README.md)) — the first and last referenced above, since the book itself demonstrates its versioning example together with `RestTestClient`.
 
 ---
 

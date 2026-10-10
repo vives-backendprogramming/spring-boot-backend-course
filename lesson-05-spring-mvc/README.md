@@ -572,7 +572,7 @@ public class Pizza {
 
 **Note on the book**: This lesson corresponds to *Pro Spring Boot 4*, Chapter 3: *Web Development with Spring Boot* — specifically the *Spring MVC Architecture Deep Dive* section (the request lifecycle through `DispatcherServlet`, `HandlerMapping`, `HandlerAdapter`, and `HttpMessageConverter`, plus the `@RestController`/`@RequestMapping`/`@RequestBody`/`@PathVariable` annotations covered under *Annotations Uncovered*). 
 
-Chapter 3 goes on to cover several topics this course spreads across later, dedicated lessons instead of repeating them here: native API versioning and core REST principles ([Lesson 8](../lesson-08-rest-principles/README.md)), Jakarta Bean Validation and `ProblemDetail`/`@RestControllerAdvice` exception handling ([Lesson 10](../lesson-10-validation-exception-handling/README.md)), and the unified `RestTestClient` ([Lesson 11](../lesson-11-testing/README.md)). 
+Chapter 3 goes on to cover several topics this course spreads across later, dedicated lessons instead of repeating them here: native API versioning and core REST principles ([Lesson 8](../lesson-08-rest-principles/README.md)), Jakarta Bean Validation and `ProblemDetail`/`@RestControllerAdvice` exception handling ([Lesson 10](../lesson-10-validation-exception-handling/README.md)), declarative HTTP service clients for calling external APIs (`@HttpExchange`, [Lesson 11](../lesson-11-external-api/README.md)), and the unified `RestTestClient` ([Lesson 12](../lesson-12-testing/README.md)). 
 
 ---
 

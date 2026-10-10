@@ -16,7 +16,7 @@
     <artifactId>pizzastore-with-tests</artifactId>
     <version>1.0.0</version>
     <name>PizzaStore - Testing</name>
-    <description>Lesson 10's PizzaStore (validation and ProblemDetail exception handling) plus a complete Spring Boot 4 test suite: plain unit tests, test slices (@DataJpaTest, @WebMvcTest, @JsonTest, @RestClientTest), RestTestClient and @SpringBootTest integration tests</description>
+    <description>Lesson 11's PizzaStore (validation, ProblemDetail exception handling and the Open Food Facts client) plus a complete Spring Boot 4 test suite: plain unit tests, test slices (@DataJpaTest, @WebMvcTest, @JsonTest, @RestClientTest), RestTestClient and @SpringBootTest integration tests</description>
 
     <properties>
         <java.version>25</java.version>
@@ -38,7 +38,7 @@
             <artifactId>spring-boot-starter-validation</artifactId>
         </dependency>
 
-        <!-- RestClient + declarative HTTP clients (@HttpExchange / @ImportHttpServices): PizzaStore calls Open Food Facts (Lesson 10) -->
+        <!-- RestClient + declarative HTTP clients (@HttpExchange / @ImportHttpServices): PizzaStore calls Open Food Facts (Lesson 11) -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-restclient</artifactId>

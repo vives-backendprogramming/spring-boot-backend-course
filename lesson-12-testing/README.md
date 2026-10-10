@@ -1,4 +1,4 @@
-# Lesson 11: Testing Spring Boot Applications
+# Lesson 12: Testing Spring Boot Applications
 
 **Proving That PizzaStore Works: Unit Tests, Test Slices, `RestTestClient` and Full-Stack Integration Tests**
 
@@ -24,7 +24,7 @@ By the end of this lesson, you will be able to:
 
 ## 📚 Table of Contents
 
-1. [Recap: Where Lesson 10 Left Us](#-recap-where-lesson-10-left-us)
+1. [Recap: Where Lesson 11 Left Us](#-recap-where-lesson-11-left-us)
 2. [What This Lesson Adds to PizzaStore](#-what-this-lesson-adds-to-pizzastore)
 3. [Why Test?](#%EF%B8%8F-why-test)
 4. [The Testing Pyramid](#-the-testing-pyramid)
@@ -49,9 +49,9 @@ By the end of this lesson, you will be able to:
 
 ---
 
-## 🔄 Recap: Where Lesson 10 Left Us
+## 🔄 Recap: Where Lesson 11 Left Us
 
-[Lesson 10](../lesson-10-validation-exception-handling/README.md) ended with an API that rejects bad input (`400`), explains missing resources (`404`), refuses broken business rules (`422`) and reports conflicts (`409`) and a failing external service (`502`, from the Open Food Facts import), always as an RFC 7807 `ProblemDetail`. Its last section showed a *Before and After* table, and every row of that table was verified by hand with `curl`.
+[Lesson 10](../lesson-10-validation-exception-handling/README.md) ended with an API that rejects bad input (`400`), explains missing resources (`404`), refuses broken business rules (`422`) and reports conflicts (`409`), always as an RFC 7807 `ProblemDetail`. [Lesson 11](../lesson-11-external-api/README.md) added PizzaStore's first call to somebody else's API, the Open Food Facts import, with a `502` when that service fails. Both lessons ended with tables of requests and answers, and every row was verified by hand with `curl`.
 
 Doing that by hand has three problems:
 - It is **slow**: you repeat it after every change.
@@ -64,14 +64,14 @@ An automated test is a `curl` command that checks its own answer and runs in mil
 
 ## 🧱 What This Lesson Adds to PizzaStore
 
-[`pizzastore-with-tests`](pizzastore-with-tests) is Lesson 10's [`pizzastore-with-validation`](../lesson-10-validation-exception-handling/pizzastore-with-validation) plus tests. The production code is **unchanged**. The tests include a `@RestClientTest` for Lesson 10's Open Food Facts client, [`OpenFoodFactsClient`](pizzastore-with-tests/src/main/java/be/vives/pizzastore/client/OpenFoodFactsClient.java).
+[`pizzastore-with-tests`](pizzastore-with-tests) is Lesson 11's [`pizzastore-with-external-api`](../lesson-11-external-api/pizzastore-with-external-api) plus tests. The production code is **unchanged**. The tests include a `@RestClientTest` for Lesson 11's Open Food Facts client, [`OpenFoodFactsClient`](pizzastore-with-tests/src/main/java/be/vives/pizzastore/client/OpenFoodFactsClient.java).
 
 | What | Where |
 |------|-------|
 | Test dependencies (`spring-boot-starter-webmvc-test`, `spring-boot-starter-data-jpa-test`, `spring-boot-starter-restclient-test`) | [`pom.xml`](pizzastore-with-tests/pom.xml) |
 | Test configuration (own H2 database, no `data.sql`, quieter logging) | [`src/test/resources/application.properties`](pizzastore-with-tests/src/test/resources/application.properties) |
 | **226 tests** in 21 test classes (plus 7 `@Nested` classes) | [`src/test/java`](pizzastore-with-tests/src/test/java/be/vives/pizzastore) |
-| Tests for the Open Food Facts import of Lesson 10: [`OpenFoodFactsClientTest`](pizzastore-with-tests/src/test/java/be/vives/pizzastore/client/OpenFoodFactsClientTest.java) (`@RestClientTest`), [`NutritionImportServiceTest`](pizzastore-with-tests/src/test/java/be/vives/pizzastore/service/NutritionImportServiceTest.java) (Mockito) and extra cases in the controller, service and validation tests | [`src/test/java`](pizzastore-with-tests/src/test/java/be/vives/pizzastore) |
+| Tests for the Open Food Facts import of Lesson 11: [`OpenFoodFactsClientTest`](pizzastore-with-tests/src/test/java/be/vives/pizzastore/client/OpenFoodFactsClientTest.java) (`@RestClientTest`), [`NutritionImportServiceTest`](pizzastore-with-tests/src/test/java/be/vives/pizzastore/service/NutritionImportServiceTest.java) (Mockito) and extra cases in the controller, service and validation tests | [`src/test/java`](pizzastore-with-tests/src/test/java/be/vives/pizzastore) |
 
 The H2 database of the running application is called `pizzastore_tests` in this project (`jdbc:h2:mem:pizzastore_tests`). The tests use databases of their own, so running `mvn test` never touches data of a running application.
 
@@ -165,7 +165,7 @@ Before Spring Boot 4 you added one big `spring-boot-starter-test`. In Spring Boo
 | `spring-boot-starter-data-jpa-test` | `@DataJpaTest`, `TestEntityManager` |
 | `spring-boot-starter-restclient-test` | `@RestClientTest`, `MockRestServiceServer` |
 
-You can see all of these in the project with `mvn dependency:list -DincludeScope=test`. Other modules follow the same pattern (`spring-boot-starter-security-test`, `spring-boot-starter-webflux-test`, ...). Lesson 12 will add the security one.
+You can see all of these in the project with `mvn dependency:list -DincludeScope=test`. Other modules follow the same pattern (`spring-boot-starter-security-test`, `spring-boot-starter-webflux-test`, ...). Lesson 13 will add the security one.
 
 ### The versions you get
 
@@ -366,7 +366,7 @@ class PizzaJsonTest {
 
 All tests so far test code that is *called* by clients. `@RestClientTest` tests code that **calls** someone else's API. The book introduces this in Chapter 10 (*Client-Side Testing with @RestClientTest*) for declarative HTTP clients.
 
-The thing under test is Lesson 10's declarative client [`OpenFoodFactsClient`](pizzastore-with-tests/src/main/java/be/vives/pizzastore/client/OpenFoodFactsClient.java): an interface that Spring turns into a proxy that calls the free Open Food Facts API.
+The thing under test is Lesson 11's declarative client [`OpenFoodFactsClient`](pizzastore-with-tests/src/main/java/be/vives/pizzastore/client/OpenFoodFactsClient.java): an interface that Spring turns into a proxy that calls the free Open Food Facts API.
 
 You do not want a test that depends on the real server: it would be slow, need internet, give different answers when someone edits the product, and burn the **15 lookups per minute** that Open Food Facts allows per IP address. `@RestClientTest` solves this by replacing the HTTP transport with a **`MockRestServiceServer`**. In [`OpenFoodFactsClientTest`](pizzastore-with-tests/src/test/java/be/vives/pizzastore/client/OpenFoodFactsClientTest.java) you first say which request you expect and which response must come back, then you call the client:
 
@@ -1070,7 +1070,7 @@ The project contains **226 tests**. `mvn test` runs them all in about half a min
 | | `PizzaStoreApiIntegrationTest` (3 nested classes) | 13 | `RANDOM_PORT` + `RestTestClient` |
 | | `BeanOverrideIntegrationTest` | 2 | `@MockitoBean`, `@MockitoSpyBean` |
 
-Most service, repository and controller tests have a counterpart in the final PizzaStore's suite. Here they run without Spring Security, which only arrives in Lesson 12, so the tests that check `401`/`403` per role are left out; in the final project the controller tests are also written with `RestTestClient` instead of MockMvc. The comparison classes (`PizzaControllerRestTestClientTest`, `PizzaControllerMockMvcTesterTest`, `PizzaControllerStandaloneTest`), `PizzaJsonTest`, `PizzaMapperTest`, the full-stack tests and the Open Food Facts tests demonstrate the Spring Boot 4 additions of this lesson.
+Most service, repository and controller tests have a counterpart in the final PizzaStore's suite. Here they run without Spring Security, which only arrives in Lesson 13, so the tests that check `401`/`403` per role are left out; in the final project the controller tests are also written with `RestTestClient` instead of MockMvc. The comparison classes (`PizzaControllerRestTestClientTest`, `PizzaControllerMockMvcTesterTest`, `PizzaControllerStandaloneTest`), `PizzaJsonTest`, `PizzaMapperTest`, the full-stack tests and the Open Food Facts tests demonstrate the Spring Boot 4 additions of this lesson.
 
 The new test classes start with a Javadoc comment that says what they demonstrate, so reading the test sources is a good way to study this lesson.
 
@@ -1138,7 +1138,7 @@ The new test classes start with a Javadoc comment that says what they demonstrat
 
 ## 🚀 Runnable Project
 
-**[`pizzastore-with-tests/`](pizzastore-with-tests)** is Lesson 10's [`pizzastore-with-validation`](../lesson-10-validation-exception-handling/pizzastore-with-validation) plus the test suite described above. **The production code is identical**: the project differs from the final PizzaStore only by what Lessons 12 (security) and 13 (OpenAPI) still have to add.
+**[`pizzastore-with-tests/`](pizzastore-with-tests)** is Lesson 11's [`pizzastore-with-external-api`](../lesson-11-external-api/pizzastore-with-external-api) plus the test suite described above. **The production code is identical**: the project differs from the final PizzaStore only by what Lessons 13 (security) and 14 (OpenAPI) still have to add.
 
 The project includes:
 - ✅ **Spring Boot 4.0** on **Java 25** (`spring-boot-starter-webmvc`, `-data-jpa`, `-validation`, H2, MapStruct 1.6.3), JUnit 6, Mockito 5, AssertJ
@@ -1146,8 +1146,8 @@ The project includes:
 - ✅ 226 tests: unit tests, `@DataJpaTest`, `@WebMvcTest`, `@JsonTest`, `@RestClientTest`, `@SpringBootTest`
 - ✅ The same web-layer test with MockMvc, `RestTestClient` and `MockMvcTester`
 - ✅ `RestTestClient` against a real server on a random port
-- ❌ No security yet: Lesson 12
-- ❌ No API documentation yet: Lesson 13
+- ❌ No security yet: Lesson 13
+- ❌ No API documentation yet: Lesson 14
 
 ### Running the Tests
 
@@ -1175,4 +1175,4 @@ The H2 console is available at http://localhost:8080/h2-console (JDBC URL `jdbc:
 
 ---
 
-**Congratulations!** 🎉 PizzaStore is now protected by an automated safety net. Continue to [Lesson 12: JWT Authentication](../lesson-12-jwt-authentication/README.md) to secure the API, and watch how the tests tell you what the new security rules break.
+**Congratulations!** 🎉 PizzaStore is now protected by an automated safety net. Continue to [Lesson 13: JWT Authentication](../lesson-13-jwt-authentication/README.md) to secure the API, and watch how the tests tell you what the new security rules break.

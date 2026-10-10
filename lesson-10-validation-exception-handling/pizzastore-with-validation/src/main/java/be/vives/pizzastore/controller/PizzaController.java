@@ -1,10 +1,8 @@
 package be.vives.pizzastore.controller;
 
 import be.vives.pizzastore.dto.request.CreatePizzaRequest;
-import be.vives.pizzastore.dto.request.ImportNutritionRequest;
 import be.vives.pizzastore.dto.request.UpdatePizzaRequest;
 import be.vives.pizzastore.dto.response.PizzaResponse;
-import be.vives.pizzastore.service.NutritionImportService;
 import be.vives.pizzastore.service.PizzaService;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
@@ -27,11 +25,9 @@ public class PizzaController {
     private static final Logger log = LoggerFactory.getLogger(PizzaController.class);
 
     private final PizzaService pizzaService;
-    private final NutritionImportService nutritionImportService;
 
-    public PizzaController(PizzaService pizzaService, NutritionImportService nutritionImportService) {
+    public PizzaController(PizzaService pizzaService) {
         this.pizzaService = pizzaService;
-        this.nutritionImportService = nutritionImportService;
     }
 
     @GetMapping
@@ -116,18 +112,6 @@ public class PizzaController {
         log.debug("POST /api/pizzas/{}/image", id);
 
         PizzaResponse updated = pizzaService.uploadImage(id, file);
-        return ResponseEntity.ok(updated);
-    }
-
-    /** Fills the pizza's nutritional info (per 100 g) with the data Open Food Facts has for a barcode. */
-    @PostMapping("/{id}/nutritional-info/import")
-    public ResponseEntity<PizzaResponse> importNutritionalInfo(
-            @PathVariable Long id,
-            @Valid @RequestBody ImportNutritionRequest request) {
-
-        log.debug("POST /api/pizzas/{}/nutritional-info/import - {}", id, request);
-
-        PizzaResponse updated = nutritionImportService.importFromBarcode(id, request.barcode());
         return ResponseEntity.ok(updated);
     }
 }

@@ -1,4 +1,4 @@
-# Lesson 13: API Documentation with Swagger/OpenAPI
+# Lesson 14: API Documentation with Swagger/OpenAPI
 
 **Describing PizzaStore's Secured API So Others Can Use It: OpenAPI 3, springdoc-openapi and Swagger UI**
 
@@ -7,7 +7,7 @@
 ## 📋 Table of Contents
 
 1. [Learning Objectives](#-learning-objectives)
-2. [Recap: Where Lesson 12 Left Us](#-recap-where-lesson-12-left-us)
+2. [Recap: Where Lesson 13 Left Us](#-recap-where-lesson-13-left-us)
 3. [What This Lesson Adds to PizzaStore](#-what-this-lesson-adds-to-pizzastore)
 4. [Introduction to OpenAPI](#-introduction-to-openapi)
 5. [Integrating Springdoc OpenAPI](#-integrating-springdoc-openapi)
@@ -40,15 +40,15 @@ By the end of this lesson, you will be able to:
 
 ---
 
-## 🔄 Recap: Where Lesson 12 Left Us
+## 🔄 Recap: Where Lesson 13 Left Us
 
-After [Lesson 12](../lesson-12-jwt-authentication/README.md) PizzaStore is complete: a tested REST API with validation, `ProblemDetail` errors, the Open Food Facts import and JWT security. What is missing is a **description for the people who have to use it**. A front-end or mobile developer now has to read our Java code (or ask us) to know which endpoints exist, what to send, what comes back, which role is needed and which errors are possible. This lesson generates that description from the code, as an **OpenAPI 3** document, and makes it browsable and testable with **Swagger UI**.
+After [Lesson 13](../lesson-13-jwt-authentication/README.md) PizzaStore is complete: a tested REST API with validation, `ProblemDetail` errors, the Open Food Facts import and JWT security. What is missing is a **description for the people who have to use it**. A front-end or mobile developer now has to read our Java code (or ask us) to know which endpoints exist, what to send, what comes back, which role is needed and which errors are possible. This lesson generates that description from the code, as an **OpenAPI 3** document, and makes it browsable and testable with **Swagger UI**.
 
 ---
 
 ## 🧱 What This Lesson Adds to PizzaStore
 
-The project of this lesson, [`pizzastore-with-swagger`](pizzastore-with-swagger), is **Lesson 12's [`pizzastore-with-jwt`](../lesson-12-jwt-authentication/pizzastore-with-jwt) plus exactly these changes**, and with them it is the final PizzaStore:
+The project of this lesson, [`pizzastore-with-swagger`](pizzastore-with-swagger), is **Lesson 13's [`pizzastore-with-jwt`](../lesson-13-jwt-authentication/pizzastore-with-jwt) plus exactly these changes**, and with them it is the final PizzaStore:
 
 | Added / changed | What it does |
 |-----------------|--------------|
@@ -342,7 +342,7 @@ Our PizzaStore API uses JWT Bearer authentication:
 
 #### OAuth2 / OpenID Connect (IdP Authentication)
 
-For Identity Provider (IdP) based authentication (not used in PizzaStore; it is the approach of the book's Chapter 11, see the note at the end of [Lesson 12](../lesson-12-jwt-authentication/README.md)), you would configure:
+For Identity Provider (IdP) based authentication (not used in PizzaStore; it is the approach of the book's Chapter 11, see the note at the end of [Lesson 13](../lesson-13-jwt-authentication/README.md)), you would configure:
 
 ```java
 @SecurityScheme(
@@ -371,7 +371,7 @@ For Identity Provider (IdP) based authentication (not used in PizzaStore; it is 
 ```
 
 **Key Difference between JWT and IdP:**
-- **JWT (Lesson 12)**: Your application manages users, passwords, and token generation
+- **JWT (Lesson 13)**: Your application manages users, passwords, and token generation
 - **IdP**: External identity provider (like Dex, Keycloak, Google, Azure AD) manages authentication
 - **Both** can use the same `@SecurityRequirement` annotations on endpoints
 - **Swagger UI** integration is simpler with JWT, more complex with OAuth2/OIDC flows
@@ -406,7 +406,7 @@ An `OpenApiCustomizer` runs after springdoc has built the document from the anno
 
 ### Documenting the Open Food Facts Import
 
-The endpoint of [Lesson 10, Part 3](../lesson-10-validation-exception-handling/README.md#-part-3-calling-an-external-api) shows everything together: a description that says what the endpoint does and where the data comes from, the security requirement, and **every** status code it can return, including the two that come from the external service:
+The endpoint of [Lesson 11](../lesson-11-external-api/README.md) shows everything together: a description that says what the endpoint does and where the data comes from, the security requirement, and **every** status code it can return, including the two that come from the external service:
 
 ```java
 @PostMapping("/{id}/nutritional-info/import")
@@ -442,7 +442,7 @@ public ResponseEntity<PizzaResponse> importNutritionalInfo(
 
 The description field accepts **Markdown**, so the link to Open Food Facts is clickable in Swagger UI. A client developer reading this knows, without opening our code, that a `502` is not their fault and can be retried, while a `422` means they should try another barcode. `ImportNutritionRequest` has no `@Schema` at all, yet Swagger UI shows the barcode as required with its regular expression: springdoc reads `@NotBlank` and `@Pattern` (see [Validation Annotations Integration](#validation-annotations-integration)).
 
-> **`401` or `403`?** The two are documented separately because PizzaStore really returns both: `401 Unauthorized` when the token is missing, expired or invalid (the `HttpStatusEntryPoint` of [Lesson 12's `SecurityConfig`](../lesson-12-jwt-authentication/README.md#key-points)), `403 Forbidden` when a logged-in user lacks the role. A client developer needs that difference: after a `401` the app shows the login screen again, after a `403` it doesn't.
+> **`401` or `403`?** The two are documented separately because PizzaStore really returns both: `401 Unauthorized` when the token is missing, expired or invalid (the `HttpStatusEntryPoint` of [Lesson 13's `SecurityConfig`](../lesson-13-jwt-authentication/README.md#key-points)), `403 Forbidden` when a logged-in user lacks the role. A client developer needs that difference: after a `401` the app shows the login screen again, after a `403` it doesn't.
 
 ---
 
@@ -675,7 +675,7 @@ public class SecurityConfig {
 - `/v3/api-docs`, `/v3/api-docs/**` - OpenAPI specification endpoints (JSON, and per group)
 - `/v3/api-docs.yaml` - the YAML version. It needs its own pattern: `/v3/api-docs/**` matches `/v3/api-docs` and everything *below* it, but `/v3/api-docs.yaml` is a different path next to it. Without the pattern the YAML link answers `403`
 
-The snippet shows only the relevant lines; the complete rules are in [`SecurityConfig`](pizzastore-with-swagger/src/main/java/be/vives/pizzastore/security/SecurityConfig.java) (Lesson 12). Do you want the documentation to be private in production? Then do not permit these paths there, or switch springdoc off with `springdoc.api-docs.enabled=false` and `springdoc.swagger-ui.enabled=false` in a production profile.
+The snippet shows only the relevant lines; the complete rules are in [`SecurityConfig`](pizzastore-with-swagger/src/main/java/be/vives/pizzastore/security/SecurityConfig.java) (Lesson 13). Do you want the documentation to be private in production? Then do not permit these paths there, or switch springdoc off with `springdoc.api-docs.enabled=false` and `springdoc.swagger-ui.enabled=false` in a production profile.
 
 ---
 
@@ -987,12 +987,12 @@ In this lesson, you learned:
 
 ## 🚀 Runnable Project
 
-**[`pizzastore-with-swagger/`](pizzastore-with-swagger)** is Lesson 12's [`pizzastore-with-jwt`](../lesson-12-jwt-authentication/pizzastore-with-jwt) plus the changes listed in [What This Lesson Adds to PizzaStore](#-what-this-lesson-adds-to-pizzastore). Its code is the **final PizzaStore** of this course.
+**[`pizzastore-with-swagger/`](pizzastore-with-swagger)** is Lesson 13's [`pizzastore-with-jwt`](../lesson-13-jwt-authentication/pizzastore-with-jwt) plus the changes listed in [What This Lesson Adds to PizzaStore](#-what-this-lesson-adds-to-pizzastore). Its code is the **final PizzaStore** of this course.
 
 The project includes:
 
 ✅ **Spring Boot 4.0** on **Java 25**, springdoc-openapi 3.0.3  
-✅ **Everything from Lessons 6a-12**: domain, repositories, DTOs, services, REST API, validation, `ProblemDetail` errors, the Open Food Facts import, JWT security  
+✅ **Everything from Lessons 6a-13**: domain, repositories, DTOs, services, REST API, validation, `ProblemDetail` errors, the Open Food Facts import, JWT security  
 ✅ **All controllers documented** with `@Operation`, `@ApiResponses`, `@Parameter`; error responses as `ProblemDetail`  
 ✅ **DTOs documented** with `@Schema`  
 ✅ **JWT Bearer authentication in Swagger UI**  
