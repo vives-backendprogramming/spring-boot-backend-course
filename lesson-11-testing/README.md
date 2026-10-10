@@ -1,369 +1,312 @@
 # Lesson 11: Testing Spring Boot Applications
 
-**Writing Comprehensive Tests for Production-Ready APIs**
+**Proving That PizzaStore Works: Unit Tests, Test Slices, `RestTestClient` and Full-Stack Integration Tests**
 
 ---
 
 ## 📋 Learning Objectives
 
 By the end of this lesson, you will be able to:
-- Write **unit tests** with JUnit 5 and Mockito
-- Test **controllers** with MockMvc and @WebMvcTest
-- Test **repositories** with @DataJpaTest
-- Test **services** with mocked dependencies
-- Write **integration tests** with @SpringBootTest
-- Test **validation** and **exception handling**
-- Use **AssertJ** for fluent assertions
-- Test **JSON responses** with JSONPath
-- Achieve high test coverage for production-ready code
-- Follow testing best practices and patterns
+- Explain the testing pyramid and choose the cheapest kind of test that can prove a given behavior
+- Set up the **modular Spring Boot 4 test starters** and find the (moved) Spring Boot 4 test annotations
+- Write fast **unit tests** with JUnit 6, Mockito and AssertJ, without a Spring context
+- Test one layer at a time with **test slices**: `@DataJpaTest`, `@WebMvcTest`, `@JsonTest` and `@RestClientTest`
+- Call your API in a test with the unified **`RestTestClient`** (and know how it compares to MockMvc and `MockMvcTester`)
+- Write full-stack **`@SpringBootTest`** integration tests, with a mock servlet environment or a real random port
+- Replace beans in a test with **`@MockitoBean`** and **`@MockitoSpyBean`**
+- Override configuration properties per test, and explain how the **context cache** decides whether a test is fast or slow
+- Test validation rules and the `ProblemDetail` error contract of Lesson 10
+- Organize tests with `@Nested` and `@ParameterizedTest`
+- Know when a real database in a container (Testcontainers) is worth it
+- Split unit tests from integration tests in Maven with Surefire and Failsafe
 
 ---
 
 ## 📚 Table of Contents
 
-1. [Why Testing Matters](#why-testing-matters)
-2. [Testing Pyramid](#testing-pyramid)
-3. [JUnit 5 Basics](#junit-5-basics)
-4. [Spring Boot Test Support](#spring-boot-test-support)
-5. [Testing Layers](#testing-layers)
-   - [Repository Tests](#repository-tests-datajpatest)
-   - [Service Tests](#service-tests-with-mockito)
-   - [Controller Tests](#controller-tests-webmvctest)
-   - [Integration Tests](#integration-tests-springboottest)
-6. [Testing Validation](#testing-validation)
-7. [Testing Exception Handling](#testing-exception-handling)
-8. [AssertJ for Better Assertions](#assertj-for-better-assertions)
-9. [Testing JSON Responses](#testing-json-responses)
-10. [Best Practices](#best-practices)
-11. [PizzaStore Test Suite](#complete-pizzastore-test-suite)
-12. [Summary](#summary)
+1. [Recap: Where Lesson 10 Left Us](#-recap-where-lesson-10-left-us)
+2. [What This Lesson Adds to PizzaStore](#-what-this-lesson-adds-to-pizzastore)
+3. [Why Test?](#%EF%B8%8F-why-test)
+4. [The Testing Pyramid](#-the-testing-pyramid)
+5. [Spring Boot 4 Test Setup](#-spring-boot-4-test-setup)
+6. [Choosing the Right Kind of Test](#-choosing-the-right-kind-of-test)
+7. [Unit Tests Without Spring](#-unit-tests-without-spring)
+8. [Test Slices](#-test-slices)
+9. [Testing the Web Layer: MockMvc, RestTestClient or MockMvcTester](#-testing-the-web-layer-mockmvc-resttestclient-or-mockmvctester)
+10. [Full-Stack Tests with @SpringBootTest](#-full-stack-tests-with-springboottest)
+11. [Replacing Beans: @MockitoBean and @MockitoSpyBean](#-replacing-beans-mockitobean-and-mockitospybean)
+12. [Overriding Properties in Tests](#-overriding-properties-in-tests)
+13. [The Context Cache: Why Test Suites Get Slow](#-the-context-cache-why-test-suites-get-slow)
+14. [Testing Validation and Error Responses](#-testing-validation-and-error-responses)
+15. [Assertions: AssertJ, JsonPath and Hamcrest](#-assertions-assertj-jsonpath-and-hamcrest)
+16. [When H2 Is Not Enough: Testcontainers](#-when-h2-is-not-enough-testcontainers)
+17. [Running the Tests with Maven: Surefire and Failsafe](#%EF%B8%8F-running-the-tests-with-maven-surefire-and-failsafe)
+18. [Best Practices](#-best-practices)
+19. [The PizzaStore Test Suite](#-the-pizzastore-test-suite)
+20. [Summary](#-summary)
+21. [Additional Resources](#-additional-resources)
+22. [Runnable Project](#-runnable-project)
 
 ---
 
-## ⚠️ Why Testing Matters
+## 🔄 Recap: Where Lesson 10 Left Us
 
-### Without Tests
+[Lesson 10](../lesson-10-validation-exception-handling/README.md) ended with an API that rejects bad input (`400`), explains missing resources (`404`), refuses broken business rules (`422`) and reports conflicts (`409`) and a failing external service (`502`, from the Open Food Facts import), always as an RFC 7807 `ProblemDetail`. Its last section showed a *Before and After* table, and every row of that table was verified by hand with `curl`.
+
+Doing that by hand has three problems:
+- It is **slow**: you repeat it after every change.
+- It is **incomplete**: nobody re-checks all rows before every commit.
+- It **proves nothing tomorrow**: the next refactoring can silently break last week's behavior.
+
+An automated test is a `curl` command that checks its own answer and runs in milliseconds. This lesson adds a complete test suite to PizzaStore.
+
+---
+
+## 🧱 What This Lesson Adds to PizzaStore
+
+[`pizzastore-with-tests`](pizzastore-with-tests) is Lesson 10's [`pizzastore-with-validation`](../lesson-10-validation-exception-handling/pizzastore-with-validation) plus tests. The production code is **unchanged**. The tests include a `@RestClientTest` for Lesson 10's Open Food Facts client, [`OpenFoodFactsClient`](pizzastore-with-tests/src/main/java/be/vives/pizzastore/client/OpenFoodFactsClient.java).
+
+| What | Where |
+|------|-------|
+| Test dependencies (`spring-boot-starter-webmvc-test`, `spring-boot-starter-data-jpa-test`, `spring-boot-starter-restclient-test`) | [`pom.xml`](pizzastore-with-tests/pom.xml) |
+| Test configuration (own H2 database, no `data.sql`, quieter logging) | [`src/test/resources/application.properties`](pizzastore-with-tests/src/test/resources/application.properties) |
+| **226 tests** in 21 test classes (plus 7 `@Nested` classes) | [`src/test/java`](pizzastore-with-tests/src/test/java/be/vives/pizzastore) |
+| Tests for the Open Food Facts import of Lesson 10: [`OpenFoodFactsClientTest`](pizzastore-with-tests/src/test/java/be/vives/pizzastore/client/OpenFoodFactsClientTest.java) (`@RestClientTest`), [`NutritionImportServiceTest`](pizzastore-with-tests/src/test/java/be/vives/pizzastore/service/NutritionImportServiceTest.java) (Mockito) and extra cases in the controller, service and validation tests | [`src/test/java`](pizzastore-with-tests/src/test/java/be/vives/pizzastore) |
+
+The H2 database of the running application is called `pizzastore_tests` in this project (`jdbc:h2:mem:pizzastore_tests`). The tests use databases of their own, so running `mvn test` never touches data of a running application.
+
+---
+
+## ⚠️ Why Test?
+
+Look at this service method:
 
 ```java
-@Service
-public class PizzaService {
-    public PizzaResponse findById(Long id) {
-        return pizzaRepository.findById(id)
-                .map(pizzaMapper::toResponse)
-                .orElseThrow(() -> new ResourceNotFoundException("Pizza", id));
-    }
+public PizzaResponse findById(Long id) {
+    Pizza pizza = pizzaRepository.findById(id)
+            .orElseThrow(() -> new ResourceNotFoundException("Pizza", id));
+    return pizzaMapper.toResponse(pizza);
 }
 ```
 
-**How do you know:**
-- ✗ It actually works?
-- ✗ It handles null values?
-- ✗ It throws the right exception?
-- ✗ It still works after refactoring?
-- ✗ It doesn't break other code?
-
-### With Tests
+How do you know that it throws the right exception for an unknown id, that the controller turns that exception into a `404`, and that it still does so after the next refactoring? With tests, the answer is a green build:
 
 ```java
 @Test
-void findById_ExistingPizza_ReturnsPizzaResponse() {
-    // Given
-    Pizza pizza = new Pizza("Margherita", new BigDecimal("8.50"), "Classic");
-    pizza.setId(1L);
-    when(pizzaRepository.findById(1L)).thenReturn(Optional.of(pizza));
-    
-    // When
-    PizzaResponse result = pizzaService.findById(1L);
-    
-    // Then
-    assertThat(result).isNotNull();
-    assertThat(result.name()).isEqualTo("Margherita");
-}
-
-@Test
-void findById_NonExistingPizza_ThrowsNotFoundException() {
-    // Given
+void findById_NonExistingPizza_ThrowsResourceNotFoundException() {
     when(pizzaRepository.findById(999L)).thenReturn(Optional.empty());
-    
-    // When / Then
+
     assertThatThrownBy(() -> pizzaService.findById(999L))
             .isInstanceOf(ResourceNotFoundException.class)
             .hasMessageContaining("Pizza with id 999 not found");
 }
 ```
 
-**Benefits:**
-- ✅ Confidence in your code
-- ✅ Catch bugs early
-- ✅ Safe refactoring
-- ✅ Living documentation
-- ✅ Better design (testable code = good code)
+Tests give you confidence, early bug detection, safe refactoring and living documentation. As a bonus, code that is easy to test (small classes, dependencies passed through the constructor) is usually well-designed code.
 
 ---
 
-## 🔺 Testing Pyramid
+## 🔺 The Testing Pyramid
 
 ```
-           ┌───────────────┐
-           │   UI Tests    │  ← Few, slow, expensive
-           │  (End-to-End) │
-           └───────────────┘
-         ┌─────────────────────┐
-         │  Integration Tests  │  ← Some, moderate speed
-         │  (@SpringBootTest)  │
-         └─────────────────────┘
-     ┌───────────────────────────────┐
-     │        Unit Tests             │  ← Many, fast, cheap
-     │  (Controllers, Services, etc) │
-     └───────────────────────────────┘
+              ┌───────────────┐
+              │   End-to-End  │   few, slow, expensive
+              └───────────────┘
+          ┌───────────────────────┐
+          │   Integration tests   │   some, moderate speed
+          │ (slices, @SpringBoot  │
+          │  Test, Testcontainers)│
+          └───────────────────────┘
+      ┌───────────────────────────────┐
+      │          Unit tests           │   many, milliseconds
+      │   (no Spring, mocked deps)    │
+      └───────────────────────────────┘
 ```
 
-### Unit Tests (70%)
-- Test **single units** in isolation
-- Use **mocks** for dependencies
-- Fast (<10ms per test)
-- Examples: Service methods, Mapper methods
+| Level | Proves | Speed | Example in PizzaStore |
+|-------|--------|-------|-----------------------|
+| **Unit test** | One class, in isolation | milliseconds | [`PizzaServiceTest`](pizzastore-with-tests/src/test/java/be/vives/pizzastore/service/PizzaServiceTest.java) |
+| **Slice test** | One layer with the real Spring infrastructure around it | ~0.1 - 1 s | [`PizzaRepositoryTest`](pizzastore-with-tests/src/test/java/be/vives/pizzastore/repository/PizzaRepositoryTest.java), [`PizzaControllerTest`](pizzastore-with-tests/src/test/java/be/vives/pizzastore/controller/PizzaControllerTest.java) |
+| **Integration test** | Several layers working together | ~1 - 10 s | [`PizzaStoreApiIntegrationTest`](pizzastore-with-tests/src/test/java/be/vives/pizzastore/integration/PizzaStoreApiIntegrationTest.java) |
+| **Smoke test** | The application starts at all | ~1 s | [`ApplicationSmokeTest`](pizzastore-with-tests/src/test/java/be/vives/pizzastore/integration/ApplicationSmokeTest.java) |
 
-### Integration Tests (20%)
-- Test **multiple components** together
-- Use **real database** (H2 in-memory)
-- Medium speed (~100ms per test)
-- Examples: Full REST endpoint, Repository queries
-
-### End-to-End Tests (10%)
-- Test **complete user flows**
-- Use **real everything**
-- Slow (seconds per test)
-- Examples: Full user registration flow
-
-**For this course, we focus on Unit Tests (70%) and Integration Tests (20%).**
+Aim for many unit tests, fewer slice tests and a small number of full-stack tests. Spring Boot 4 pushes in the same direction: the book (Chapter 10) describes a shift "from monolithic integration tests to highly optimized test slices", plus *Automatic Context Pausing* in large test suites, where Spring pauses cached application contexts that are not in use so that their background threads and scheduled tasks stop consuming resources.
 
 ---
 
-## 🧪 JUnit 5 Basics
+## 🧰 Spring Boot 4 Test Setup
 
-### Essential Annotations
+### Modular test starters
 
-```java
-import org.junit.jupiter.api.*;
-
-class CalculatorTest {
-
-    @BeforeAll
-    static void setupAll() {
-        // Runs once before all tests
-        System.out.println("Starting test suite");
-    }
-
-    @BeforeEach
-    void setup() {
-        // Runs before each test
-        System.out.println("Setting up test");
-    }
-
-    @Test
-    void add_TwoPositiveNumbers_ReturnsSum() {
-        // Given
-        int a = 5;
-        int b = 3;
-        
-        // When
-        int result = a + b;
-        
-        // Then
-        assertEquals(8, result);
-    }
-
-    @Test
-    @DisplayName("Should multiply two numbers correctly")
-    void multiplyTest() {
-        assertEquals(15, 5 * 3);
-    }
-
-    @Test
-    @Disabled("Not implemented yet")
-    void divideTest() {
-        // TODO: implement
-    }
-
-    @AfterEach
-    void tearDown() {
-        // Runs after each test
-        System.out.println("Cleaning up test");
-    }
-
-    @AfterAll
-    static void tearDownAll() {
-        // Runs once after all tests
-        System.out.println("Finished test suite");
-    }
-}
-```
-
-### Assertions
-
-```java
-import static org.junit.jupiter.api.Assertions.*;
-
-@Test
-void assertionExamples() {
-    // Basic assertions
-    assertEquals(4, 2 + 2);
-    assertNotEquals(5, 2 + 2);
-    assertTrue(5 > 3);
-    assertFalse(5 < 3);
-    assertNull(null);
-    assertNotNull("value");
-    
-    // Array/Collection assertions
-    assertArrayEquals(new int[]{1, 2, 3}, new int[]{1, 2, 3});
-    
-    // Exception assertions
-    assertThrows(IllegalArgumentException.class, () -> {
-        throw new IllegalArgumentException("Invalid");
-    });
-    
-    // Timeout assertions
-    assertTimeout(Duration.ofSeconds(1), () -> {
-        // Fast operation
-    });
-    
-    // Group assertions
-    assertAll("person",
-        () -> assertEquals("John", person.getName()),
-        () -> assertEquals(30, person.getAge())
-    );
-}
-```
-
----
-
-## 🌱 Spring Boot Test Support
-
-### Dependencies
-
-Already included in `spring-boot-starter-test`:
+Before Spring Boot 4 you added one big `spring-boot-starter-test`. In Spring Boot 4 every technology has its **own test starter**, mirroring the production starters (`spring-boot-starter-webmvc` → `spring-boot-starter-webmvc-test`). You add the starters for the layers you test and keep the test classpath small.
 
 ```xml
+<!-- Test Dependencies -->
 <dependency>
     <groupId>org.springframework.boot</groupId>
-    <artifactId>spring-boot-starter-test</artifactId>
+    <artifactId>spring-boot-starter-webmvc-test</artifactId>
+    <scope>test</scope>
+</dependency>
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-data-jpa-test</artifactId>
+    <scope>test</scope>
+</dependency>
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-restclient-test</artifactId>
     <scope>test</scope>
 </dependency>
 ```
 
-**Includes:**
-- JUnit 5
-- Mockito
-- AssertJ
-- Hamcrest
-- JSONAssert
-- JsonPath
-- Spring Test & Spring Boot Test
+| Starter | Brings you |
+|---------|------------|
+| `spring-boot-starter-webmvc-test` | `spring-boot-starter-test` (JUnit, AssertJ, Mockito, JsonPath, Awaitility, Hamcrest), `@WebMvcTest`, `MockMvc`, `MockMvcTester`, `RestTestClient`, `@JsonTest`/`JacksonTester` |
+| `spring-boot-starter-data-jpa-test` | `@DataJpaTest`, `TestEntityManager` |
+| `spring-boot-starter-restclient-test` | `@RestClientTest`, `MockRestServiceServer` |
 
-### Test Slices
+You can see all of these in the project with `mvn dependency:list -DincludeScope=test`. Other modules follow the same pattern (`spring-boot-starter-security-test`, `spring-boot-starter-webflux-test`, ...). Lesson 12 will add the security one.
 
-Spring Boot provides specialized test slices for testing specific layers:
+### The versions you get
 
-| Annotation | Purpose | What's Loaded | Mock Annotation |
-|------------|---------|---------------|-----------------|
-| `@WebMvcTest` | Test controllers | Spring MVC components only | `@MockitoBean` |
-| `@DataJpaTest` | Test repositories | JPA components + in-memory DB | `@MockitoBean` |
-| `@JsonTest` | Test JSON serialization | JSON marshallers | `@MockitoBean` |
-| `@RestClientTest` | Test REST clients | REST client components | `@MockitoBean` |
-| `@SpringBootTest` | Integration tests | **Entire application** | `@MockitoBean` |
-| `@ExtendWith(MockitoExtension.class)` | **Pure unit tests** | **NO Spring context** | `@Mock` |
+| Library | Version in Spring Boot 4.0.8 |
+|---------|------------------------------|
+| JUnit | **6.0** (JUnit 4 support is gone) |
+| Mockito | 5.20 |
+| AssertJ | 3.27 |
+| Spring Framework (`spring-test`) | 7.0 |
+| Jackson (the `JsonMapper` you inject in tests) | 3 (`tools.jackson.*`) |
 
-> **Key Difference:**
-> - **With Spring** (`@WebMvcTest`, `@SpringBootTest`, etc.) → Use `@MockitoBean`
-> - **Without Spring** (`@ExtendWith(MockitoExtension.class)`) → Use `@Mock`
+JUnit 6 keeps the JUnit 5 programming model (`@Test`, `@BeforeEach`, `@Nested`, `@ParameterizedTest`, ...), so everything you know from JUnit 5 still applies. The only things that changed are the version and that the old JUnit 4 `@RunWith` is no longer supported.
 
-> **⚠️ Important Change since Spring Boot 3.4+:**
-> 
-> `@MockBean` from `org.springframework.boot.test.mock.mockito` is **deprecated** since Spring Boot 3.4.0.
-> 
-> ✅ Use `@MockitoBean` from `org.springframework.test.context.bean.override.mockito` instead
-> 
-> These new annotation provides the same functionality but are part of Spring Framework's core testing support.
->
-> **Migration is simple:**
-> ```java
-> // ❌ Old (deprecated since Spring Boot 3.4.0)
-> import org.springframework.boot.test.mock.mockito.MockBean;
-> 
-> @MockBean
-> private PizzaService pizzaService;
-> 
-> // ✅ New (Spring Boot 3.4+)
-> import org.springframework.test.context.bean.override.mockito.MockitoBean;
-> 
-> @MockitoBean
-> private PizzaService pizzaService;
-> ```
+### Where did the annotations go?
+
+Because Spring Boot 4 split its test support into modules, the **packages of the well-known annotations changed**. This is the most common reason an old tutorial does not compile:
+
+| Annotation | Spring Boot 3 package | Spring Boot 4 package |
+|------------|-----------------------|-----------------------|
+| `@WebMvcTest` | `org.springframework.boot.test.autoconfigure.web.servlet` | `org.springframework.boot.webmvc.test.autoconfigure` |
+| `@AutoConfigureMockMvc` | `org.springframework.boot.test.autoconfigure.web.servlet` | `org.springframework.boot.webmvc.test.autoconfigure` |
+| `@DataJpaTest` | `org.springframework.boot.test.autoconfigure.orm.jpa` | `org.springframework.boot.data.jpa.test.autoconfigure` |
+| `TestEntityManager` | `org.springframework.boot.test.autoconfigure.orm.jpa` | `org.springframework.boot.jpa.test.autoconfigure` |
+| `@RestClientTest` | `org.springframework.boot.test.autoconfigure.web.client` | `org.springframework.boot.restclient.test.autoconfigure` |
+| `@AutoConfigureRestTestClient` | *(did not exist)* | `org.springframework.boot.resttestclient.autoconfigure` |
+| `@JsonTest` | `org.springframework.boot.test.autoconfigure.json` | unchanged |
+| `@SpringBootTest` | `org.springframework.boot.test.context` | unchanged |
+| `@MockBean` / `@SpyBean` | `org.springframework.boot.test.mock.mockito` | **removed**, use `@MockitoBean` / `@MockitoSpyBean` from `org.springframework.test.context.bean.override.mockito` |
 
 ---
 
-## 🧪 Testing Layers
+## 🎯 Choosing the Right Kind of Test
 
-### Repository Tests (@DataJpaTest)
+| Annotation | Starts | Database | Server | Use it to test |
+|------------|--------|----------|--------|----------------|
+| *(none)*, JUnit + Mockito | nothing | - | - | services, mappers, validation rules, anything with plain Java collaborators |
+| `@SpringJUnitConfig({A.class, B.class})` | only the listed beans | - | - | a few beans wired together |
+| `@DataJpaTest` | JPA, repositories, an embedded DB | ✅ H2 | - | custom queries, entity mapping |
+| `@WebMvcTest` | controllers, `@RestControllerAdvice`, Jackson, validation | - | mock | request mapping, status codes, JSON, error responses |
+| `@JsonTest` | Jackson only | - | - | how a record looks as JSON |
+| `@RestClientTest` | the HTTP-client infrastructure + the client you name or `@Import` | - | mock | classes that *call* another API |
+| `@SpringBootTest` (MOCK) | the whole application | ✅ | mock | flows over several layers |
+| `@SpringBootTest` (RANDOM_PORT) | the whole application | ✅ | ✅ real | the real HTTP contract |
 
-Test JPA repositories with an in-memory database.
+The rule of thumb: **use the cheapest test that can fail for the reason you care about.** A price rule is tested in a unit test, a custom query in `@DataJpaTest`, a status code in `@WebMvcTest`, and "can a customer place an order" in `@SpringBootTest`.
 
-#### Example: PizzaRepository Test
+---
+
+## ⚡ Unit Tests Without Spring
+
+A unit test needs no Spring at all. Mockito replaces the collaborators of the class under test.
+
+[`PizzaServiceTest`](pizzastore-with-tests/src/test/java/be/vives/pizzastore/service/PizzaServiceTest.java) tests `PizzaService` with a mocked repository, mapper and file storage:
 
 ```java
-package be.vives.pizzastore.repository;
+@ExtendWith(MockitoExtension.class)   // activates @Mock and @InjectMocks
+class PizzaServiceTest {
 
-import be.vives.pizzastore.domain.Pizza;
-import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
-import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
+    @Mock
+    private PizzaRepository pizzaRepository;
 
-import java.math.BigDecimal;
-import java.util.List;
-import java.util.Optional;
+    @Mock
+    private PizzaMapper pizzaMapper;
 
-import static org.assertj.core.api.Assertions.assertThat;
+    @Mock
+    private FileStorageService fileStorageService;
 
+    @InjectMocks
+    private PizzaService pizzaService;      // built with the mocks above
+
+    @Test
+    void findById_ExistingPizza_ReturnsPizzaResponse() {
+        // Given
+        when(pizzaRepository.findById(1L)).thenReturn(Optional.of(testPizza));
+        when(pizzaMapper.toResponse(testPizza)).thenReturn(testResponse);
+
+        // When
+        PizzaResponse result = pizzaService.findById(1L);
+
+        // Then
+        assertThat(result.id()).isEqualTo(1L);
+        assertThat(result.name()).isEqualTo("Margherita");
+        verify(pizzaRepository).findById(1L);
+    }
+}
+```
+
+The same pattern covers the business rules of `OrderService` ([`OrderServiceTest`](pizzastore-with-tests/src/test/java/be/vives/pizzastore/service/OrderServiceTest.java)): an order for an unavailable pizza, cancelling a delivered order, cancelling an order twice. With Lesson 10's exceptions these are easy to assert:
+
+```java
+assertThatThrownBy(() -> orderService.cancel(1L))
+        .isInstanceOf(BusinessException.class)
+        .hasMessage("Order is already cancelled");
+```
+
+### More tests that need no Spring context
+
+| Test | What it shows |
+|------|---------------|
+| [`RequestValidationTest`](pizzastore-with-tests/src/test/java/be/vives/pizzastore/dto/request/RequestValidationTest.java) | Builds a Jakarta `Validator` by hand and checks every constraint of the request records, see [Testing Validation](#-testing-validation-and-error-responses) |
+| [`PizzaControllerStandaloneTest`](pizzastore-with-tests/src/test/java/be/vives/pizzastore/controller/PizzaControllerStandaloneTest.java) | A controller test with `RestTestClient.bindToController(...)`, see [the web layer](#-testing-the-web-layer-mockmvc-resttestclient-or-mockmvctester) |
+| [`PizzaMapperTest`](pizzastore-with-tests/src/test/java/be/vives/pizzastore/mapper/PizzaMapperTest.java) | Tests the generated MapStruct mapper in a context with just two beans |
+
+`PizzaMapperTest` is the smallest possible Spring test: `@SpringJUnitConfig({PizzaMapperImpl.class, NutritionalInfoMapperImpl.class})` creates a context with only the two MapStruct implementations that are needed, instead of the whole application.
+
+### `@Mock` or `@MockitoBean`?
+
+| | `@Mock` | `@MockitoBean` |
+|---|---------|----------------|
+| Needs a Spring context | ❌ No | ✅ Yes (`@WebMvcTest`, `@SpringBootTest`, ...) |
+| Speed | milliseconds | slower: the context must start |
+| What it does | creates a mock object | **replaces a bean in the Spring context** by a mock |
+| Package | `org.mockito` | `org.springframework.test.context.bean.override.mockito` |
+| Typical use | service tests | controller slice tests |
+
+---
+
+## 🍰 Test Slices
+
+A *slice* loads only the part of the application that one layer needs, so the test is fast and a failure points at that layer. Behind the scenes a type-exclude filter keeps component scanning from picking up the rest of your code.
+
+### `@DataJpaTest`: the repository layer
+
+`@DataJpaTest` starts JPA, Spring Data and an **embedded H2 database**, and nothing else: no controllers, no services. Every test runs in a transaction that is **rolled back** afterwards, so tests cannot influence each other.
+
+[`PizzaRepositoryTest`](pizzastore-with-tests/src/test/java/be/vives/pizzastore/repository/PizzaRepositoryTest.java):
+
+```java
 @DataJpaTest
-@Import({be.vives.pizzastore.config.JpaConfig.class, be.vives.pizzastore.config.AuditorAwareImpl.class})  // Enable JPA Auditing
+@Import(JpaConfig.class)   // @DataJpaTest does not scan @Configuration classes: import the one that enables JPA auditing
 class PizzaRepositoryTest {
 
     @Autowired
     private PizzaRepository pizzaRepository;
 
     @Autowired
-    private TestEntityManager entityManager;
-
-    @Test
-    void findById_ExistingPizza_ReturnsPizza() {
-        // Given
-        Pizza pizza = new Pizza("Margherita", new BigDecimal("8.50"), "Classic tomato and mozzarella");
-        Pizza saved = entityManager.persistAndFlush(pizza);
-
-        // When
-        Optional<Pizza> result = pizzaRepository.findById(saved.getId());
-
-        // Then
-        assertThat(result).isPresent();
-        assertThat(result.get().getName()).isEqualTo("Margherita");
-        assertThat(result.get().getPrice()).isEqualByComparingTo(new BigDecimal("8.50"));
-    }
-
-    @Test
-    void findById_NonExistingPizza_ReturnsEmpty() {
-        // When
-        Optional<Pizza> result = pizzaRepository.findById(999L);
-
-        // Then
-        assertThat(result).isEmpty();
-    }
+    private TestEntityManager entityManager;   // test helper to arrange data
 
     @Test
     void findByPriceLessThan_MultipleResults_ReturnsFilteredList() {
-        // Given
+        // Given: persist and flush, so the query hits real rows
         entityManager.persist(new Pizza("Cheap Pizza", new BigDecimal("5.00"), "Budget option"));
         entityManager.persist(new Pizza("Mid Pizza", new BigDecimal("10.00"), "Medium price"));
         entityManager.persist(new Pizza("Expensive Pizza", new BigDecimal("15.00"), "Premium"));
@@ -373,1275 +316,763 @@ class PizzaRepositoryTest {
         List<Pizza> result = pizzaRepository.findByPriceLessThan(new BigDecimal("12.00"));
 
         // Then
-        assertThat(result).hasSize(2);
         assertThat(result)
                 .extracting(Pizza::getName)
                 .containsExactlyInAnyOrder("Cheap Pizza", "Mid Pizza");
     }
+}
+```
+
+What to test here: **your own queries** (derived queries, `@Query`, the DTO projection `findPizzaSalesStatistics()` from Lesson 6a) and the mapping that matters (cascades, `@OneToMany`). Do not test `save()` or `findById()` of Spring Data itself: that is the framework's job. See also [`CustomerRepositoryTest`](pizzastore-with-tests/src/test/java/be/vives/pizzastore/repository/CustomerRepositoryTest.java) and [`OrderRepositoryTest`](pizzastore-with-tests/src/test/java/be/vives/pizzastore/repository/OrderRepositoryTest.java).
+
+> **Why `@Import(JpaConfig.class)`?** Lesson 6a's `JpaConfig` carries `@EnableJpaAuditing`, which fills `createdAt`/`updatedAt` (columns that are `NOT NULL`). A slice does not component-scan `@Configuration` classes, so without the import every `persist` would fail on the missing timestamp. This is a typical slice lesson: *a slice only knows what you tell it*.
+
+### `@JsonTest`: how does a record look as JSON?
+
+[`PizzaJsonTest`](pizzastore-with-tests/src/test/java/be/vives/pizzastore/dto/PizzaJsonTest.java) loads nothing but the JSON infrastructure (the Jackson 3 `JsonMapper` with the application's `spring.jackson.*` settings) and gives you a `JacksonTester`:
+
+```java
+@JsonTest
+class PizzaJsonTest {
+
+    @Autowired
+    private JacksonTester<PizzaResponse> responseJson;
+
+    @Autowired
+    private JacksonTester<CreatePizzaRequest> requestJson;
 
     @Test
-    void findByNameContainingIgnoreCase_PartialMatch_ReturnsMatches() {
-        // Given
-        entityManager.persist(new Pizza("Margherita", new BigDecimal("8.50"), "Classic"));
-        entityManager.persist(new Pizza("Marinara", new BigDecimal("7.50"), "Simple"));
-        entityManager.persist(new Pizza("Quattro Formaggi", new BigDecimal("11.00"), "Cheese"));
-        entityManager.flush();
+    void serialize_PizzaResponse_ContainsAllFields() throws Exception {
+        PizzaResponse pizza = new PizzaResponse(1L, "Margherita", new BigDecimal("8.50"), "Classic", null, true, null);
 
-        // When
-        List<Pizza> result = pizzaRepository.findByNameContainingIgnoreCase("mar");
-
-        // Then
-        assertThat(result).hasSize(2);
-        assertThat(result)
-                .extracting(Pizza::getName)
-                .containsExactlyInAnyOrder("Margherita", "Marinara");
+        assertThat(responseJson.write(pizza)).extractingJsonPathStringValue("$.name").isEqualTo("Margherita");
+        assertThat(responseJson.write(pizza)).extractingJsonPathNumberValue("$.price").isEqualTo(8.5);
     }
 
     @Test
-    void save_NewPizza_GeneratesId() {
-        // Given
-        Pizza pizza = new Pizza("Test Pizza", new BigDecimal("9.99"), "Test description");
+    void deserialize_CreatePizzaRequest_MapsJsonToRecord() throws Exception {
+        CreatePizzaRequest request = requestJson.parseObject("""
+                { "name": "Diavola", "price": 12.99, "available": true }
+                """);
 
-        // When
-        Pizza saved = pizzaRepository.save(pizza);
-
-        // Then
-        assertThat(saved.getId()).isNotNull();
-        assertThat(saved.getId()).isPositive();
-    }
-
-    @Test
-    void delete_ExistingPizza_RemovesFromDatabase() {
-        // Given
-        Pizza pizza = entityManager.persistAndFlush(new Pizza("To Delete", new BigDecimal("10.00"), "Will be deleted"));
-        Long id = pizza.getId();
-
-        // When
-        pizzaRepository.deleteById(id);
-        entityManager.flush();
-
-        // Then
-        Optional<Pizza> result = pizzaRepository.findById(id);
-        assertThat(result).isEmpty();
+        assertThat(request.name()).isEqualTo("Diavola");
     }
 }
 ```
 
-**Key Points:**
-- `@DataJpaTest` loads only JPA components
-- Uses in-memory H2 database
-- Transactions are rolled back after each test
-- `TestEntityManager` for setup/verification
-- Fast execution (<100ms per test)
-- `@Import` is needed to load JPA Auditing configuration for audit fields (createdAt, updatedAt, etc.)
+`write(...)` turns an object into JSON and lets you assert on it with JsonPath, `parseObject(...)` does the reverse. Use it to protect the **JSON contract** of your DTOs: field names, date formats, `null` handling, `@JsonProperty`/`@JsonIgnore`. It is much faster than starting a web layer for that.
 
----
+### `@RestClientTest`: classes that call another API
 
-### Service Tests (with Mockito)
+All tests so far test code that is *called* by clients. `@RestClientTest` tests code that **calls** someone else's API. The book introduces this in Chapter 10 (*Client-Side Testing with @RestClientTest*) for declarative HTTP clients.
 
-Test services in isolation by mocking dependencies.
+The thing under test is Lesson 10's declarative client [`OpenFoodFactsClient`](pizzastore-with-tests/src/main/java/be/vives/pizzastore/client/OpenFoodFactsClient.java): an interface that Spring turns into a proxy that calls the free Open Food Facts API.
 
-> **📝 Note on `@ExtendWith(MockitoExtension.class)`**
-> 
-> This annotation **is still required** for pure unit tests without Spring context in Spring Boot 3.
-> 
-> **When to use:**
-> - ✅ **Pure unit tests** (service tests): Use `@ExtendWith(MockitoExtension.class)` + `@Mock` + `@InjectMocks`
-> - ✅ **Spring integration tests** (controller tests): Use `@WebMvcTest` or `@SpringBootTest` with `@MockitoBean`
-> 
-> The difference:
-> - `@ExtendWith(MockitoExtension.class)` = Mockito without Spring (faster, pure unit test)
-> - `@MockitoBean` = Mock within Spring context (for integration tests)
-
-#### Example: PizzaService Test
+You do not want a test that depends on the real server: it would be slow, need internet, give different answers when someone edits the product, and burn the **15 lookups per minute** that Open Food Facts allows per IP address. `@RestClientTest` solves this by replacing the HTTP transport with a **`MockRestServiceServer`**. In [`OpenFoodFactsClientTest`](pizzastore-with-tests/src/test/java/be/vives/pizzastore/client/OpenFoodFactsClientTest.java) you first say which request you expect and which response must come back, then you call the client:
 
 ```java
-package be.vives.pizzastore.service;
+@RestClientTest(properties = {
+        "spring.http.serviceclient.openfoodfacts.base-url=https://off.test",
+        "spring.http.serviceclient.openfoodfacts.default-header.User-Agent=PizzaStoreTest/1.0 (test@example.com)"
+})
+@Import(HttpClientConfig.class)
+@ImportAutoConfiguration({HttpServiceClientAutoConfiguration.class, HttpServiceClientPropertiesAutoConfiguration.class})
+class OpenFoodFactsClientTest {
 
-import be.vives.pizzastore.domain.Pizza;
-import be.vives.pizzastore.dto.request.CreatePizzaRequest;
-import be.vives.pizzastore.dto.request.UpdatePizzaRequest;
-import be.vives.pizzastore.dto.response.PizzaResponse;
-import be.vives.pizzastore.mapper.PizzaMapper;
-import be.vives.pizzastore.repository.PizzaRepository;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
+    @Autowired
+    private OpenFoodFactsClient client;
 
-import java.math.BigDecimal;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Optional;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
-
-// Pure unit test - NO Spring context
-// This is why we need @ExtendWith(MockitoExtension.class)
-@ExtendWith(MockitoExtension.class)
-class PizzaServiceTest {
-
-    @Mock  // Mockito mock (not @MockitoBean!)
-    private PizzaRepository pizzaRepository;
-
-    @Mock  // Mockito mock (not @MockitoBean!)
-    private PizzaMapper pizzaMapper;
-
-    @Mock
-    private FileStorageService fileStorageService;
-
-    @InjectMocks  // Injects the mocks above
-    private PizzaService pizzaService;
-
-    private Pizza testPizza;
-    private PizzaResponse testResponse;
-    private CreatePizzaRequest createRequest;
-
-    @BeforeEach
-    void setup() {
-        testPizza = new Pizza("Margherita", new BigDecimal("8.50"), "Classic tomato and mozzarella");
-        testPizza.setId(1L);
-
-        testResponse = new PizzaResponse(1L, "Margherita", new BigDecimal("8.50"), 
-                "Classic tomato and mozzarella", null, true, null);
-
-        createRequest = new CreatePizzaRequest("Margherita", new BigDecimal("8.50"), 
-                "Classic tomato and mozzarella", true, null);
-    }
+    @Autowired
+    private MockRestServiceServer server;
 
     @Test
-    void findById_ExistingPizza_ReturnsPizzaResponse() {
-        // Given
-        when(pizzaRepository.findById(1L)).thenReturn(Optional.of(testPizza));
-        when(pizzaMapper.toResponse(testPizza)).thenReturn(testResponse);
+    void getProduct_KnownBarcode_MapsTheNutrimentsPer100g() {
+        server.expect(requestTo("https://off.test/api/v2/product/3017620422003.json?fields=code,product_name,nutriments"))
+                .andExpect(method(HttpMethod.GET))
+                .andExpect(header("User-Agent", "PizzaStoreTest/1.0 (test@example.com)"))
+                .andRespond(withSuccess("""
+                        {"code": "3017620422003", "status": 1,
+                         "product": {"product_name": "Nutella",
+                                     "nutriments": {"energy-kcal_100g": 539, "proteins_100g": 6.3, ...}}}
+                        """, MediaType.APPLICATION_JSON));
 
-        // When
-        Optional<PizzaResponse> result = pizzaService.findById(1L);
+        OpenFoodFactsResponse response = client.getProduct("3017620422003");
 
-        // Then
-        assertThat(result).isPresent();
-        assertThat(result.get().id()).isEqualTo(1L);
-        assertThat(result.get().name()).isEqualTo("Margherita");
-        assertThat(result.get().price()).isEqualByComparingTo(new BigDecimal("8.50"));
-
-        verify(pizzaRepository).findById(1L);
-        verify(pizzaMapper).toResponse(testPizza);
+        assertThat(response.product().nutriments().energyKcal100g()).isEqualByComparingTo("539");
+        server.verify();   // the expected request really happened
     }
-
-    @Test
-    void findById_NonExistingPizza_ReturnsEmpty() {
-        // Given
-        when(pizzaRepository.findById(999L)).thenReturn(Optional.empty());
-
-        // When
-        Optional<PizzaResponse> result = pizzaService.findById(999L);
-
-        // Then
-        assertThat(result).isEmpty();
-        verify(pizzaRepository).findById(999L);
-        verify(pizzaMapper, never()).toResponse(any());
-    }
-
-    @Test
-    void findAll_MultiplePizzas_ReturnsPageOfResponses() {
-        // Given
-        Pizza pizza2 = new Pizza("Marinara", new BigDecimal("7.50"), "Simple");
-        pizza2.setId(2L);
-
-        List<Pizza> pizzas = Arrays.asList(testPizza, pizza2);
-        Page<Pizza> pizzaPage = new PageImpl<>(pizzas);
-        Pageable pageable = PageRequest.of(0, 10);
-
-        when(pizzaRepository.findAll(pageable)).thenReturn(pizzaPage);
-        when(pizzaMapper.toResponse(testPizza)).thenReturn(testResponse);
-        when(pizzaMapper.toResponse(pizza2)).thenReturn(
-                new PizzaResponse(2L, "Marinara", new BigDecimal("7.50"), "Simple", null, true, null)
-        );
-
-        // When
-        Page<PizzaResponse> result = pizzaService.findAll(pageable);
-
-        // Then
-        assertThat(result.getContent()).hasSize(2);
-        assertThat(result.getContent()).extracting(PizzaResponse::name)
-                .containsExactly("Margherita", "Marinara");
-
-        verify(pizzaRepository).findAll(pageable);
-    }
-
-    @Test
-    void create_ValidRequest_ReturnsSavedPizza() {
-        // Given
-        when(pizzaMapper.toEntity(createRequest)).thenReturn(testPizza);
-        when(pizzaRepository.save(testPizza)).thenReturn(testPizza);
-        when(pizzaMapper.toResponse(testPizza)).thenReturn(testResponse);
-
-        // When
-        PizzaResponse result = pizzaService.create(createRequest);
-
-        // Then
-        assertThat(result).isNotNull();
-        assertThat(result.name()).isEqualTo("Margherita");
-
-        verify(pizzaMapper).toEntity(createRequest);
-        verify(pizzaRepository).save(testPizza);
-        verify(pizzaMapper).toResponse(testPizza);
-    }
-
-    @Test
-    void update_ExistingPizza_ReturnsUpdatedPizza() {
-        // Given
-        UpdatePizzaRequest updateRequest = new UpdatePizzaRequest(
-                "Margherita Special",
-                new BigDecimal("9.50"),
-                "Updated description",
-                true,
-                null
-        );
-
-        when(pizzaRepository.findById(1L)).thenReturn(Optional.of(testPizza));
-        when(pizzaRepository.save(testPizza)).thenReturn(testPizza);
-        when(pizzaMapper.toResponse(testPizza)).thenReturn(testResponse);
-
-        // When
-        PizzaResponse result = pizzaService.update(1L, updateRequest);
-
-        // Then
-        assertThat(result).isNotNull();
-
-        verify(pizzaRepository).findById(1L);
-        verify(pizzaMapper).updateEntity(updateRequest, testPizza);
-        verify(pizzaRepository).save(testPizza);
-        verify(pizzaMapper).toResponse(testPizza);
-    }
-
-    @Test
-    void update_NonExistingPizza_ReturnsNull() {
-        // Given
-        UpdatePizzaRequest updateRequest = new UpdatePizzaRequest(
-                "Updated Name",
-                new BigDecimal("10.00"),
-                "Updated description",
-                true,
-                null
-        );
-        when(pizzaRepository.findById(999L)).thenReturn(Optional.empty());
-
-        // When
-        PizzaResponse result = pizzaService.update(999L, updateRequest);
-
-        // Then
-        assertThat(result).isNull();
-        verify(pizzaRepository).findById(999L);
-        verify(pizzaRepository, never()).save(any());
-    }
-
-    @Test
-    void delete_ExistingPizza_ReturnsTrue() {
-        // Given
-        when(pizzaRepository.existsById(1L)).thenReturn(true);
-
-        // When
-        boolean result = pizzaService.delete(1L);
-
-        // Then
-        assertThat(result).isTrue();
-
-        verify(pizzaRepository).existsById(1L);
-        verify(pizzaRepository).deleteById(1L);
-    }
-
-    @Test
-    void delete_NonExistingPizza_ReturnsFalse() {
-        // Given
-        when(pizzaRepository.existsById(999L)).thenReturn(false);
-
-        // When
-        boolean result = pizzaService.delete(999L);
-
-        // Then
-        assertThat(result).isFalse();
-
-        verify(pizzaRepository).existsById(999L);
-        verify(pizzaRepository, never()).deleteById(any());
-    }
+    ...
 }
 ```
 
-**Key Points:**
-- `@ExtendWith(MockitoExtension.class)` enables Mockito
-- `@Mock` creates mock objects
-- `@InjectMocks` injects mocks into the service
-- `when().thenReturn()` defines mock behavior
-- `verify()` checks if methods were called
-- Very fast (<10ms per test)
+Three things are different from testing a hand-written `RestClient` class:
+
+- **An interface has no class to name.** Instead of `@RestClientTest(SomeClient.class)` you `@Import(HttpClientConfig.class)`: the same configuration class as in the application, so the test checks the real `@ImportHttpServices` wiring too.
+- **The slice does not know about declarative clients.** The `@ImportAutoConfiguration` line adds the two auto-configurations that apply `spring.http.serviceclient.*` and the mock server to the generated `RestClient`. Leave it out and the test fails with *"Unable to use auto-configured MockRestServiceServer since a mock server customizer has not been bound to a RestTemplate or RestClient"*. The book's own example (Listing 3-9) avoids the problem by using `@SpringBootTest` and the real API.
+- **The same properties as in production.** The test sets `spring.http.serviceclient.openfoodfacts.base-url` to a fake host, which is how a test redirects a client without touching code. The test `application.properties` also points it to `http://openfoodfacts.invalid`, so a test that forgets to mock can never reach the real server.
+
+The error cases are exactly what you can hardly provoke against a real server: the quirky `200` with `"status": 0` for an unknown barcode, a `404`, a `429` when you are rate-limited and a `503` when the other side is down. With a mock server they are a few lines each. The slice loads no controllers and no database.
+
+The *consequences* of those failures (`422` or `502`) are not tested here but one level up, without any HTTP at all: [`NutritionImportServiceTest`](pizzastore-with-tests/src/test/java/be/vives/pizzastore/service/NutritionImportServiceTest.java) lets a Mockito mock of the client throw `HttpServerErrorException`, `ResourceAccessException` (a timeout) and so on, and asserts which PizzaStore exception comes out; `PizzaControllerTest` then checks that an `ExternalServiceException` becomes a `502` ProblemDetail that does not leak the cause. Each layer tests its own responsibility.
+
+### Other slices
+
+Spring Boot 4 has a slice for nearly every technology, each in its own module: `@DataJdbcTest`, `@JdbcTest`, `@DataMongoTest` (Lesson 6b), `@DataRedisTest`, `@GraphQlTest`, `@WebFluxTest`, `@DataR2dbcTest` and more. They all work the same way: start one layer, configure only what that layer needs, roll back or discard state afterwards. The book lists them in Tables 10-1 and 10-2.
 
 ---
 
-### Controller Tests (@WebMvcTest)
+## 🌐 Testing the Web Layer: MockMvc, RestTestClient or MockMvcTester
 
-Test REST controllers with MockMvc, mocking the service layer.
+`@WebMvcTest(PizzaController.class)` starts the web layer only: the controller, `@RestControllerAdvice` classes (`GlobalExceptionHandler` must be imported explicitly in our tests), Jackson, validation and Spring Data's `Pageable` support. **Services and repositories are not loaded**, so you supply the service as a `@MockitoBean`. Because no database is involved, these tests run in milliseconds.
 
-> **📝 Note on `@MockitoBean` (Spring Boot 3.4+)**
-> 
-> Since Spring Boot 3.4.0, `@MockBean` is **deprecated** in favor of `@MockitoBean`.
-> 
-> **Migration:**
-> - ❌ Old (deprecated): `import org.springframework.boot.test.mock.mockito.MockBean;`
-> - ✅ New: `import org.springframework.test.context.bean.override.mockito.MockitoBean;`
-> 
-> **When to use:**
-> - ✅ **Spring integration tests**: Use `@MockitoBean` with `@WebMvcTest` or `@SpringBootTest`
-> - ❌ **Pure unit tests**: Use `@Mock` with `@ExtendWith(MockitoExtension.class)` instead
-> 
-> The difference:
-> - `@MockitoBean` = Mock managed by Spring context (slower, but tests Spring integration)
-> - `@Mock` = Mock managed by Mockito (faster, pure unit test)
+The project contains the **same web-layer test written three ways**, so you can compare:
 
-#### Example: PizzaController Test
+### 1. MockMvc: the classic
+
+[`PizzaControllerTest`](pizzastore-with-tests/src/test/java/be/vives/pizzastore/controller/PizzaControllerTest.java), `CustomerControllerTest` and `OrderControllerTest` use MockMvc with Hamcrest matchers:
 
 ```java
-package be.vives.pizzastore.controller;
-
-import be.vives.pizzastore.dto.request.CreatePizzaRequest;
-import be.vives.pizzastore.dto.request.UpdatePizzaRequest;
-import be.vives.pizzastore.dto.response.PizzaResponse;
-import be.vives.pizzastore.service.PizzaService;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.springframework.context.annotation.Import;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
-import org.springframework.data.domain.Pageable;
-import org.springframework.http.MediaType;
-import org.springframework.test.web.servlet.MockMvc;
-
-import java.math.BigDecimal;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Optional;
-
-import static org.hamcrest.Matchers.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.*;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
-
-// Spring integration test - loads Spring MVC context
-// This is why we use @MockitoBean (not @Mock!)
 @WebMvcTest(controllers = PizzaController.class)
-@Import(be.vives.pizzastore.exception.GlobalExceptionHandler.class)  // Import exception handler
+@Import(GlobalExceptionHandler.class)
 class PizzaControllerTest {
 
     @Autowired
     private MockMvc mockMvc;
 
-    @Autowired
-    private ObjectMapper objectMapper;
-
-    @MockitoBean  // Mock within Spring context (not @Mock!)
+    @MockitoBean
     private PizzaService pizzaService;
-
-    @Test
-    void getPizzas_NoPizzas_ReturnsEmptyPage() throws Exception {
-        // Given
-        Page<PizzaResponse> emptyPage = Page.empty();
-        when(pizzaService.findAll(any(Pageable.class))).thenReturn(emptyPage);
-
-        // When / Then
-        mockMvc.perform(get("/api/pizzas"))
-                .andExpect(status().isOk())
-                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.content", hasSize(0)))
-                .andExpect(jsonPath("$.totalElements", is(0)));
-
-        verify(pizzaService).findAll(any(Pageable.class));
-    }
-
-    @Test
-    void getPizzas_MultiplePizzas_ReturnsPage() throws Exception {
-        // Given
-        List<PizzaResponse> pizzas = Arrays.asList(
-                new PizzaResponse(1L, "Margherita", new BigDecimal("8.50"), "Classic", null, true, null),
-                new PizzaResponse(2L, "Marinara", new BigDecimal("7.50"), "Simple", null, true, null)
-        );
-        Page<PizzaResponse> page = new PageImpl<>(pizzas);
-        when(pizzaService.findAll(any(Pageable.class))).thenReturn(page);
-
-        // When / Then
-        mockMvc.perform(get("/api/pizzas"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.content", hasSize(2)))
-                .andExpect(jsonPath("$.content[0].id", is(1)))
-                .andExpect(jsonPath("$.content[0].name", is("Margherita")))
-                .andExpect(jsonPath("$.content[0].price", is(8.50)))
-                .andExpect(jsonPath("$.content[1].id", is(2)))
-                .andExpect(jsonPath("$.content[1].name", is("Marinara")));
-
-        verify(pizzaService).findAll(any(Pageable.class));
-    }
-
-    @Test
-    void getPizza_ExistingId_ReturnsPizza() throws Exception {
-        // Given
-        PizzaResponse pizza = new PizzaResponse(1L, "Margherita", new BigDecimal("8.50"), "Classic", null, true, null);
-        when(pizzaService.findById(1L)).thenReturn(Optional.of(pizza));
-
-        // When / Then
-        mockMvc.perform(get("/api/pizzas/1"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.id", is(1)))
-                .andExpect(jsonPath("$.name", is("Margherita")))
-                .andExpect(jsonPath("$.price", is(8.50)))
-                .andExpect(jsonPath("$.description", is("Classic")));
-
-        verify(pizzaService).findById(1L);
-    }
 
     @Test
     void getPizza_NonExistingId_Returns404() throws Exception {
-        // Given
-        when(pizzaService.findById(999L)).thenReturn(Optional.empty());
+        when(pizzaService.findById(999L)).thenThrow(new ResourceNotFoundException("Pizza", 999L));
 
-        // When / Then
         mockMvc.perform(get("/api/pizzas/999"))
-                .andExpect(status().isNotFound());
-
-        verify(pizzaService).findById(999L);
-    }
-
-    @Test
-    void createPizza_ValidRequest_Returns201() throws Exception {
-        // Given
-        CreatePizzaRequest request = new CreatePizzaRequest(
-                "New Pizza",
-                new BigDecimal("12.00"),
-                "Delicious new pizza with amazing toppings",
-                true,
-                null
-        );
-
-        PizzaResponse response = new PizzaResponse(1L, "New Pizza", new BigDecimal("12.00"), 
-                "Delicious new pizza with amazing toppings", null, true, null);
-        when(pizzaService.create(any(CreatePizzaRequest.class))).thenReturn(response);
-
-        // When / Then
-        mockMvc.perform(post("/api/pizzas")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isCreated())
-                .andExpect(header().exists("Location"))
-                .andExpect(header().string("Location", containsString("/api/pizzas/1")))
-                .andExpect(jsonPath("$.id", is(1)))
-                .andExpect(jsonPath("$.name", is("New Pizza")));
-
-        verify(pizzaService).create(any(CreatePizzaRequest.class));
-    }
-
-    @Test
-    void createPizza_InvalidRequest_Returns400() throws Exception {
-        // Given - invalid request (empty name, negative price)
-        CreatePizzaRequest request = new CreatePizzaRequest(
-                "",
-                new BigDecimal("-5.00"),
-                "Description",
-                true,
-                null
-        );
-
-        // When / Then
-        mockMvc.perform(post("/api/pizzas")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.status", is(400)))
-                .andExpect(jsonPath("$.error", is("Bad Request")))
-                .andExpect(jsonPath("$.validationErrors", hasSize(greaterThan(0))));
-
-        verify(pizzaService, never()).create(any());
-    }
-
-    @Test
-    void updatePizza_ValidRequest_Returns200() throws Exception {
-        // Given
-        UpdatePizzaRequest request = new UpdatePizzaRequest(
-                "Updated Pizza",
-                new BigDecimal("11.00"),
-                "Updated description for this amazing pizza",
-                true,
-                null
-        );
-
-        PizzaResponse response = new PizzaResponse(1L, "Updated Pizza", new BigDecimal("11.00"), 
-                "Updated description for this amazing pizza", null, true, null);
-        when(pizzaService.update(eq(1L), any(UpdatePizzaRequest.class))).thenReturn(response);
-
-        // When / Then
-        mockMvc.perform(put("/api/pizzas/1")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.id", is(1)))
-                .andExpect(jsonPath("$.name", is("Updated Pizza")))
-                .andExpect(jsonPath("$.price", is(11.00)));
-
-        verify(pizzaService).update(eq(1L), any(UpdatePizzaRequest.class));
-    }
-
-    @Test
-    void updatePizza_NonExistingId_Returns404() throws Exception {
-        // Given
-        UpdatePizzaRequest request = new UpdatePizzaRequest(
-                "Updated Pizza",
-                new BigDecimal("11.00"),
-                "Updated description for this pizza",
-                true,
-                null
-        );
-
-        when(pizzaService.update(eq(999L), any(UpdatePizzaRequest.class)))
-                .thenReturn(null);
-
-        // When / Then
-        mockMvc.perform(put("/api/pizzas/999")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isNotFound());
-
-        verify(pizzaService).update(eq(999L), any(UpdatePizzaRequest.class));
-    }
-
-    @Test
-    void deletePizza_ExistingId_Returns204() throws Exception {
-        // Given
-        when(pizzaService.delete(1L)).thenReturn(true);
-
-        // When / Then
-        mockMvc.perform(delete("/api/pizzas/1"))
-                .andExpect(status().isNoContent());
-
-        verify(pizzaService).delete(1L);
-    }
-
-    @Test
-    void deletePizza_NonExistingId_Returns404() throws Exception {
-        // Given
-        when(pizzaService.delete(999L)).thenReturn(false);
-
-        // When / Then
-        mockMvc.perform(delete("/api/pizzas/999"))
-                .andExpect(status().isNotFound());
-
-        verify(pizzaService).delete(999L);
+                .andExpect(status().isNotFound())
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.detail", is("Pizza with id 999 not found")));
     }
 }
 ```
 
-**Key Points:**
-- `@WebMvcTest` loads only web layer
-- `MockMvc` for HTTP requests/responses
-- `@MockitoBean` mocks service dependencies (replaces deprecated `@MockBean`)
-- `jsonPath()` for testing JSON responses
-- Tests HTTP status codes, headers, and body
-- No database, very fast
+MockMvc is not deprecated and it is everywhere in existing code, so you must be able to read it. Notice the `throws Exception`, the static imports of `status()`, `jsonPath()`, `content()` and the Hamcrest `is(...)`.
+
+### 2. RestTestClient: the Spring Boot 4 unified client
+
+[`PizzaControllerRestTestClientTest`](pizzastore-with-tests/src/test/java/be/vives/pizzastore/controller/PizzaControllerRestTestClientTest.java):
+
+```java
+@WebMvcTest(PizzaController.class)
+@AutoConfigureRestTestClient
+@Import(GlobalExceptionHandler.class)
+class PizzaControllerRestTestClientTest {
+
+    @Autowired
+    private RestTestClient client;
+
+    @MockitoBean
+    private PizzaService pizzaService;
+
+    @Test
+    void getPizza_NonExistingId_ReturnsProblemDetail() {
+        when(pizzaService.findById(999L)).thenThrow(new ResourceNotFoundException("Pizza", 999L));
+
+        client.get().uri("/api/pizzas/{id}", 999)
+                .exchange()
+                .expectStatus().isNotFound()
+                .expectHeader().contentType(MediaType.APPLICATION_PROBLEM_JSON)
+                .expectBody()
+                .jsonPath("$.status").isEqualTo(404)
+                .jsonPath("$.detail").isEqualTo("Pizza with id 999 not found")
+                .jsonPath("$.instance").isEqualTo("/api/pizzas/999");
+    }
+}
+```
+
+`RestTestClient` is Spring Framework 7's **fluent client for testing REST APIs**. It reads like the `RestClient` you use in production: `get().uri(...).exchange()` followed by `expectStatus()`, `expectHeader()`, `expectBody()`. The big idea is that **the same client works in every environment**:
+
+| Binding | How you get it | Used in |
+|---------|----------------|---------|
+| Mock MVC environment of the slice | `@AutoConfigureRestTestClient` on a `@WebMvcTest` | web-layer slice tests |
+| One controller, no Spring context | `RestTestClient.bindToController(new PizzaController(service))` | unit tests |
+| A running server | `@AutoConfigureRestTestClient` on `@SpringBootTest(webEnvironment = RANDOM_PORT)` | full-stack tests |
+
+So the test code you write for a slice can look exactly like the test code for the real server. The assertions can be done in two styles. `expectBody(PizzaResponse.class).value(pizza -> assertThat(...))` deserializes the body into your record and lets you use AssertJ; `expectBody().jsonPath("$.detail").isEqualTo(...)` checks single JSON fields without a class.
+
+### 3. Without a Spring context: `bindToController`
+
+[`PizzaControllerStandaloneTest`](pizzastore-with-tests/src/test/java/be/vives/pizzastore/controller/PizzaControllerStandaloneTest.java) uses no Spring context at all: not even `@WebMvcTest`.
+
+```java
+class PizzaControllerStandaloneTest {
+
+    private final PizzaService pizzaService = mock(PizzaService.class);
+
+    private final RestTestClient client = RestTestClient
+            .bindToController(new PizzaController(pizzaService))
+            .configureServer(server -> server.setControllerAdvice(new GlobalExceptionHandler()))
+            .build();
+    ...
+}
+```
+
+You create the controller yourself with a mocked service and the client talks to it through a minimal MVC setup. It starts in milliseconds, but nothing is auto-configured (no `application.properties`, no Spring Data `Pageable` JSON, no auto-registered advice), so keep it for simple request/response mappings.
+
+### 4. MockMvcTester: MockMvc with AssertJ
+
+[`PizzaControllerMockMvcTesterTest`](pizzastore-with-tests/src/test/java/be/vives/pizzastore/controller/PizzaControllerMockMvcTesterTest.java) uses `MockMvcTester`, which `@WebMvcTest` also auto-configures:
+
+```java
+@Autowired
+private MockMvcTester mvc;
+
+@Test
+void getPizza_NonExistingId_ReturnsProblemDetail() {
+    when(pizzaService.findById(999L)).thenThrow(new ResourceNotFoundException("Pizza", 999L));
+
+    assertThat(mvc.get().uri("/api/pizzas/{id}", 999))
+            .hasStatus(HttpStatus.NOT_FOUND)
+            .hasContentType(MediaType.APPLICATION_PROBLEM_JSON)
+            .bodyJson()
+            .extractingPath("$.detail").isEqualTo("Pizza with id 999 not found");
+}
+```
+
+No `throws Exception`, no static `status()`/`jsonPath()` imports, no Hamcrest: it is plain AssertJ, with autocompletion that actually helps.
+
+### Which one should I use?
+
+| | MockMvc | `MockMvcTester` | `RestTestClient` |
+|---|---------|-----------------|------------------|
+| Style | `perform(...).andExpect(...)` | AssertJ `assertThat(...)` | fluent `exchange().expectX()` |
+| Assertions | Hamcrest matchers | AssertJ | its own fluent API + AssertJ in `value(...)` |
+| Same test against a real server | ❌ | ❌ | ✅ |
+| Where you meet it | all existing Spring code | Spring Boot 3.4+ code | new Spring Boot 4 code |
+
+**There is no official default.** The Spring Boot reference lists `MockMvc`, `MockMvcTester`, `RestTestClient` and `WebTestClient` side by side as supported ways to test Spring MVC, without a preference. The book calls `RestTestClient` and AssertJ "the modern defaults" but still shows MockMvc with Hamcrest in its own examples, and community comparisons conclude that the choice between `MockMvcTester` and `RestTestClient` is largely a matter of preference. Our choice for PizzaStore is `RestTestClient`: the same fluent style serves slice tests and full-stack tests, and it resembles the production `RestClient`. `MockMvcTester` is the better fit when you want pure AssertJ, and MockMvc remains the right tool for **multipart requests in a `@WebMvcTest` slice**: a `RestTestClient` that is bound to MockMvc does not turn a multipart body into request parts (it does against a real server). Keep reading and maintaining MockMvc where it exists.
 
 ---
 
-### Integration Tests (@SpringBootTest)
+## 🚀 Full-Stack Tests with @SpringBootTest
 
-Test the complete application with all layers.
+`@SpringBootTest` starts the **complete application**: all beans, the real H2 database, the real exception handler. It finds your `@SpringBootApplication` class and loads the same context as `mvn spring-boot:run`. It is the slowest and most realistic kind of test, so use it for flows that cross layers and for a few critical paths.
 
-#### Example: Pizza Integration Test
+### The `webEnvironment` choices
+
+| `webEnvironment` | What happens | Combine with |
+|------------------|--------------|--------------|
+| `MOCK` (default) | Mock servlet environment, no real server | `MockMvc` |
+| `RANDOM_PORT` | Starts Tomcat on a free port | `RestTestClient` (bound to the server) |
+| `NONE` | No web environment at all | services, batch jobs |
+
+### Smoke test
+
+[`ApplicationSmokeTest`](pizzastore-with-tests/src/test/java/be/vives/pizzastore/integration/ApplicationSmokeTest.java) only checks that the context starts and the main beans exist, including the `OpenFoodFactsClient` proxy that `@ImportHttpServices` generates. It catches a wrong bean wiring, a missing property or a broken JPA mapping in one second. If you have to write one `@SpringBootTest`, write this one.
+
+### With MockMvc: `@Transactional` rolls back
+
+[`PizzaIntegrationTest`](pizzastore-with-tests/src/test/java/be/vives/pizzastore/integration/PizzaIntegrationTest.java) runs the full application, but sends requests through MockMvc on the test thread. Because the test and the "server" share one thread, a class-level `@Transactional` rolls back everything that every test wrote:
 
 ```java
-package be.vives.pizzastore;
-
-import be.vives.pizzastore.dto.request.CreatePizzaRequest;
-import be.vives.pizzastore.dto.response.PizzaResponse;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.http.MediaType;
-import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.MvcResult;
-import org.springframework.transaction.annotation.Transactional;
-
-import java.math.BigDecimal;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.hamcrest.Matchers.*;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
-
 @SpringBootTest
 @AutoConfigureMockMvc
 @Transactional
-class PizzaIntegrationTest {
+class PizzaIntegrationTest { ... }
+```
+
+### With a real server: `RestTestClient` and `RANDOM_PORT`
+
+[`PizzaStoreApiIntegrationTest`](pizzastore-with-tests/src/test/java/be/vives/pizzastore/integration/PizzaStoreApiIntegrationTest.java) starts a real Tomcat on a random port and talks HTTP to it:
+
+```java
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+        properties = "spring.datasource.url=jdbc:h2:mem:api-integration-test")
+@AutoConfigureRestTestClient
+class PizzaStoreApiIntegrationTest {
 
     @Autowired
-    private MockMvc mockMvc;
-
-    @Autowired
-    private ObjectMapper objectMapper;
-
-    @Test
-    void createAndRetrievePizza_Success() throws Exception {
-        // Given - Create pizza
-        CreatePizzaRequest request = new CreatePizzaRequest(
-                "Integration Test Pizza",
-                new BigDecimal("13.50"),
-                "This pizza was created during an integration test",
-                true,
-                null
-        );
-
-        // When - Create pizza
-        MvcResult createResult = mockMvc.perform(post("/api/pizzas")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isCreated())
-                .andExpect(header().exists("Location"))
-                .andReturn();
-
-        // Extract ID from Location header
-        String location = createResult.getResponse().getHeader("Location");
-        assertThat(location).isNotNull();
-        Long pizzaId = Long.parseLong(location.substring(location.lastIndexOf('/') + 1));
-
-        // Then - Retrieve pizza
-        mockMvc.perform(get("/api/pizzas/" + pizzaId))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.id", is(pizzaId.intValue())))
-                .andExpect(jsonPath("$.name", is("Integration Test Pizza")))
-                .andExpect(jsonPath("$.price", is(13.50)))
-                .andExpect(jsonPath("$.description", containsString("integration test")));
-    }
-
-    @Test
-    void fullCrudFlow_Success() throws Exception {
-        // Create
-        CreatePizzaRequest createRequest = new CreatePizzaRequest(
-                "CRUD Test Pizza",
-                new BigDecimal("10.00"),
-                "Testing full CRUD operations with this amazing pizza",
-                true,
-                null
-        );
-
-        MvcResult createResult = mockMvc.perform(post("/api/pizzas")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(createRequest)))
-                .andExpect(status().isCreated())
-                .andReturn();
-
-        PizzaResponse created = objectMapper.readValue(
-                createResult.getResponse().getContentAsString(),
-                PizzaResponse.class
-        );
-        Long pizzaId = created.id();
-
-        // Read
-        mockMvc.perform(get("/api/pizzas/" + pizzaId))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.name", is("CRUD Test Pizza")));
-
-        // Update
-        UpdatePizzaRequest updateRequest = new UpdatePizzaRequest(
-                "Updated CRUD Pizza",
-                new BigDecimal("11.50"),
-                "Updated description for this pizza during testing",
-                true,
-                null
-        );
-
-        mockMvc.perform(put("/api/pizzas/" + pizzaId)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(updateRequest)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.name", is("Updated CRUD Pizza")))
-                .andExpect(jsonPath("$.price", is(11.50)));
-
-        // Delete
-        mockMvc.perform(delete("/api/pizzas/" + pizzaId))
-                .andExpect(status().isNoContent());
-
-        // Verify deleted
-        mockMvc.perform(get("/api/pizzas/" + pizzaId))
-                .andExpect(status().isNotFound());
-    }
-
-    @Test
-    void filterPizzasByPrice_Success() throws Exception {
-        // Given - Create test pizzas
-        createPizza("Cheap Pizza", "5.00");
-        createPizza("Medium Pizza", "10.00");
-        createPizza("Expensive Pizza", "20.00");
-
-        // When / Then - Filter by max price
-        mockMvc.perform(get("/api/pizzas")
-                        .param("maxPrice", "12.00"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$", hasSize(greaterThanOrEqualTo(2))))
-                .andExpect(jsonPath("$[*].name", hasItem("Cheap Pizza")))
-                .andExpect(jsonPath("$[*].name", hasItem("Medium Pizza")))
-                .andExpect(jsonPath("$[*].name", not(hasItem("Expensive Pizza"))));
-    }
-
-    private void createPizza(String name, String price) throws Exception {
-        CreatePizzaRequest request = new CreatePizzaRequest(
-                name,
-                new BigDecimal(price),
-                "Test pizza: " + name,
-                true,
-                null
-        );
-
-        mockMvc.perform(post("/api/pizzas")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request)));
-    }
+    private RestTestClient client;     // already bound to http://localhost:<random port>
+    ...
 }
 ```
 
-**Key Points:**
-- `@SpringBootTest` loads entire application
-- `@AutoConfigureMockMvc` provides MockMvc
-- `@Transactional` rolls back after each test
-- Uses real database (H2 in-memory)
-- Tests complete flows end-to-end
-- Slower than unit tests but more confidence
+Two things to know:
 
----
+1. **`@Transactional` does not roll back anything here.** The server handles each request on its own thread, so the test method has no transaction to roll back. Instead, every test creates its own, uniquely named data (`"Pizza " + UUID.randomUUID()`) and never assumes the database is empty. The `properties = ...` attribute gives this context its own H2 database, so other test contexts cannot interfere.
+2. **Create test data through the public API**, like a real client would. The helper methods `createPizza(...)` and `createCustomer(...)` do that, which makes the tests independent of `data.sql` (disabled for tests).
 
-## ✅ Testing Validation
-
-Test that validation annotations work correctly.
+The most valuable test of the class is the **order lifecycle**, which crosses controllers, validation, services, mappers and the database:
 
 ```java
-@WebMvcTest(PizzaController.class)
-@Import(be.vives.pizzastore.exception.GlobalExceptionHandler.class)
-class PizzaValidationTest {
-
-    @Autowired
-    private MockMvc mockMvc;
-
-    @Autowired
-    private ObjectMapper objectMapper;
-
-    @MockitoBean
-    private PizzaService pizzaService;
-
-    @Test
-    void createPizza_BlankName_Returns400() throws Exception {
-        CreatePizzaRequest request = new CreatePizzaRequest(
-                "",  // Blank name
-                new BigDecimal("10.00"),
-                "Valid description",
-                true,
-                null
-        );
-
-        mockMvc.perform(post("/api/pizzas")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.validationErrors[*].field", hasItem("name")))
-                .andExpect(jsonPath("$.validationErrors[*].message", 
-                        hasItem(containsString("required"))));
-    }
-
-    @Test
-    void createPizza_PriceTooLow_Returns400() throws Exception {
-        CreatePizzaRequest request = new CreatePizzaRequest(
-                "Valid Name",
-                new BigDecimal("0.00"),  // Too low
-                "Valid description",
-                true,
-                null
-        );
-
-        mockMvc.perform(post("/api/pizzas")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.validationErrors[*].field", hasItem("price")))
-                .andExpect(jsonPath("$.validationErrors[*].message", 
-                        hasItem(containsString("0.01"))));
-    }
-
-    @Test
-    void createPizza_MultipleValidationErrors_ReturnsAllErrors() throws Exception {
-        CreatePizzaRequest request = new CreatePizzaRequest(
-                "",  // Blank
-                new BigDecimal("-5.00"),  // Negative
-                "Description",
-                true,
-                null
-        );
-
-        mockMvc.perform(post("/api/pizzas")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.validationErrors", hasSize(greaterThan(0))))
-                .andExpect(jsonPath("$.validationErrors[*].field", 
-                        hasItem(anyOf(is("name"), is("price")))));
-    }
-}
-```
-
----
-
-## 🛡️ Testing Exception Handling
-
-Test that exceptions are handled correctly.
-
-```java
-@WebMvcTest(PizzaController.class)
-class ExceptionHandlingTest {
-
-    @Autowired
-    private MockMvc mockMvc;
-
-    @MockitoBean
-    private PizzaService pizzaService;
-
-    @Test
-    void getPizza_NotFound_ReturnsProperErrorResponse() throws Exception {
-        // Given
-        when(pizzaService.findById(999L))
-                .thenThrow(new ResourceNotFoundException("Pizza", 999L));
-
-        // When / Then
-        mockMvc.perform(get("/api/pizzas/999"))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.timestamp").exists())
-                .andExpect(jsonPath("$.status", is(404)))
-                .andExpect(jsonPath("$.error", is("Not Found")))
-                .andExpect(jsonPath("$.message", containsString("Pizza with id 999 not found")))
-                .andExpect(jsonPath("$.path", is("/api/pizzas/999")))
-                .andExpect(jsonPath("$.validationErrors").doesNotExist());
-    }
-
-    @Test
-    void createCustomer_DuplicateEmail_Returns409() throws Exception {
-        // Given
-        CreateCustomerRequest request = new CreateCustomerRequest(
-                "John Doe",
-                "duplicate@example.com",
-                "+32471234567",
-                "Main Street 123, Brussels"
-        );
-
-        when(pizzaService.create(any()))
-                .thenThrow(new DuplicateResourceException(
-                        "Customer with email duplicate@example.com already exists"));
-
-        // When / Then
-        mockMvc.perform(post("/api/customers")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.status", is(409)))
-                .andExpect(jsonPath("$.error", is("Conflict")))
-                .andExpect(jsonPath("$.message", containsString("already exists")));
-    }
-
-    @Test
-    void genericError_Returns500() throws Exception {
-        // Given
-        when(pizzaService.findAll())
-                .thenThrow(new RuntimeException("Database connection failed"));
-
-        // When / Then
-        mockMvc.perform(get("/api/pizzas"))
-                .andExpect(status().isInternalServerError())
-                .andExpect(jsonPath("$.status", is(500)))
-                .andExpect(jsonPath("$.error", is("Internal Server Error")))
-                .andExpect(jsonPath("$.message", not(containsString("Database"))));  // Don't expose internal details
-    }
-}
-```
-
----
-
-## 💪 AssertJ for Better Assertions
-
-AssertJ provides fluent assertions that are more readable than JUnit's assertEquals.
-
-```java
-import static org.assertj.core.api.Assertions.*;
-
 @Test
-void assertJExamples() {
-    // Basic assertions
-    String name = "Margherita";
-    assertThat(name).isNotNull()
-                    .startsWith("Mar")
-                    .endsWith("ita")
-                    .contains("gher");
+void orderLifecycle_CreateUpdateStatusAndCancel() {
+    PizzaResponse margherita = createPizza("8.50");
+    PizzaResponse diavola = createPizza("12.00");
+    CustomerResponse customer = createCustomer(uniqueEmail());
 
-    // Number assertions
-    BigDecimal price = new BigDecimal("8.50");
-    assertThat(price).isPositive()
-                     .isGreaterThan(BigDecimal.ZERO)
-                     .isLessThan(new BigDecimal("100"));
+    // 1. place an order: 2 x 8.50 + 1 x 12.00 = 29.00
+    OrderResponse order = client.post().uri("/api/orders")
+            .contentType(MediaType.APPLICATION_JSON)
+            .body(new CreateOrderRequest(customer.id(), List.of(
+                    new CreateOrderRequest.OrderLineRequest(margherita.id(), 2),
+                    new CreateOrderRequest.OrderLineRequest(diavola.id(), 1))))
+            .exchange()
+            .expectStatus().isCreated()
+            .expectBody(OrderResponse.class)
+            .returnResult().getResponseBody();
 
-    // Collection assertions
-    List<String> pizzas = Arrays.asList("Margherita", "Marinara", "Quattro Formaggi");
-    assertThat(pizzas).hasSize(3)
-                      .contains("Margherita", "Marinara")
-                      .doesNotContain("Hawaiian")
-                      .allMatch(name -> name.length() > 5);
+    assertThat(order.status()).isEqualTo(OrderStatus.PENDING);
+    assertThat(order.totalAmount()).isEqualByComparingTo("29.00");
 
-    // Extracting properties
-    List<Pizza> pizzaList = getPizzas();
-    assertThat(pizzaList).extracting(Pizza::getName)
-                         .containsExactly("Margherita", "Marinara");
-
-    // Exception assertions
-    assertThatThrownBy(() -> pizzaService.findById(999L))
-            .isInstanceOf(ResourceNotFoundException.class)
-            .hasMessageContaining("999")
-            .hasMessageContaining("not found");
-
-    // Object assertions
-    PizzaResponse response = pizzaService.findById(1L);
-    assertThat(response).isNotNull()
-                        .extracting(PizzaResponse::name, PizzaResponse::price)
-                        .containsExactly("Margherita", new BigDecimal("8.50"));
+    // 2. move it through the workflow, 3. cancel it (204), 4. cancel again (422) ...
 }
 ```
 
+`returnResult().getResponseBody()` gives you the deserialized body to continue with, e.g. to reuse an `id` in the next request.
+
+The nested classes `Pizzas`, `Errors` and `Orders` group the 13 tests of this class by topic (`@Nested`, see [Best Practices](#-best-practices)).
+
+> **Context caching.** Every different `properties`, `@MockitoBean` or `@MockitoSpyBean` setup makes Spring start a **new** application context. That is why this project gives each integration test its own H2 database name. How the cache works, and how to keep your suite fast, is explained in [The Context Cache](#-the-context-cache-why-test-suites-get-slow).
+
 ---
 
-## 🔍 Testing JSON Responses
+## 🎭 Replacing Beans: @MockitoBean and @MockitoSpyBean
 
-### JSONPath Syntax
+Sometimes you want the real application, except for one bean: the one that writes to the disk, calls a payment provider or is slow. Spring Boot 4 uses Spring Framework 7's unified **bean override** mechanism for this. `@MockBean` and `@SpyBean` are gone; their replacements live in `org.springframework.test.context.bean.override.mockito`:
 
-```java
-// Basic path
-jsonPath("$.name")                    // Top-level field
-jsonPath("$.address.street")          // Nested field
-jsonPath("$[0].name")                 // First element in array
-jsonPath("$[*].name")                 // All names in array
+| Annotation | What happens to the bean |
+|------------|--------------------------|
+| `@MockitoBean` | replaced by a Mockito mock (also if the bean does not exist yet) |
+| `@MockitoSpyBean` | the real bean is wrapped in a Mockito spy: it keeps working, but calls can be stubbed and verified (the bean **must already exist**) |
 
-// Filters
-jsonPath("$[?(@.price < 10)]")        // Items with price < 10
-jsonPath("$[?(@.name == 'Margherita')]")  // Items with name Margherita
-
-// Functions
-jsonPath("$.length()")                // Array length
-jsonPath("$.sum()")                   // Sum of numbers
-```
-
-### Example
+[`BeanOverrideIntegrationTest`](pizzastore-with-tests/src/test/java/be/vives/pizzastore/integration/BeanOverrideIntegrationTest.java) shows both in a full-stack test:
 
 ```java
-mockMvc.perform(get("/api/pizzas"))
-        // Array size
-        .andExpect(jsonPath("$", hasSize(3)))
-        
-        // First item
-        .andExpect(jsonPath("$[0].id", is(1)))
-        .andExpect(jsonPath("$[0].name", is("Margherita")))
-        
-        // All names
-        .andExpect(jsonPath("$[*].name", 
-                containsInAnyOrder("Margherita", "Marinara", "Quattro Formaggi")))
-        
-        // Filter
-        .andExpect(jsonPath("$[?(@.price > 10)]", hasSize(1)))
-        
-        // Nested
-        .andExpect(jsonPath("$[0].nutritionalInfo.calories", is(250)));
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+        properties = "spring.datasource.url=jdbc:h2:mem:bean-override-test")
+@AutoConfigureRestTestClient
+class BeanOverrideIntegrationTest {
+
+    @MockitoBean
+    private FileStorageService fileStorageService;   // no files are written to disk
+
+    @MockitoSpyBean
+    private PizzaService pizzaService;               // the real service, but observable
+
+    @Test
+    void createPizza_ThroughTheApi_CallsTheRealServiceExactlyOnce() {
+        client.post().uri("/api/pizzas") /* ... */ .expectStatus().isCreated();
+
+        verify(pizzaService).create(any(CreatePizzaRequest.class));
+    }
+}
 ```
+
+The image-upload test replaces only `FileStorageService`: the real controller, service, mapper and database still run, the "storage" is a mock that returns a fixed URL, and the test then reads the pizza back to prove the URL was persisted.
+
+In `@WebMvcTest` classes you have already used `@MockitoBean` for the service that is not part of the slice. It is the same annotation.
+
+---
+
+## 🔧 Overriding Properties in Tests
+
+Tests often need other configuration than production: another database, a temporary upload folder, a fake URL for an external API. Spring Boot gives you six places to put it, from "for every test" to "for this one test":
+
+| Where | Scope | Use it for |
+|-------|-------|------------|
+| `src/test/resources/application.properties` | every test | the shared test configuration |
+| `application-test.properties` + `@ActiveProfiles("test")` | the tests that activate the profile | a *named* configuration, for example `it` or `postgres` |
+| `@SpringBootTest(properties = "...")` or `@WebMvcTest(properties = "...")` | one test class | one or two values that are specific to this class |
+| `@TestPropertySource(properties = "...")` or `@TestPropertySource("/custom.properties")` | one test class | the same, or a whole file that does not follow Spring Boot's naming |
+| `@DynamicPropertySource` | one test class | values that are only known **at runtime**: the random port of a WireMock server, the URL of a container |
+| constructor argument (no Spring) | one unit test | `new OrderService(Set.of("BE"))` instead of `ReflectionTestUtils.setField(...)` |
+
+### The shared test file *replaces* the main file
+
+The first row hides a trap. `src/test/resources/application.properties` has the same name as `src/main/resources/application.properties`, and the test classpath comes first. Spring Boot therefore loads **only the test file**: the two are *not* merged. That is why [`application.properties` in the test resources](pizzastore-with-tests/src/test/resources/application.properties) of this project repeats the datasource settings, switches off `data.sql` and moves the upload folder:
+
+```properties
+spring.datasource.url=jdbc:h2:mem:testdb
+spring.jpa.hibernate.ddl-auto=create-drop
+spring.sql.init.mode=never
+file.upload-dir=target/test-uploads
+```
+
+If you want to *add* to the main configuration instead of replacing it, use a profile file (`application-test.properties` is loaded **on top of** `application.properties`) or one of the per-class options.
+
+### Per class: `properties`
+
+The two real-server tests of this project give each class its own database, so that their contexts never share the same in-memory H2 (see the next section for why that matters):
+
+```java
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+        properties = "spring.datasource.url=jdbc:h2:mem:api-integration-test")
+class PizzaStoreApiIntegrationTest { ... }
+```
+
+`@TestPropertySource(properties = "...")` does the same and has a slightly higher precedence.
+
+### Runtime values: `@DynamicPropertySource`
+
+Some values do not exist until the test starts: a container gets a random port, a fake HTTP server too. A static method with `@DynamicPropertySource` registers them as *suppliers*, so Spring reads them when it builds the context:
+
+```java
+// NOT part of the project: it needs a fake server on a random port
+@SpringBootTest
+class OpenFoodFactsIntegrationTest {
+
+    static final WireMockServer server = new WireMockServer(options().dynamicPort());
+
+    @BeforeAll
+    static void start() { server.start(); }
+
+    @DynamicPropertySource
+    static void registerProperties(DynamicPropertyRegistry registry) {
+        registry.add("spring.http.serviceclient.openfoodfacts.base-url", server::baseUrl);
+    }
+}
+```
+
+With Testcontainers the same method is replaced by `@ServiceConnection` (see [When H2 Is Not Enough](#-when-h2-is-not-enough-testcontainers)).
+
+### Which one wins?
+
+When the same key is set in several places, the strongest source wins: `@DynamicPropertySource`, then `@TestPropertySource`, then the `properties` attribute, then the profile and `application.properties` files. Whatever you choose, remember the price: **every different combination of these settings is a different context** (next section).
+
+> 💡 **Rule of thumb**: put what is true for *all* tests in the test `application.properties`, and what is true for *one* test next to that test. Prefer constructor injection over `ReflectionTestUtils` in unit tests: a renamed field then breaks the compiler instead of the test.
+
+---
+
+## 🧠 The Context Cache: Why Test Suites Get Slow
+
+Starting a Spring context takes seconds: component scan, bean creation, JPA, Tomcat. If every test class started its own, a suite of 20 classes would spend most of its time starting applications. Spring therefore **caches** every context it has started, in a map that lives for the whole test run, and hands the same instance to every test class that needs the same one.
+
+### What makes two tests "the same"?
+
+Spring builds a **cache key** from the configuration of the test class. Two classes share a context only if all of this is identical:
+
+| Part of the key | Changed by |
+|-----------------|-----------|
+| the configuration classes and initializers | `@ContextConfiguration`, `@Import`, the slice annotation (`@WebMvcTest(PizzaController.class)` vs. `@WebMvcTest(CustomerController.class)`) |
+| the active profiles | `@ActiveProfiles` |
+| the property sources | `properties = ...`, `@TestPropertySource` |
+| the context customizers | `@MockitoBean`, `@MockitoSpyBean`, `@DynamicPropertySource`, `@AutoConfigureMockMvc`, `@AutoConfigureRestTestClient` |
+| the web environment | `webEnvironment = MOCK` vs. `RANDOM_PORT` |
+
+A test that is annotated with `@DirtiesContext` additionally throws its context away after the class or method.
+
+### What does it look like in PizzaStore?
+
+Switch on the debug log of the cache package and run the suite:
+
+```bash
+mvn test -Dlogging.level.org.springframework.test.context.cache=DEBUG
+```
+
+Spring then prints a line like this after every lookup:
+
+```
+Spring test ApplicationContext cache statistics: [DefaultContextCache@... size = 12, maxSize = 32, contextUsageCount = 1, parentContextCount = 0, hitCount = 1523, missCount = 12, failureCount = 0]
+```
+
+Every **miss** is a context that had to be started. The 226 tests of this project use **12 different contexts**: one for `@JsonTest`, one for the three `@DataJpaTest` classes together (same key, so one start), one for every `@WebMvcTest` variant (a different controller, `RestTestClient` or `MockMvcTester` makes a different key), one each for the smoke test, `PizzaIntegrationTest`, `PizzaStoreApiIntegrationTest`, `BeanOverrideIntegrationTest` (it has two bean overrides), the `PizzaMapperTest` mini-context and the `@RestClientTest`. The six pure unit-test classes need none. This is a *good* number for a lesson that demonstrates every kind of test; a real project with the same coverage would try to have fewer.
+
+### The usual suspects
+
+| Cause | Why it costs a context | Do instead |
+|-------|-----------------------|-----------|
+| `@MockitoBean` / `@MockitoSpyBean` in a `@SpringBootTest` | every different set of overrides is a new key | use a slice (`@WebMvcTest`) and mock there, or share the same set of overrides in a base class |
+| `properties = ...` per class | every different value is a new key | only when you need it (see the H2 trap below), otherwise the test `application.properties` |
+| `@DirtiesContext` as a quick fix for "my tests influence each other" | the context is discarded and restarted | clean up the data in the test (`@Transactional`, unique data, `@AfterEach`) |
+| many profiles | one context per profile combination | keep `test` and at most one or two extra |
+| `@SpringBootTest` where a slice suffices | a full context is ten times heavier than a slice | the cheapest test that can fail (see [Choosing the Right Kind of Test](#-choosing-the-right-kind-of-test)) |
+
+If several classes really need the same full-stack setup, put it once in a shared base class (or a composed annotation) so that they have the same key:
+
+```java
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@AutoConfigureRestTestClient
+abstract class AbstractApiTest { }
+
+class PizzaApiTest extends AbstractApiTest { ... }
+class CustomerApiTest extends AbstractApiTest { ... }   // same context as PizzaApiTest
+```
+
+### The H2 trap: a cached context keeps its database
+
+A cached context is **never closed during the test run**, and `jdbc:h2:mem:testdb` is a *named* in-memory database that every context in the same JVM can reach. Two full contexts with the same name and `ddl-auto=create-drop` therefore work on the same tables, and one context can wipe or fill what the other expects. That is why the two classes that start a real server (`PizzaStoreApiIntegrationTest` and `BeanOverrideIntegrationTest`) each set their own `spring.datasource.url`. It is also the price of that choice: those classes can never share a context. When you build your own suite, either clean up after each test and share one context, or isolate completely and accept the startup time. Do not mix the two by accident.
+
+### Contexts are paused when idle
+
+Spring Framework 7 adds **automatic context pausing**: a cached context that no test is using is *paused* (its `Lifecycle` and `SmartLifecycle` beans are stopped) and restarted when a later test class needs it. This stops the background threads and scheduled tasks of the contexts that are only waiting in the cache. A component that must keep running can opt out by returning `false` from `SmartLifecycle#isPauseable()`. The cache itself holds at most 32 contexts by default and evicts the least recently used one; the limit can be changed with the JVM property `spring.test.context.cache.maxSize`.
+
+---
+
+## ✅ Testing Validation and Error Responses
+
+Lesson 10 added two things worth protecting: **validation rules** and the **`ProblemDetail` error contract**. Each can be tested at three levels:
+
+| Level | Question it answers | Example |
+|-------|---------------------|---------|
+| Plain `Validator` | *Is the constraint correct?* (`@DecimalMin("0.01")`) | [`RequestValidationTest`](pizzastore-with-tests/src/test/java/be/vives/pizzastore/dto/request/RequestValidationTest.java) |
+| `@WebMvcTest` | *Is `@Valid` wired up, and does the response have the right shape?* | `createPizza_InvalidRequest_Returns400WithFieldErrors` in `PizzaControllerRestTestClientTest` |
+| `@SpringBootTest` | *Does it work end to end, with the real exception handler?* | `Errors` in `PizzaStoreApiIntegrationTest` |
+
+### Constraints without Spring
+
+A `Validator` can be built by hand, so you can test a constraint in microseconds. The test names each violation as `"property path: message"`, which also shows *which element* of a list was wrong:
+
+```java
+@Nested
+class CreateOrderRequestTests {
+
+    @Test
+    void quantityZero_IsRejectedInsideTheOrderLine() {
+        CreateOrderRequest request = new CreateOrderRequest(1L,
+                List.of(new CreateOrderRequest.OrderLineRequest(1L, 0)));
+
+        assertThat(violationsOf(request)).containsExactly("orderLines[0].quantity: Quantity must be at least 1");
+    }
+}
+```
+
+`@ParameterizedTest` runs one test body for many inputs, perfect for boundary values:
+
+```java
+@ParameterizedTest
+@CsvSource({
+        "0.00,  false",
+        "0.01,  true",
+        "-5.00, false",
+        "99.99, true"
+})
+void price_MustBeAtLeastOneCent(String price, boolean valid) {
+    assertThat(violationsOf(pizza("Margherita", price, true)).isEmpty()).isEqualTo(valid);
+}
+```
+
+### Wiring and response shape in the web slice
+
+With the service mocked, `@Valid` must reject the request *before* the service is called, and the answer must be Lesson 10's problem detail with a list of field errors:
+
+```java
+@Test
+void createPizza_InvalidRequest_Returns400WithFieldErrors() {
+    CreatePizzaRequest request = new CreatePizzaRequest("", new BigDecimal("-1"), "Broken", true, null);
+
+    client.post().uri("/api/pizzas")
+            .contentType(MediaType.APPLICATION_JSON)
+            .body(request)
+            .exchange()
+            .expectStatus().isBadRequest()
+            .expectHeader().contentType(MediaType.APPLICATION_PROBLEM_JSON)
+            .expectBody()
+            .jsonPath("$.detail").isEqualTo("Validation failed")
+            .jsonPath("$.errors[?(@.field == 'name')].message").isEqualTo("Pizza name is required")
+            .jsonPath("$.errors[?(@.field == 'price')].message").isEqualTo("Price must be positive");
+
+    verify(pizzaService, never()).create(any());   // never reached the service
+}
+```
+
+### The whole error table, end to end
+
+[`PizzaStoreApiIntegrationTest.Errors`](pizzastore-with-tests/src/test/java/be/vives/pizzastore/integration/PizzaStoreApiIntegrationTest.java) automates the *Before and After* table of Lesson 10 against the running application:
+
+| Scenario | Expected |
+|----------|----------|
+| `GET /api/pizzas/987654` | `404` + `application/problem+json`, `detail` = "Pizza with id 987654 not found", `instance` = the path |
+| `POST /api/pizzas` with a blank name and a negative price | `400` + both field errors in `errors` |
+| `POST /api/pizzas` with `{ this is not json` | `400`, "Malformed JSON request" |
+| `GET /api/does-not-exist` | `404` as `application/problem+json`: an error thrown by Spring MVC itself |
+| `PATCH /api/pizzas/1` (no such mapping) | `405` with an `Allow` header |
+| Second customer with the same e-mail | `409` |
+| Order for an unknown pizza | `422`, and **no order is created** |
+| Cancel an order twice | `204`, then `422` "Order is already cancelled" |
+
+The "unknown URL" and "wrong method" rows are the payoff of `ResponseEntityExceptionHandler` in Lesson 10: even errors you never wrote a handler for have the same format.
+
+---
+
+## 💪 Assertions: AssertJ, JsonPath and Hamcrest
+
+### AssertJ: the default
+
+AssertJ assertions are fluent, readable and have excellent IDE completion:
+
+```java
+assertThat(result).isNotNull();
+assertThat(pizza.getPrice()).isEqualByComparingTo("8.50");     // BigDecimal: ignores scale (8.5 == 8.50)
+assertThat(pizzas).extracting(Pizza::getName).containsExactlyInAnyOrder("Cheap Pizza", "Mid Pizza");
+assertThatThrownBy(() -> service.cancel(1L)).isInstanceOf(BusinessException.class).hasMessage("Order is already cancelled");
+```
+
+Two details that bite beginners: compare `BigDecimal` with `isEqualByComparingTo` (`new BigDecimal("8.5").equals(new BigDecimal("8.50"))` is `false`), and prefer `containsExactlyInAnyOrder` over `containsExactly` when the order is not part of the requirement.
+
+### JsonPath: query JSON instead of comparing strings
+
+Comparing a complete JSON string is brittle: it breaks when you add a field. JsonPath asserts only what you care about:
+
+| JsonPath | Selects |
+|----------|---------|
+| `$.name` | the field `name` |
+| `$.content[0].name` | the `name` of the first element of `content` |
+| `$.content.length()` | the number of elements |
+| `$.errors[?(@.field == 'price')].message` | the message of the error whose `field` is `price` |
+| `$[?(@.price > 2.00)]` | all elements with a price above 2 (assert `.isEmpty()` for "none") |
+
+JsonPath is available in `MockMvc` (`jsonPath(...)`), in `MockMvcTester` (`extractingPath(...)`), in `RestTestClient` (`expectBody().jsonPath(...)`) and in `JacksonTester`.
+
+### Hamcrest: still around
+
+MockMvc tests use Hamcrest matchers (`is`, `hasSize`, `containsString`). The book notes that many developers keep them *inside MockMvc*, and that `RestTestClient` and AssertJ are "the modern defaults". In new code, prefer AssertJ.
+
+### Awaitility: asserting asynchronous work
+
+If code does its work on another thread (events, messaging, `@Async`), assert with Awaitility instead of `Thread.sleep(...)`: `await().atMost(5, SECONDS).untilAsserted(() -> ...)`. It is part of the test starter. PizzaStore has no asynchronous code, so there is no example in the project.
+
+---
+
+## 🐳 When H2 Is Not Enough: Testcontainers
+
+All database tests in this lesson run against **H2**. That is fast and needs no installation, but H2 is not PostgreSQL: SQL dialect, locking, JSON columns and native queries can behave differently. A test that passes on H2 can fail in production. The book (Chapter 10) therefore recommends **Testcontainers 2.0** for tests that need the *real* database: it starts a Docker container for the duration of the tests, and Spring Boot's **`@ServiceConnection`** wires the datasource to it with zero configuration:
+
+```java
+// NOT part of the project: the PostgreSQL container needs Docker
+@DataJpaTest
+@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)   // do not swap in H2
+@Testcontainers
+class PizzaRepositoryPostgresTest {
+
+    @Container
+    @ServiceConnection                                  // sets spring.datasource.url/username/password
+    static PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:17");
+
+    // ... the same tests as PizzaRepositoryTest, now against a real PostgreSQL
+}
+```
+
+You would add `spring-boot-testcontainers`, `org.testcontainers:testcontainers-junit-jupiter` and `org.testcontainers:testcontainers-postgresql` as test dependencies (Spring Boot 4 manages the version). The final PizzaStore's `prod` profile runs on PostgreSQL, which is exactly the situation where this pays off.
+
+> **This is deliberately not in the project.** It needs Docker, which a student's laptop or the build server may not have, and the example above has not been executed as part of this course. The book also warns that Docker Engine 29 has networking problems with Testcontainers 2.0. Start with H2, and add Testcontainers when the differences with production start to hurt.
+
+The same chapter shows `SpringApplication.from(...).with(TestcontainersConfiguration.class)`, a "test main" that starts your application with containerized infrastructure, so developers can run it without installing a database at all.
+
+---
+
+## 🏗️ Running the Tests with Maven: Surefire and Failsafe
+
+Maven runs tests with two plugins that differ in **when** they run and **which classes** they pick up:
+
+| | Surefire | Failsafe |
+|---|----------|----------|
+| Phase | `test` (before packaging) | `integration-test` + `verify` (after packaging) |
+| Picks up | `*Test`, `Test*`, `*Tests`, `*TestCase` | `*IT`, `IT*`, `*ITCase` |
+| Typical content | unit tests and slices | full-stack tests |
+| Command | `mvn test` | `mvn verify` (runs both) |
+
+Spring Boot's parent POM already configures and versions Surefire (3.5.6 in this project), which is why `mvn test` works with a bare `pom.xml`. **This project keeps all 226 tests in Surefire** to stay simple: one command, one result.
+
+In a real project you split them, so that developers get the fast feedback of `mvn test` while the slow full-stack tests run on `mvn verify` (and on the build server). That takes two steps: rename the full-stack classes to `*IT` (`ApplicationSmokeTest` becomes `ApplicationSmokeIT`) and add Failsafe to the `<build>`. The parent already manages its version:
+
+```xml
+<plugin>
+    <groupId>org.apache.maven.plugins</groupId>
+    <artifactId>maven-failsafe-plugin</artifactId>
+    <executions>
+        <execution>
+            <goals>
+                <goal>integration-test</goal>
+                <goal>verify</goal>
+            </goals>
+        </execution>
+    </executions>
+</plugin>
+```
+
+> ✅ **Verified on a copy of this project**: after renaming the four classes in `integration/` to `*IT`, `mvn verify` ran **206** tests in Surefire and then **20** in Failsafe. `mvn test` ran only the 206. The `verify` goal is not optional: without it a failing integration test does not fail the build.
+
+| Command | Does |
+|---------|------|
+| `mvn test` | the unit and slice tests only |
+| `mvn verify` | everything, including the `*IT` classes |
+| `mvn verify -DskipITs` | everything except the integration tests (still runs Surefire) |
+| `mvn test -Dtest=PizzaServiceTest#findById_ExistingPizza_ReturnsPizzaResponse` | one test method |
+| `mvn verify -Dtest=NONE -Dsurefire.failIfNoSpecifiedTests=false -Dit.test=ApplicationSmokeIT` | one integration test class |
+
+Both plugins fail the build on a red test, so a pipeline only has to run `mvn verify`.
 
 ---
 
 ## 💡 Best Practices
 
-### 1. Follow AAA Pattern
+### 1. Name tests after behavior, structure them as Given / When / Then
+
+`method_Condition_ExpectedResult` tells you what broke without opening the test:
 
 ```java
 @Test
-void testName() {
-    // Arrange (Given) - Set up test data
-    Pizza pizza = new Pizza("Test", new BigDecimal("10"), "Description");
-    when(repository.findById(1L)).thenReturn(Optional.of(pizza));
-    
-    // Act (When) - Execute the code under test
-    PizzaResponse result = service.findById(1L);
-    
-    // Assert (Then) - Verify the result
-    assertThat(result.name()).isEqualTo("Test");
+void cancel_whenAlreadyDelivered_shouldThrowException() {
+    // Given: an order that was delivered
+    // When:  we cancel it
+    // Then:  the business rule rejects it
 }
 ```
 
-### 2. Test Naming Conventions
+### 2. Test behavior, not implementation
 
-```java
-// Good names describe: What_Condition_Expected
-@Test
-void findById_ExistingPizza_ReturnsPizzaResponse() {}
+Assert on **results** (return values, status codes, stored data), and use `verify(...)` only for interactions that *are* the behavior (`verify(pizzaService, never()).create(any())`: "validation stops the request"). A test that mirrors every internal call breaks on every refactoring.
 
-@Test
-void findById_NonExistingPizza_ThrowsNotFoundException() {}
+### 3. Do not test the framework
 
-@Test
-void createPizza_InvalidPrice_Returns400() {}
-```
+Do not write tests proving that `save()` saves or that `@NotBlank` rejects blanks *in general*. Test **your** query, **your** constraint on **your** field, **your** mapping.
 
-### 3. One Assertion per Test
+### 4. Keep tests independent
 
-```java
-// ❌ Bad - multiple assertions
-@Test
-void testPizza() {
-    assertThat(pizza.getName()).isEqualTo("Margherita");
-    assertThat(pizza.getPrice()).isEqualTo(new BigDecimal("8.50"));
-    assertThat(pizza.getDescription()).contains("Classic");
-}
+No test may rely on another having run first. Use `@BeforeEach` for fresh state, roll back in `@DataJpaTest`, unique data in server tests. Test order is not guaranteed.
 
-// ✅ Good - one logical assertion
-@Test
-void getPizza_ReturnsCorrectProperties() {
-    assertThat(pizza)
-            .extracting(Pizza::getName, Pizza::getPrice, Pizza::getDescription)
-            .containsExactly("Margherita", new BigDecimal("8.50"), "Classic");
-}
-```
+### 5. Group with `@Nested`, vary with `@ParameterizedTest`
 
-### 4. Don't Test Framework Code
+JUnit's `@Nested` classes turn a long test class into readable sections (`RequestValidationTest.CreatePizzaRequestTests`, `PizzaStoreApiIntegrationTest.Errors`). The book calls this "living documentation": the test report reads like a specification. Use `@ParameterizedTest` for boundary values instead of copy-pasting a test.
 
-```java
-// ❌ Don't test Spring Data JPA methods
-@Test
-void testSave() {
-    Pizza pizza = new Pizza();
-    pizzaRepository.save(pizza);
-    // This just tests Spring Data JPA, not your code
-}
+### 6. Test edge cases and failures
 
-// ✅ Test custom queries
-@Test
-void findByPriceLessThan_ReturnsFilteredResults() {
-    // This tests your custom query
-    List<Pizza> result = pizzaRepository.findByPriceLessThan(new BigDecimal("10"));
-    assertThat(result).allMatch(p -> p.getPrice().compareTo(new BigDecimal("10")) < 0);
-}
-```
+The happy path rarely breaks. Test the empty list, the boundary (`0.00` vs `0.01`), the unknown id, the duplicate, the downstream server that returns `503`.
 
-### 5. Use Test Data Builders
+### 7. Keep it fast
 
-```java
-// Create a builder class for test data
-class PizzaTestDataBuilder {
-    private String name = "Test Pizza";
-    private BigDecimal price = new BigDecimal("10.00");
-    private String description = "Test description for this pizza";
+A suite you run on every save must stay fast. Prefer the cheapest test (see [Choosing the Right Kind of Test](#-choosing-the-right-kind-of-test)), limit the number of distinct `@SpringBootTest` configurations (see [The Context Cache](#-the-context-cache-why-test-suites-get-slow)), and never `Thread.sleep(...)`.
 
-    public PizzaTestDataBuilder withName(String name) {
-        this.name = name;
-        return this;
-    }
+### 8. A test must be able to fail
 
-    public PizzaTestDataBuilder withPrice(String price) {
-        this.price = new BigDecimal(price);
-        return this;
-    }
-
-    public Pizza build() {
-        return new Pizza(name, price, description);
-    }
-}
-
-// Use in tests
-@Test
-void test() {
-    Pizza pizza = new PizzaTestDataBuilder()
-            .withName("Custom Pizza")
-            .withPrice("15.00")
-            .build();
-}
-```
-
-### 6. Isolate Tests
-
-```java
-// ❌ Bad - tests depend on each other
-static Pizza sharedPizza;
-
-@Test
-void test1() {
-    sharedPizza = new Pizza();
-}
-
-@Test
-void test2() {
-    // Depends on test1 running first
-    assertThat(sharedPizza).isNotNull();
-}
-
-// ✅ Good - each test is independent
-@BeforeEach
-void setup() {
-    testPizza = new Pizza();
-}
-
-@Test
-void test1() {
-    // Uses testPizza
-}
-
-@Test
-void test2() {
-    // Also uses testPizza, independent of test1
-}
-```
-
-### 7. Test Edge Cases
-
-```java
-@Test
-void findByPriceLessThan_ZeroPrice_ReturnsEmpty() {}
-
-@Test
-void findByPriceLessThan_NegativePrice_ReturnsEmpty() {}
-
-@Test
-void findByPriceLessThan_VeryLargePrice_ReturnsAll() {}
-
-@Test
-void findByNameContaining_EmptyString_ReturnsAll() {}
-
-@Test
-void findByNameContaining_NullValue_ThrowsException() {}
-```
-
-### 8. Fast Tests
-
-```java
-// Unit tests should be < 10ms
-// Integration tests should be < 100ms
-// If tests are slow, you're testing too much
-
-// ✅ Fast - uses mocks
-@ExtendWith(MockitoExtension.class)
-class FastServiceTest {
-    @Mock
-    private Repository repository;
-    
-    @InjectMocks
-    private Service service;
-}
-
-// ❌ Slow - loads entire app
-@SpringBootTest
-class SlowServiceTest {
-    @Autowired
-    private Service service;
-}
-```
-
-### 9. Choose the Right Mock Annotation
-
-> **Important: `@Mock` vs `@MockitoBean` in Spring Boot 3.4+**
-
-| Scenario | Use | Why |
-|----------|-----|-----|
-| **Pure unit test** (no Spring) | `@Mock` + `@ExtendWith(MockitoExtension.class)` | Fastest - no Spring context |
-| **Spring integration test** | `@MockitoBean` with `@WebMvcTest` or `@SpringBootTest` | Tests Spring integration |
-
-```java
-// ✅ Pure unit test - service layer
-@ExtendWith(MockitoExtension.class)  // Still needed in Spring Boot 3!
-class PizzaServiceTest {
-    @Mock  // Mockito mock (no Spring)
-    private PizzaRepository repository;
-    
-    @InjectMocks
-    private PizzaService service;
-}
-
-// ✅ Spring integration test - controller layer
-@WebMvcTest(PizzaController.class)  // Loads Spring MVC
-class PizzaControllerTest {
-    @MockitoBean  // With Spring Integration
-    private PizzaService service;
-    
-    @Autowired
-    private MockMvc mockMvc;
-}
-```
-
-**Key Differences:**
-
-| Feature | `@Mock` | `@MockitoBean`  |
-|---------|---------|-----------------|
-| **Spring context** | ❌ No | ✅ Yes |
-| **Speed** | ⚡ Very fast (<10ms) | 🐌 Slower (loads Spring) |
-| **Use case** | Service tests | Controller tests |
-| **Annotation combo** | `@ExtendWith(MockitoExtension.class)` | `@WebMvcTest` or `@SpringBootTest` |
-| **Package** | `org.mockito` | `org.springframework.test.context.bean.override.mockito` |
-
-**Recommendation:**
-- Use `@Mock` for 70% of your tests (service layer unit tests)
-- Use `@MockitoBean` for 30% of your tests (controller/integration tests)
+A test that has never failed has not been proven to work. When you write one, break the production code on purpose (or change the expected value) and check that the test turns red.
 
 ---
 
-## 🍕 PizzaStore Test Suite
+## 🍕 The PizzaStore Test Suite
 
-See the `pizzastore-with-tests/` project for:
+The project contains **226 tests**. `mvn test` runs them all in about half a minute.
 
-### Repository Tests (`@DataJpaTest`)
-- ✅ `CustomerRepositoryTest` - All custom queries tested
-- ✅ `OrderRepositoryTest` - All custom queries tested
-- ✅ `PizzaRepositoryTest` - All custom queries tested
-- Tests custom queries with in-memory H2
-- Fast execution (<100ms per test)
+| Kind | Test class | Tests | Covers |
+|------|------------|------:|--------|
+| **Unit** | `PizzaServiceTest`, `CustomerServiceTest`, `OrderServiceTest` | 51 | services with mocked repositories/mappers |
+| | `NutritionImportServiceTest` | 9 | Open Food Facts failures → PizzaStore exceptions, Mockito |
+| | `RequestValidationTest` (4 nested classes) | 32 | Jakarta constraints, parameterized |
+| | `PizzaControllerStandaloneTest` | 3 | `RestTestClient.bindToController` |
+| | `PizzaMapperTest` | 3 | MapStruct mapper in a 2-bean context |
+| **Slice** | `PizzaRepositoryTest`, `CustomerRepositoryTest`, `OrderRepositoryTest` | 40 | `@DataJpaTest`, custom queries |
+| | `PizzaControllerTest`, `CustomerControllerTest`, `OrderControllerTest` | 49 | `@WebMvcTest` + MockMvc |
+| | `PizzaControllerRestTestClientTest` | 6 | `@WebMvcTest` + `RestTestClient` |
+| | `PizzaControllerMockMvcTesterTest` | 3 | `@WebMvcTest` + `MockMvcTester` |
+| | `PizzaJsonTest` | 5 | `@JsonTest` |
+| | `OpenFoodFactsClientTest` | 5 | `@RestClientTest` + declarative client |
+| **Full stack** | `ApplicationSmokeTest` | 1 | context starts |
+| | `PizzaIntegrationTest` | 4 | `@SpringBootTest` + MockMvc + `@Transactional` |
+| | `PizzaStoreApiIntegrationTest` (3 nested classes) | 13 | `RANDOM_PORT` + `RestTestClient` |
+| | `BeanOverrideIntegrationTest` | 2 | `@MockitoBean`, `@MockitoSpyBean` |
 
-### Service Tests (Mockito)
-- ✅ `CustomerServiceTest` - All CRUD operations tested
-- ✅ `OrderServiceTest` - All CRUD operations tested
-- ✅ `PizzaServiceTest` - All CRUD operations tested
-- Mocked dependencies (repository, mapper)
-- Very fast (<10ms per test)
+Most service, repository and controller tests have a counterpart in the final PizzaStore's suite. Here they run without Spring Security, which only arrives in Lesson 12, so the tests that check `401`/`403` per role are left out; in the final project the controller tests are also written with `RestTestClient` instead of MockMvc. The comparison classes (`PizzaControllerRestTestClientTest`, `PizzaControllerMockMvcTesterTest`, `PizzaControllerStandaloneTest`), `PizzaJsonTest`, `PizzaMapperTest`, the full-stack tests and the Open Food Facts tests demonstrate the Spring Boot 4 additions of this lesson.
 
-### Controller Tests (`@WebMvcTest`)
-- ✅ `CustomerControllerTest` - All endpoints tested
-- ✅ `OrderControllerTest` - All endpoints tested
-- ✅ `PizzaControllerTest` - All endpoints tested
-- MockMvc for HTTP testing
-- JSON response validation
-- Status codes and headers tested
-
-### Integration Tests (`@SpringBootTest`)
-- ✅ `PizzaIntegrationTest` - Full CRUD flows
-- Tests complete application
-- Real database (H2 in-memory)
-- End-to-end scenarios
-
-### Validation & Exception Tests
-- ✅ `ValidationTest` - All validation scenarios
-- ✅ `ExceptionHandlingTest` - All error responses
-
-**Total: 100+ tests covering >80% of code**
+The new test classes start with a Javadoc comment that says what they demonstrate, so reading the test sources is a good way to study this lesson.
 
 ---
 
@@ -1649,81 +1080,99 @@ See the `pizzastore-with-tests/` project for:
 
 ### What We Learned
 
-1. **Testing Pyramid**
-   - 70% Unit Tests (fast, isolated)
-   - 20% Integration Tests (medium, realistic)
-   - 10% E2E Tests (slow, complete)
-
-2. **JUnit 5**
-   - `@Test`, `@BeforeEach`, `@AfterEach`
-   - Assertions and exception testing
-   - Test lifecycle
-
-3. **Spring Boot Testing**
-   - `@DataJpaTest` for repositories
-   - `@WebMvcTest` for controllers
-   - `@SpringBootTest` for integration
-
-4. **Mockito**
-   - `@Mock` and `@InjectMocks`
-   - `when().thenReturn()` for behavior
-   - `verify()` for interactions
-
-5. **MockMvc**
-   - HTTP request/response testing
-   - JSONPath for JSON assertions
-   - Status codes and headers
-
-6. **AssertJ**
-   - Fluent assertions
-   - Better readability
-   - Rich assertions
+1. **Test pyramid**: many fast unit tests, fewer slice tests, a handful of full-stack tests.
+2. **Spring Boot 4 test setup**: modular test starters (`spring-boot-starter-webmvc-test`, `-data-jpa-test`, `-restclient-test`), JUnit 6, and moved annotation packages.
+3. **Unit tests**: JUnit + Mockito + AssertJ without Spring; Jakarta `Validator` and MapStruct mappers can be tested the same way.
+4. **Slices**: `@DataJpaTest` (repositories + H2), `@WebMvcTest` (controllers + advice), `@JsonTest` (JSON contract), `@RestClientTest` (outgoing HTTP with `MockRestServiceServer`).
+5. **`RestTestClient`**: one fluent API for mock MVC, a single controller, or a real server, next to MockMvc (Hamcrest) and `MockMvcTester` (AssertJ).
+6. **`@SpringBootTest`**: `MOCK` + `@Transactional` rollback or `RANDOM_PORT` + unique data; smoke test; context caching.
+7. **Bean overrides**: `@MockitoBean` and `@MockitoSpyBean` replace `@MockBean` and `@SpyBean`.
+   **Properties**: test `application.properties` (replaces the main file), profiles, `properties`, `@TestPropertySource`, `@DynamicPropertySource`.
+   **Context cache**: every different configuration is a new context; slices, shared base classes and no `@DirtiesContext` keep the suite fast.
+8. **Testing Lesson 10's contract**: constraints, `@Valid` wiring and every `ProblemDetail` response, at three levels.
+9. **Testcontainers** for tests that need the real database.
+10. **Maven**: Surefire runs `*Test` in `mvn test`, Failsafe runs `*IT` in `mvn verify`.
 
 ### Key Takeaways
 
-✅ **Write tests first** - TDD when possible  
-✅ **Test behavior, not implementation**  
-✅ **One assertion per test**  
-✅ **Fast, isolated, repeatable**  
-✅ **Test edge cases**  
-✅ **Good names describe what/condition/expected**  
-✅ **AAA pattern** (Arrange, Act, Assert)  
+✅ Use the cheapest test that can fail for the reason you care about
+✅ A slice only knows what you tell it: import configuration, mock the layers it does not load
+✅ `RestTestClient` is the one client for slice and full-stack tests; MockMvc stays supported
+✅ `@Transactional` rolls back MockMvc tests, not tests against a real server
+✅ Create test data through the API with unique values, and never rely on an empty database
+✅ Every different `@MockitoBean`, profile or property is a new context: count your contexts
+✅ Test behavior, not implementation, and make sure a test can fail
 
 ---
 
 ## 📖 Additional Resources
 
-- [Spring Boot Testing Documentation](https://docs.spring.io/spring-boot/docs/current/reference/html/features.html#features.testing)
-- [JUnit 5 User Guide](https://junit.org/junit5/docs/current/user-guide/)
+- [Spring Boot Reference: Testing](https://docs.spring.io/spring-boot/reference/testing/index.html)
+- [Spring Boot Reference: Test Slices (auto-configured tests)](https://docs.spring.io/spring-boot/reference/testing/spring-boot-applications.html)
+- [Spring Framework Reference: Testing](https://docs.spring.io/spring-framework/reference/testing.html)
+- [Spring Framework Reference: `RestTestClient`](https://docs.spring.io/spring-framework/reference/testing/resttestclient.html)
+- [Spring Framework Reference: Bean Overriding in Tests](https://docs.spring.io/spring-framework/reference/testing/testcontext-framework/bean-overriding.html)
+- [JUnit 6 User Guide](https://docs.junit.org/current/user-guide/)
 - [Mockito Documentation](https://javadoc.io/doc/org.mockito/mockito-core/latest/org/mockito/Mockito.html)
 - [AssertJ Documentation](https://assertj.github.io/doc/)
-- [Testing Spring Boot Applications Masterclass](https://rieckpil.de/courses/testing-spring-boot-applications-masterclass/) - Excellent resource!
+- [Testcontainers for Java](https://java.testcontainers.org/)
+
+**Philip Riecks (rieckpil.de)**, the most-read blog on Spring Boot testing. Many articles were written before Spring Boot 4: the ideas hold, but package names and `@MockBean` have changed, so use the tables in this lesson when a listing does not compile.
+
+- [What's New for Testing in Spring Boot 4.0 and Spring Framework 7](https://rieckpil.de/whats-new-for-testing-in-spring-boot-4-0-and-spring-framework-7/)
+- [Spring Boot Test Slices: Overview and Usage](https://rieckpil.de/spring-boot-test-slices-overview-and-usage/)
+- [Improve Build Times with Context Caching](https://rieckpil.de/improve-build-times-with-context-caching-from-spring-test/)
+- [Override Spring Boot Configuration Properties for Tests](https://rieckpil.de/override-spring-boot-configuration-properties-for-tests/)
+- [Maven Setup for Testing Java Applications](https://rieckpil.de/maven-setup-for-testing-java-applications/)
+- [Guide to Testing Spring Boot Applications with MockMvc](https://rieckpil.de/guide-to-testing-spring-boot-applications-with-mockmvc/)
+- [Testing JSON Serialization with `@JsonTest`](https://rieckpil.de/testing-your-json-serialization-with-jsontest/)
+- [Write Spring Boot Integration Tests with Testcontainers](https://rieckpil.de/howto-write-spring-boot-integration-tests-with-a-real-database/)
+- [The Missing Spring Boot Testing Manual](https://rieckpil.de/free-spring-boot-testing-book/) (free book)
+- [Start here: all testing articles](https://rieckpil.de/start-here/)
+
+---
+
+**Note on the book**: *Pro Spring Boot 4* devotes Chapter 10, *Advanced Testing with Spring Boot* (p. 259-278), to this lesson: *The Testing Pyramid and @SpringBootTest*, *Modularized Test Starters*, *Embracing the JUnit 6 Baseline* (with `@Nested`), *Mastering Test Slices* (`@WebMvcTest`, `@JsonTest`, `@RestClientTest`, plus the WebFlux and R2DBC slices), *Verification Strategies: Mockito and Hamcrest*, *RestTestClient*, *Advanced Assertions: Awaitility and JsonPath*, *Advanced Bean Overriding* (`@MockitoBean`, `@MockitoSpyBean`), `@RecordApplicationEvents`, and *Testcontainers 2.0* with `@ServiceConnection`. The unified `RestTestClient` was already introduced in Chapter 3 (*Unified Testing with RestTestClient*, p. 77-78: `bindToController` for unit tests and `bindToServer`/`@AutoConfigureRestTestClient` for integration tests), and Chapter 1 (Listing 1-7) uses it in the very first test of the quick start; Chapter 4 (*Integration Testing the Repository*, `@SpringBootTest` + `@Transactional`), Chapter 6 (`@DataJpaTest` and repository tests) and Chapter 7 (`@DataMongoTest` with Testcontainers) test the persistence layer. Where PizzaStore goes beyond the book: tests for the Lesson 10 error contract, `MockMvcTester`, parameterized Jakarta-validation tests, and an explicit comparison of MockMvc, `MockMvcTester` and `RestTestClient` for the same controller. Two things to watch when you read the book: its Listing 3-11 imports `AutoConfigureRestTestClient` from `org.springframework.boot.test.autoconfigure.web.servlet`, while in Spring Boot 4.0.8 the annotation lives in `org.springframework.boot.resttestclient.autoconfigure` (as in Listings 1-7 and 4-10, and as used in this project); and although Chapter 3 presents `RestTestClient` as replacing MockMvc and `WebTestClient`, MockMvc remains fully supported and is still used by the book itself in Listing 10-4. The book's `@RecordApplicationEvents` example has no counterpart here because PizzaStore publishes no application events, and its Testcontainers example is shown in this README but not executed in the project (no Docker requirement for students).
 
 ---
 
 ## 🚀 Runnable Project
 
-A complete, production-ready Spring Boot project with **comprehensive test suite** is available in:
-
-**`pizzastore-with-tests/`**
+**[`pizzastore-with-tests/`](pizzastore-with-tests)** is Lesson 10's [`pizzastore-with-validation`](../lesson-10-validation-exception-handling/pizzastore-with-validation) plus the test suite described above. **The production code is identical**: the project differs from the final PizzaStore only by what Lessons 12 (security) and 13 (OpenAPI) still have to add.
 
 The project includes:
-- ✅ 100+ tests covering all layers
-- ✅ Repository tests with @DataJpaTest
-- ✅ Service tests with Mockito
-- ✅ Controller tests with MockMvc
-- ✅ Integration tests with @SpringBootTest
-- ✅ Validation testing
-- ✅ Exception handling testing
-- ✅ >80% code coverage
-- ✅ Extends Lesson 9 project (with validation)
+- ✅ **Spring Boot 4.0** on **Java 25** (`spring-boot-starter-webmvc`, `-data-jpa`, `-validation`, H2, MapStruct 1.6.3), JUnit 6, Mockito 5, AssertJ
+- ✅ Everything from Lessons 6a, 7, 9 and 10
+- ✅ 226 tests: unit tests, `@DataJpaTest`, `@WebMvcTest`, `@JsonTest`, `@RestClientTest`, `@SpringBootTest`
+- ✅ The same web-layer test with MockMvc, `RestTestClient` and `MockMvcTester`
+- ✅ `RestTestClient` against a real server on a random port
+- ❌ No security yet: Lesson 12
+- ❌ No API documentation yet: Lesson 13
 
-Run tests:
+### Running the Tests
+
 ```bash
 cd pizzastore-with-tests
 mvn test
 ```
 
+Run one test class, or one nested class:
+
+```bash
+mvn test -Dtest=PizzaControllerRestTestClientTest
+mvn test -Dtest='PizzaStoreApiIntegrationTest*'
+```
+
+The tests need a JDK 25 (`java -version`). If your default `mvn` picks another JDK, point `JAVA_HOME` to JDK 25 first.
+
+### Running the Application
+
+```bash
+mvn spring-boot:run
+```
+
+The H2 console is available at http://localhost:8080/h2-console (JDBC URL `jdbc:h2:mem:pizzastore_tests`, user `sa`, no password).
+
 ---
 
-**Congratulations!** 🎉 You now know how to write comprehensive tests for production-ready Spring Boot APIs!
+**Congratulations!** 🎉 PizzaStore is now protected by an automated safety net. Continue to [Lesson 12: JWT Authentication](../lesson-12-jwt-authentication/README.md) to secure the API, and watch how the tests tell you what the new security rules break.

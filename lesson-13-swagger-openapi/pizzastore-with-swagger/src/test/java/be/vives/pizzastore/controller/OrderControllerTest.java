@@ -5,14 +5,16 @@ import be.vives.pizzastore.dto.request.CreateOrderRequest;
 import be.vives.pizzastore.dto.request.UpdateOrderStatusRequest;
 import be.vives.pizzastore.dto.response.OrderLineResponse;
 import be.vives.pizzastore.dto.response.OrderResponse;
+import be.vives.pizzastore.exception.BusinessException;
 import be.vives.pizzastore.exception.GlobalExceptionHandler;
+import be.vives.pizzastore.exception.ResourceNotFoundException;
 import be.vives.pizzastore.security.JwtUtil;
 import be.vives.pizzastore.security.SecurityConfig;
 import be.vives.pizzastore.service.OrderService;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureRestTestClient;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -21,31 +23,30 @@ import org.springframework.http.MediaType;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.client.RestTestClient;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.Arrays;
 import java.util.List;
 
-import static org.hamcrest.Matchers.hasSize;
-import static org.hamcrest.Matchers.is;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.*;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
+/**
+ * Web-layer slice for OrderController with RestTestClient and the real SecurityConfig:
+ * only a CUSTOMER can place an order, every other order endpoint is for ADMIN.
+ */
 @WebMvcTest(controllers = OrderController.class)
+@AutoConfigureRestTestClient
 @Import({SecurityConfig.class, GlobalExceptionHandler.class})
 class OrderControllerTest {
 
     @Autowired
-    private MockMvc mockMvc;
-
-    @Autowired
-    private ObjectMapper objectMapper;
+    private RestTestClient client;
 
     @MockitoBean
     private OrderService orderService;
@@ -56,26 +57,41 @@ class OrderControllerTest {
     @MockitoBean
     private JwtUtil jwtUtil;
 
+    private static OrderResponse order(long id, long customerId, String customerName, OrderStatus status, double total) {
+        return new OrderResponse(id, "ORD-2024-%06d".formatted(id), customerId, customerName,
+                List.of(), BigDecimal.valueOf(total), status, LocalDateTime.now());
+    }
+
+    private static OrderResponse orderWithLines() {
+        OrderLineResponse line1 = new OrderLineResponse(1L, 1L, "Margherita", 2, BigDecimal.valueOf(8.50), BigDecimal.valueOf(17.00));
+        OrderLineResponse line2 = new OrderLineResponse(2L, 2L, "Pepperoni", 1, BigDecimal.valueOf(10.00), BigDecimal.valueOf(10.00));
+        return new OrderResponse(1L, "ORD-2024-000001", 1L, "John Doe",
+                List.of(line1, line2), BigDecimal.valueOf(27.00), OrderStatus.PENDING, LocalDateTime.now());
+    }
+
+    private static CreateOrderRequest validOrderRequest() {
+        return new CreateOrderRequest(1L, List.of(
+                new CreateOrderRequest.OrderLineRequest(1L, 2),
+                new CreateOrderRequest.OrderLineRequest(2L, 1)));
+    }
+
+    // ---------- reading (ADMIN) ----------
+
     @Test
     @WithMockUser(roles = "ADMIN")
-    void getOrders_withAdminRole_shouldReturnAllOrders() throws Exception {
-        // Arrange
-        OrderResponse order1 = new OrderResponse(1L, "ORD-2024-000001", 1L, "John Doe", 
-                List.of(), BigDecimal.valueOf(25.50), OrderStatus.PENDING, LocalDateTime.now());
-        OrderResponse order2 = new OrderResponse(2L, "ORD-2024-000002", 2L, "Jane Smith", 
-                List.of(), BigDecimal.valueOf(30.00), OrderStatus.DELIVERED, LocalDateTime.now());
-        Page<OrderResponse> page = new PageImpl<>(Arrays.asList(order1, order2));
-
+    void getOrders_withAdminRole_shouldReturnAllOrders() {
+        Page<OrderResponse> page = new PageImpl<>(List.of(
+                order(1, 1, "John Doe", OrderStatus.PENDING, 25.50),
+                order(2, 2, "Jane Smith", OrderStatus.DELIVERED, 30.00)));
         when(orderService.findAll(any(Pageable.class))).thenReturn(page);
 
-        // Act & Assert
-        mockMvc.perform(get("/api/orders")
-                        .param("page", "0")
-                        .param("size", "10"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.content", hasSize(2)))
-                .andExpect(jsonPath("$.content[0].orderNumber", is("ORD-2024-000001")))
-                .andExpect(jsonPath("$.content[1].orderNumber", is("ORD-2024-000002")));
+        client.get().uri("/api/orders?page=0&size=10")
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath("$.content.length()").isEqualTo(2)
+                .jsonPath("$.content[0].orderNumber").isEqualTo("ORD-2024-000001")
+                .jsonPath("$.content[1].orderNumber").isEqualTo("ORD-2024-000002");
 
         verify(orderService).findAll(any(Pageable.class));
         verify(orderService, never()).findByCustomerId(any(), any());
@@ -84,23 +100,17 @@ class OrderControllerTest {
 
     @Test
     @WithMockUser(roles = "ADMIN")
-    void getOrders_withCustomerId_shouldReturnCustomerOrders() throws Exception {
-        // Arrange
-        OrderResponse order1 = new OrderResponse(1L, "ORD-2024-000001", 1L, "John Doe", 
-                List.of(), BigDecimal.valueOf(25.50), OrderStatus.PENDING, LocalDateTime.now());
-        Page<OrderResponse> page = new PageImpl<>(List.of(order1));
-
+    void getOrders_withCustomerId_shouldReturnCustomerOrders() {
+        Page<OrderResponse> page = new PageImpl<>(List.of(order(1, 1, "John Doe", OrderStatus.PENDING, 25.50)));
         when(orderService.findByCustomerId(eq(1L), any(Pageable.class))).thenReturn(page);
 
-        // Act & Assert
-        mockMvc.perform(get("/api/orders")
-                        .param("customerId", "1")
-                        .param("page", "0")
-                        .param("size", "10"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.content", hasSize(1)))
-                .andExpect(jsonPath("$.content[0].customerId", is(1)))
-                .andExpect(jsonPath("$.content[0].customerName", is("John Doe")));
+        client.get().uri("/api/orders?customerId=1&page=0&size=10")
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath("$.content.length()").isEqualTo(1)
+                .jsonPath("$.content[0].customerId").isEqualTo(1)
+                .jsonPath("$.content[0].customerName").isEqualTo("John Doe");
 
         verify(orderService).findByCustomerId(eq(1L), any(Pageable.class));
         verify(orderService, never()).findAll(any());
@@ -109,23 +119,17 @@ class OrderControllerTest {
 
     @Test
     @WithMockUser(roles = "ADMIN")
-    void getOrders_withStatus_shouldReturnOrdersWithStatus() throws Exception {
-        // Arrange
-        OrderResponse order1 = new OrderResponse(1L, "ORD-2024-000001", 1L, "John Doe", 
-                List.of(), BigDecimal.valueOf(25.50), OrderStatus.PENDING, LocalDateTime.now());
-        OrderResponse order2 = new OrderResponse(2L, "ORD-2024-000002", 2L, "Jane Smith", 
-                List.of(), BigDecimal.valueOf(30.00), OrderStatus.PENDING, LocalDateTime.now());
-        Page<OrderResponse> page = new PageImpl<>(Arrays.asList(order1, order2));
-
+    void getOrders_withStatus_shouldReturnOrdersWithStatus() {
+        Page<OrderResponse> page = new PageImpl<>(List.of(
+                order(1, 1, "John Doe", OrderStatus.PENDING, 25.50),
+                order(2, 2, "Jane Smith", OrderStatus.PENDING, 30.00)));
         when(orderService.findByStatus(eq(OrderStatus.PENDING), any(Pageable.class))).thenReturn(page);
 
-        // Act & Assert
-        mockMvc.perform(get("/api/orders")
-                        .param("status", "PENDING")
-                        .param("page", "0")
-                        .param("size", "10"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.content", hasSize(2)));
+        client.get().uri("/api/orders?status=PENDING&page=0&size=10")
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath("$.content.length()").isEqualTo(2);
 
         verify(orderService).findByStatus(eq(OrderStatus.PENDING), any(Pageable.class));
         verify(orderService, never()).findAll(any());
@@ -134,191 +138,229 @@ class OrderControllerTest {
 
     @Test
     @WithMockUser(roles = "ADMIN")
-    void getOrder_whenExists_shouldReturnOrder() throws Exception {
-        // Arrange
-        OrderLineResponse line1 = new OrderLineResponse(1L, 1L, "Margherita", 2, BigDecimal.valueOf(8.50), BigDecimal.valueOf(17.00));
-        OrderLineResponse line2 = new OrderLineResponse(2L, 2L, "Pepperoni", 1, BigDecimal.valueOf(10.00), BigDecimal.valueOf(10.00));
-        OrderResponse order = new OrderResponse(1L, "ORD-2024-000001", 1L, "John Doe", 
-                Arrays.asList(line1, line2), BigDecimal.valueOf(27.00), OrderStatus.PENDING, LocalDateTime.now());
+    void getOrder_whenExists_shouldReturnOrder() {
+        when(orderService.findById(1L)).thenReturn(orderWithLines());
 
-        when(orderService.findById(1L)).thenReturn(order);
-
-        // Act & Assert
-        mockMvc.perform(get("/api/orders/1"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.id", is(1)))
-                .andExpect(jsonPath("$.orderNumber", is("ORD-2024-000001")))
-                .andExpect(jsonPath("$.totalAmount", is(27.00)))
-                .andExpect(jsonPath("$.orderLines", hasSize(2)))
-                .andExpect(jsonPath("$.orderLines[0].pizzaName", is("Margherita")))
-                .andExpect(jsonPath("$.orderLines[0].quantity", is(2)))
-                .andExpect(jsonPath("$.orderLines[1].pizzaName", is("Pepperoni")))
-                .andExpect(jsonPath("$.orderLines[1].quantity", is(1)));
+        client.get().uri("/api/orders/{id}", 1)
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath("$.id").isEqualTo(1)
+                .jsonPath("$.orderNumber").isEqualTo("ORD-2024-000001")
+                .jsonPath("$.totalAmount").isEqualTo(27.00)
+                .jsonPath("$.orderLines.length()").isEqualTo(2)
+                .jsonPath("$.orderLines[0].pizzaName").isEqualTo("Margherita")
+                .jsonPath("$.orderLines[0].quantity").isEqualTo(2)
+                .jsonPath("$.orderLines[1].pizzaName").isEqualTo("Pepperoni")
+                .jsonPath("$.orderLines[1].quantity").isEqualTo(1);
 
         verify(orderService).findById(1L);
     }
 
     @Test
     @WithMockUser(roles = "ADMIN")
-    void getOrder_whenNotExists_shouldReturnNotFound() throws Exception {
-        // Arrange
-        when(orderService.findById(999L)).thenReturn(null);
+    void getOrder_whenNotExists_shouldReturnNotFound() {
+        when(orderService.findById(999L)).thenThrow(new ResourceNotFoundException("Order", 999L));
 
-        // Act & Assert
-        mockMvc.perform(get("/api/orders/999"))
-                .andExpect(status().isNotFound());
+        client.get().uri("/api/orders/{id}", 999)
+                .exchange()
+                .expectStatus().isNotFound();
 
         verify(orderService).findById(999L);
     }
 
+    // ---------- creating (CUSTOMER) ----------
+
     @Test
     @WithMockUser(roles = "CUSTOMER")
-    void createOrder_shouldReturnCreatedOrder() throws Exception {
-        // Arrange
-        CreateOrderRequest.OrderLineRequest lineRequest1 = new CreateOrderRequest.OrderLineRequest(1L, 2);
-        CreateOrderRequest.OrderLineRequest lineRequest2 = new CreateOrderRequest.OrderLineRequest(2L, 1);
-        CreateOrderRequest request = new CreateOrderRequest(1L, Arrays.asList(lineRequest1, lineRequest2));
+    void createOrder_shouldReturnCreatedOrder() {
+        when(orderService.create(any(CreateOrderRequest.class))).thenReturn(orderWithLines());
 
-        OrderLineResponse line1 = new OrderLineResponse(1L, 1L, "Margherita", 2, BigDecimal.valueOf(8.50), BigDecimal.valueOf(17.00));
-        OrderLineResponse line2 = new OrderLineResponse(2L, 2L, "Pepperoni", 1, BigDecimal.valueOf(10.00), BigDecimal.valueOf(10.00));
-        OrderResponse response = new OrderResponse(1L, "ORD-2024-000001", 1L, "John Doe", 
-                Arrays.asList(line1, line2), BigDecimal.valueOf(27.00), OrderStatus.PENDING, LocalDateTime.now());
-
-        when(orderService.create(any(CreateOrderRequest.class))).thenReturn(response);
-
-        // Act & Assert
-        mockMvc.perform(post("/api/orders")
-                        .with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isCreated())
-                .andExpect(header().exists("Location"))
-                .andExpect(header().string("Location", org.hamcrest.Matchers.endsWith("/api/orders/1")))
-                .andExpect(jsonPath("$.id", is(1)))
-                .andExpect(jsonPath("$.orderNumber", is("ORD-2024-000001")))
-                .andExpect(jsonPath("$.totalAmount", is(27.00)))
-                .andExpect(jsonPath("$.orderLines", hasSize(2)));
+        client.post().uri("/api/orders")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(validOrderRequest())
+                .exchange()
+                .expectStatus().isCreated()
+                .expectHeader().valueMatches("Location", ".*/api/orders/1")
+                .expectBody()
+                .jsonPath("$.id").isEqualTo(1)
+                .jsonPath("$.orderNumber").isEqualTo("ORD-2024-000001")
+                .jsonPath("$.totalAmount").isEqualTo(27.00)
+                .jsonPath("$.orderLines.length()").isEqualTo(2);
 
         verify(orderService).create(any(CreateOrderRequest.class));
     }
 
     @Test
+    @WithMockUser(roles = "CUSTOMER")
+    void createOrder_whenCustomerNotFound_shouldReturnProblemDetail() {
+        CreateOrderRequest request = new CreateOrderRequest(999L, List.of(new CreateOrderRequest.OrderLineRequest(1L, 2)));
+        when(orderService.create(any(CreateOrderRequest.class)))
+                .thenThrow(new BusinessException("Customer with id 999 not found"));
+
+        client.post().uri("/api/orders")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(request)
+                .exchange()
+                .expectStatus().isEqualTo(422)
+                .expectHeader().contentType(MediaType.APPLICATION_PROBLEM_JSON)
+                .expectBody()
+                .jsonPath("$.status").isEqualTo(422)
+                .jsonPath("$.title").isEqualTo("Unprocessable Content")
+                .jsonPath("$.detail").isEqualTo("Customer with id 999 not found")
+                .jsonPath("$.type").isEqualTo("https://api.pizzastore.example.com/errors/business-rule");
+
+        verify(orderService).create(any(CreateOrderRequest.class));
+    }
+
+    @Test
+    @WithMockUser(roles = "CUSTOMER")
+    void createOrder_withInvalidOrderLine_shouldReturnBadRequest() {
+        // a negative quantity must be rejected before it ever reaches the service
+        CreateOrderRequest request = new CreateOrderRequest(1L, List.of(new CreateOrderRequest.OrderLineRequest(1L, -5)));
+
+        client.post().uri("/api/orders")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(request)
+                .exchange()
+                .expectStatus().isBadRequest();
+
+        verify(orderService, never()).create(any());
+    }
+
+    // ---------- status and cancel (ADMIN) ----------
+
+    @Test
     @WithMockUser(roles = "ADMIN")
-    void updateOrderStatus_whenExists_shouldReturnUpdatedOrder() throws Exception {
-        // Arrange
-        UpdateOrderStatusRequest request = new UpdateOrderStatusRequest(OrderStatus.PREPARING);
-        OrderResponse response = new OrderResponse(1L, "ORD-2024-000001", 1L, "John Doe", 
-                List.of(), BigDecimal.valueOf(27.00), OrderStatus.PREPARING, LocalDateTime.now());
+    void updateOrderStatus_whenExists_shouldReturnUpdatedOrder() {
+        when(orderService.updateStatus(eq(1L), eq(OrderStatus.PREPARING)))
+                .thenReturn(order(1, 1, "John Doe", OrderStatus.PREPARING, 27.00));
 
-        when(orderService.updateStatus(eq(1L), eq(OrderStatus.PREPARING))).thenReturn(response);
-
-        // Act & Assert
-        mockMvc.perform(patch("/api/orders/1/status")
-                        .with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.id", is(1)));
+        client.patch().uri("/api/orders/{id}/status", 1)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(new UpdateOrderStatusRequest(OrderStatus.PREPARING))
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath("$.id").isEqualTo(1)
+                .jsonPath("$.status").isEqualTo("PREPARING");
 
         verify(orderService).updateStatus(eq(1L), eq(OrderStatus.PREPARING));
     }
 
     @Test
     @WithMockUser(roles = "ADMIN")
-    void updateOrderStatus_whenNotExists_shouldReturnNotFound() throws Exception {
-        // Arrange
-        UpdateOrderStatusRequest request = new UpdateOrderStatusRequest(OrderStatus.PREPARING);
+    void updateOrderStatus_whenNotExists_shouldReturnNotFound() {
+        when(orderService.updateStatus(eq(999L), eq(OrderStatus.PREPARING)))
+                .thenThrow(new ResourceNotFoundException("Order", 999L));
 
-        when(orderService.updateStatus(eq(999L), eq(OrderStatus.PREPARING))).thenReturn(null);
-
-        // Act & Assert
-        mockMvc.perform(patch("/api/orders/999/status")
-                        .with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isNotFound());
+        client.patch().uri("/api/orders/{id}/status", 999)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(new UpdateOrderStatusRequest(OrderStatus.PREPARING))
+                .exchange()
+                .expectStatus().isNotFound();
 
         verify(orderService).updateStatus(eq(999L), eq(OrderStatus.PREPARING));
     }
 
     @Test
     @WithMockUser(roles = "ADMIN")
-    void cancelOrder_shouldReturnNoContent() throws Exception {
-        // Arrange
+    void updateOrderStatus_withoutStatus_shouldReturnValidationProblemDetail() {
+        client.patch().uri("/api/orders/{id}/status", 1)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body("{}")
+                .exchange()
+                .expectStatus().isBadRequest()
+                .expectBody()
+                .jsonPath("$.errors[0].field").isEqualTo("status")
+                .jsonPath("$.errors[0].message").isEqualTo("Status is required");
+
+        verify(orderService, never()).updateStatus(any(), any());
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void updateOrderStatus_withInvalidStatusValue_shouldReturnProblemDetail() {
+        client.patch().uri("/api/orders/{id}/status", 1)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body("{\"status\": \"NOT_A_REAL_STATUS\"}")
+                .exchange()
+                .expectStatus().isBadRequest()
+                .expectHeader().contentType(MediaType.APPLICATION_PROBLEM_JSON)
+                .expectBody()
+                .jsonPath("$.status").isEqualTo(400)
+                .jsonPath("$.detail").isEqualTo(
+                        "Invalid OrderStatus value. Allowed values: PENDING, CONFIRMED, PREPARING, READY, DELIVERED, CANCELLED")
+                .jsonPath("$.type").isEqualTo("https://api.pizzastore.example.com/errors/malformed-request");
+
+        verify(orderService, never()).updateStatus(any(), any());
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void cancelOrder_shouldReturnNoContent() {
         doNothing().when(orderService).cancel(1L);
 
-        // Act & Assert
-        mockMvc.perform(delete("/api/orders/1")
-                        .with(csrf()))
-                .andExpect(status().isNoContent());
+        client.delete().uri("/api/orders/{id}", 1)
+                .exchange()
+                .expectStatus().isNoContent();
 
         verify(orderService).cancel(1L);
     }
 
-    // Security tests
+    // ---------- security: who may do what ----------
 
     @Test
     @WithMockUser(roles = "ADMIN")
-    void createOrder_withAdminRole_returnsForbidden() throws Exception {
-        // Arrange
-        CreateOrderRequest.OrderLineRequest lineRequest = new CreateOrderRequest.OrderLineRequest(1L, 2);
-        CreateOrderRequest request = new CreateOrderRequest(1L, List.of(lineRequest));
-
-        // Act & Assert - Admins cannot create orders, only customers can
-        mockMvc.perform(post("/api/orders")
-                        .with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isForbidden());
+    void createOrder_withAdminRole_returnsForbidden() {
+        // admins cannot place orders, only customers can
+        client.post().uri("/api/orders")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(validOrderRequest())
+                .exchange()
+                .expectStatus().isForbidden();
 
         verify(orderService, never()).create(any());
     }
 
     @Test
     @WithMockUser(roles = "CUSTOMER")
-    void getOrders_withCustomerRole_returnsForbidden() throws Exception {
-        // Act & Assert - Customers cannot view all orders, only admins can
-        mockMvc.perform(get("/api/orders")
-                        .param("page", "0")
-                        .param("size", "10"))
-                .andExpect(status().isForbidden());
+    void getOrders_withCustomerRole_returnsForbidden() {
+        client.get().uri("/api/orders?page=0&size=10")
+                .exchange()
+                .expectStatus().isForbidden();
 
         verify(orderService, never()).findAll(any(Pageable.class));
     }
 
     @Test
     @WithMockUser(roles = "CUSTOMER")
-    void getOrder_withCustomerRole_returnsForbidden() throws Exception {
-        // Act & Assert - Customers cannot view specific orders, only admins can
-        mockMvc.perform(get("/api/orders/1"))
-                .andExpect(status().isForbidden());
+    void getOrder_withCustomerRole_returnsForbidden() {
+        client.get().uri("/api/orders/{id}", 1)
+                .exchange()
+                .expectStatus().isForbidden();
 
         verify(orderService, never()).findById(any());
     }
 
     @Test
     @WithMockUser(roles = "CUSTOMER")
-    void updateOrderStatus_withCustomerRole_returnsForbidden() throws Exception {
-        // Arrange
-        UpdateOrderStatusRequest request = new UpdateOrderStatusRequest(OrderStatus.PREPARING);
-
-        // Act & Assert - Customers cannot update order status, only admins can
-        mockMvc.perform(patch("/api/orders/1/status")
-                        .with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isForbidden());
+    void updateOrderStatus_withCustomerRole_returnsForbidden() {
+        client.patch().uri("/api/orders/{id}/status", 1)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(new UpdateOrderStatusRequest(OrderStatus.PREPARING))
+                .exchange()
+                .expectStatus().isForbidden();
 
         verify(orderService, never()).updateStatus(any(), any());
     }
 
     @Test
     @WithMockUser(roles = "CUSTOMER")
-    void cancelOrder_withCustomerRole_returnsForbidden() throws Exception {
-        // Act & Assert - Customers cannot cancel orders, only admins can
-        mockMvc.perform(delete("/api/orders/1")
-                        .with(csrf()))
-                .andExpect(status().isForbidden());
+    void cancelOrder_withCustomerRole_returnsForbidden() {
+        client.delete().uri("/api/orders/{id}", 1)
+                .exchange()
+                .expectStatus().isForbidden();
 
         verify(orderService, never()).cancel(any());
     }

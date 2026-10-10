@@ -5,12 +5,14 @@ import be.vives.pizzastore.dto.request.CreateOrderRequest;
 import be.vives.pizzastore.dto.request.UpdateOrderStatusRequest;
 import be.vives.pizzastore.dto.response.OrderLineResponse;
 import be.vives.pizzastore.dto.response.OrderResponse;
+import be.vives.pizzastore.exception.BusinessException;
 import be.vives.pizzastore.exception.GlobalExceptionHandler;
+import be.vives.pizzastore.exception.ResourceNotFoundException;
 import be.vives.pizzastore.service.OrderService;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -40,13 +42,12 @@ class OrderControllerTest {
     private MockMvc mockMvc;
 
     @Autowired
-    private ObjectMapper objectMapper;
+    private JsonMapper objectMapper;
 
     @MockitoBean
     private OrderService orderService;
-
     @Test
-    void getOrders_withoutFilters_shouldReturnAllOrders() throws Exception {
+    void getOrders_withAdminRole_shouldReturnAllOrders() throws Exception {
         // Arrange
         OrderResponse order1 = new OrderResponse(1L, "ORD-2024-000001", 1L, "John Doe", 
                 List.of(), BigDecimal.valueOf(25.50), OrderStatus.PENDING, LocalDateTime.now());
@@ -146,7 +147,7 @@ class OrderControllerTest {
     @Test
     void getOrder_whenNotExists_shouldReturnNotFound() throws Exception {
         // Arrange
-        when(orderService.findById(999L)).thenReturn(null);
+        when(orderService.findById(999L)).thenThrow(new ResourceNotFoundException("Order", 999L));
 
         // Act & Assert
         mockMvc.perform(get("/api/orders/999"))
@@ -185,6 +186,44 @@ class OrderControllerTest {
     }
 
     @Test
+    void createOrder_whenCustomerNotFound_shouldReturnProblemDetail() throws Exception {
+        // Arrange
+        CreateOrderRequest.OrderLineRequest lineRequest = new CreateOrderRequest.OrderLineRequest(1L, 2);
+        CreateOrderRequest request = new CreateOrderRequest(999L, List.of(lineRequest));
+
+        when(orderService.create(any(CreateOrderRequest.class)))
+                .thenThrow(new BusinessException("Customer with id 999 not found"));
+
+        // Act & Assert
+        mockMvc.perform(post("/api/orders")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.status", is(422)))
+                .andExpect(jsonPath("$.title", is("Unprocessable Content")))
+                .andExpect(jsonPath("$.detail", is("Customer with id 999 not found")))
+                .andExpect(jsonPath("$.type", is("https://api.pizzastore.example.com/errors/business-rule")));
+
+        verify(orderService).create(any(CreateOrderRequest.class));
+    }
+
+    @Test
+    void createOrder_withInvalidOrderLine_shouldReturnBadRequest() throws Exception {
+        // Arrange - negative quantity must be rejected before it ever reaches the service
+        CreateOrderRequest.OrderLineRequest lineRequest = new CreateOrderRequest.OrderLineRequest(1L, -5);
+        CreateOrderRequest request = new CreateOrderRequest(1L, List.of(lineRequest));
+
+        // Act & Assert
+        mockMvc.perform(post("/api/orders")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
+
+        verify(orderService, never()).create(any());
+    }
+
+    @Test
     void updateOrderStatus_whenExists_shouldReturnUpdatedOrder() throws Exception {
         // Arrange
         UpdateOrderStatusRequest request = new UpdateOrderStatusRequest(OrderStatus.PREPARING);
@@ -208,7 +247,8 @@ class OrderControllerTest {
         // Arrange
         UpdateOrderStatusRequest request = new UpdateOrderStatusRequest(OrderStatus.PREPARING);
 
-        when(orderService.updateStatus(eq(999L), eq(OrderStatus.PREPARING))).thenReturn(null);
+        when(orderService.updateStatus(eq(999L), eq(OrderStatus.PREPARING)))
+                .thenThrow(new ResourceNotFoundException("Order", 999L));
 
         // Act & Assert
         mockMvc.perform(patch("/api/orders/999/status")
@@ -217,6 +257,35 @@ class OrderControllerTest {
                 .andExpect(status().isNotFound());
 
         verify(orderService).updateStatus(eq(999L), eq(OrderStatus.PREPARING));
+    }
+
+    @Test
+    void updateOrderStatus_withoutStatus_shouldReturnValidationProblemDetail() throws Exception {
+        // Act & Assert
+        mockMvc.perform(patch("/api/orders/1/status")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors[0].field", is("status")))
+                .andExpect(jsonPath("$.errors[0].message", is("Status is required")));
+
+        verify(orderService, never()).updateStatus(any(), any());
+    }
+
+    @Test
+    void updateOrderStatus_withInvalidStatusValue_shouldReturnProblemDetail() throws Exception {
+        // Act & Assert
+        mockMvc.perform(patch("/api/orders/1/status")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\": \"NOT_A_REAL_STATUS\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.status", is(400)))
+                .andExpect(jsonPath("$.detail", is(
+                        "Invalid OrderStatus value. Allowed values: PENDING, CONFIRMED, PREPARING, READY, DELIVERED, CANCELLED")))
+                .andExpect(jsonPath("$.type", is("https://api.pizzastore.example.com/errors/malformed-request")));
+
+        verify(orderService, never()).updateStatus(any(), any());
     }
 
     @Test
@@ -230,4 +299,10 @@ class OrderControllerTest {
 
         verify(orderService).cancel(1L);
     }
+
+
+
+
+
+
 }

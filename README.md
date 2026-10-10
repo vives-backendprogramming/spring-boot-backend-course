@@ -33,8 +33,8 @@ The finished reference solution lives in a separate repository, [**PizzaStore**]
 
 8. **REST Principles** - HTTP methods, status codes, resource design
 9. **Building a Complete REST API** - Full CRUD, pagination, image upload
-10. **Validation & Exception Handling** - Input validation and error responses
-11. **Testing Spring Boot Applications** - Repository, Service, Controller, Integration tests
+10. **Validation & Exception Handling** - Input validation, error responses, and calling an external API (Open Food Facts) with a declarative `@HttpExchange` client
+11. **Testing Spring Boot Applications** - Unit tests, test slices (`@DataJpaTest`, `@WebMvcTest`, `@JsonTest`, `@RestClientTest`), `RestTestClient`, integration tests
 12. **JWT Authentication** - Token-based authentication with roles
 13. **Swagger/OpenAPI** - API documentation and Swagger UI
 

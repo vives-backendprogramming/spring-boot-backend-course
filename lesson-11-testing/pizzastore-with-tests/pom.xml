@@ -8,30 +8,40 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.5.7</version>
+        <version>4.0.8</version>
         <relativePath/>
     </parent>
 
     <groupId>be.vives</groupId>
     <artifactId>pizzastore-with-tests</artifactId>
     <version>1.0.0</version>
-    <name>PizzaStore Complete REST API with tests</name>
-    <description>Complete REST API with tests</description>
+    <name>PizzaStore - Testing</name>
+    <description>Lesson 10's PizzaStore (validation and ProblemDetail exception handling) plus a complete Spring Boot 4 test suite: plain unit tests, test slices (@DataJpaTest, @WebMvcTest, @JsonTest, @RestClientTest), RestTestClient and @SpringBootTest integration tests</description>
 
     <properties>
         <java.version>25</java.version>
-        <org.mapstruct.version>1.5.5.Final</org.mapstruct.version>
+        <org.mapstruct.version>1.6.3</org.mapstruct.version>
     </properties>
 
     <dependencies>
         <!-- Spring Boot Starters -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-web</artifactId>
+            <artifactId>spring-boot-starter-webmvc</artifactId>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-jpa</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+
+        <!-- RestClient + declarative HTTP clients (@HttpExchange / @ImportHttpServices): PizzaStore calls Open Food Facts (Lesson 10) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-restclient</artifactId>
         </dependency>
 
         <!-- H2 Database -->
@@ -48,12 +58,6 @@
             <version>${org.mapstruct.version}</version>
         </dependency>
 
-        <!-- Validation -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-validation</artifactId>
-        </dependency>
-
         <!-- Spring Boot DevTools -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -62,10 +66,22 @@
             <optional>true</optional>
         </dependency>
 
-        <!-- Test Dependencies -->
+        <!-- Test Dependencies: Spring Boot 4 splits the old monolithic spring-boot-starter-test into one test starter per module.
+             spring-boot-starter-webmvc-test brings spring-boot-starter-test (JUnit, AssertJ, Mockito, JsonPath, Awaitility),
+             @WebMvcTest, MockMvc, RestTestClient and @JsonTest/JacksonTester -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-test</artifactId>
+            <artifactId>spring-boot-starter-webmvc-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jpa-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-restclient-test</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>

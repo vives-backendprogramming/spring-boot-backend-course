@@ -7,6 +7,7 @@ import be.vives.pizzastore.domain.Pizza;
 import be.vives.pizzastore.dto.request.CreateOrderRequest;
 import be.vives.pizzastore.dto.response.OrderResponse;
 import be.vives.pizzastore.exception.BusinessException;
+import be.vives.pizzastore.exception.ResourceNotFoundException;
 import be.vives.pizzastore.mapper.OrderMapper;
 import be.vives.pizzastore.repository.CustomerRepository;
 import be.vives.pizzastore.repository.OrderRepository;
@@ -93,7 +94,7 @@ class OrderServiceTest {
         OrderResponse response2 = new OrderResponse(2L, "ORD-2024-000002", 1L, "John Doe", 
                 List.of(), BigDecimal.valueOf(30.00), OrderStatus.PENDING, LocalDateTime.now());
 
-        when(orderRepository.findAll(pageable)).thenReturn(page);
+        when(orderRepository.findByCustomerId(1L, pageable)).thenReturn(page);
         when(orderMapper.toResponse(order1)).thenReturn(response1);
         when(orderMapper.toResponse(order2)).thenReturn(response2);
 
@@ -102,7 +103,7 @@ class OrderServiceTest {
 
         // Assert
         assertThat(result).hasSize(2);
-        verify(orderRepository).findAll(pageable);
+        verify(orderRepository).findByCustomerId(1L, pageable);
     }
 
     @Test
@@ -151,15 +152,14 @@ class OrderServiceTest {
     }
 
     @Test
-    void findById_whenNotExists_shouldReturnNull() {
+    void findById_whenNotExists_shouldThrowResourceNotFoundException() {
         // Arrange
         when(orderRepository.findByIdWithOrderLines(999L)).thenReturn(Optional.empty());
 
-        // Act
-        OrderResponse result = orderService.findById(999L);
-
-        // Assert
-        assertThat(result).isNull();
+        // Act & Assert
+        assertThatThrownBy(() -> orderService.findById(999L))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessage("Order with id 999 not found");
         verify(orderRepository).findByIdWithOrderLines(999L);
     }
 
@@ -282,15 +282,13 @@ class OrderServiceTest {
     }
 
     @Test
-    void updateStatus_whenNotExists_shouldReturnNull() {
+    void updateStatus_whenNotExists_shouldThrowResourceNotFoundException() {
         // Arrange
         when(orderRepository.findById(999L)).thenReturn(Optional.empty());
 
-        // Act
-        OrderResponse result = orderService.updateStatus(999L, OrderStatus.PREPARING);
-
-        // Assert
-        assertThat(result).isNull();
+        // Act & Assert
+        assertThatThrownBy(() -> orderService.updateStatus(999L, OrderStatus.PREPARING))
+                .isInstanceOf(ResourceNotFoundException.class);
         verify(orderRepository).findById(999L);
         verify(orderRepository, never()).save(any());
     }
@@ -319,7 +317,7 @@ class OrderServiceTest {
 
         // Act & Assert
         assertThatThrownBy(() -> orderService.cancel(999L))
-                .isInstanceOf(BusinessException.class)
+                .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessageContaining("Order")
                 .hasMessageContaining("999");
 

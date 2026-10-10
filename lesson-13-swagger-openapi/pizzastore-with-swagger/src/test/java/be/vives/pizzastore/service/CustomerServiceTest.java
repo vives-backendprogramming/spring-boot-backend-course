@@ -6,6 +6,7 @@ import be.vives.pizzastore.dto.request.CreateCustomerRequest;
 import be.vives.pizzastore.dto.request.UpdateCustomerRequest;
 import be.vives.pizzastore.dto.response.CustomerResponse;
 import be.vives.pizzastore.dto.response.PizzaResponse;
+import be.vives.pizzastore.exception.DuplicateResourceException;
 import be.vives.pizzastore.exception.ResourceNotFoundException;
 import be.vives.pizzastore.mapper.CustomerMapper;
 import be.vives.pizzastore.mapper.PizzaMapper;
@@ -157,6 +158,20 @@ class CustomerServiceTest {
         assertThat(result.name()).isEqualTo("John Doe");
         assertThat(result.email()).isEqualTo("john@example.com");
         verify(customerRepository).save(customer);
+    }
+
+    @Test
+    void create_whenEmailAlreadyExists_shouldThrowDuplicateResourceException() {
+        // Arrange
+        CreateCustomerRequest request = new CreateCustomerRequest("John Doe", "john@example.com", "password123", null, null);
+        when(customerRepository.existsByEmail("john@example.com")).thenReturn(true);
+
+        // Act & Assert
+        assertThatThrownBy(() -> customerService.create(request))
+                .isInstanceOf(DuplicateResourceException.class)
+                .hasMessageContaining("john@example.com");
+
+        verify(customerRepository, never()).save(any());
     }
 
     @Test

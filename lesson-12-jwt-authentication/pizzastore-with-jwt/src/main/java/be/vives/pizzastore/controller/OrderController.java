@@ -5,6 +5,7 @@ import be.vives.pizzastore.dto.request.CreateOrderRequest;
 import be.vives.pizzastore.dto.request.UpdateOrderStatusRequest;
 import be.vives.pizzastore.dto.response.OrderResponse;
 import be.vives.pizzastore.service.OrderService;
+import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
@@ -53,14 +54,11 @@ public class OrderController {
     public ResponseEntity<OrderResponse> getOrder(@PathVariable Long id) {
         log.debug("GET /api/orders/{}", id);
         OrderResponse order = orderService.findById(id);
-        if (order == null) {
-            return ResponseEntity.notFound().build();
-        }
         return ResponseEntity.ok(order);
     }
 
     @PostMapping
-    public ResponseEntity<OrderResponse> createOrder(@RequestBody CreateOrderRequest request) {
+    public ResponseEntity<OrderResponse> createOrder(@Valid @RequestBody CreateOrderRequest request) {
         log.debug("POST /api/orders - {}", request);
 
         OrderResponse created = orderService.create(request);
@@ -77,14 +75,11 @@ public class OrderController {
     @PatchMapping("/{id}/status")
     public ResponseEntity<OrderResponse> updateOrderStatus(
             @PathVariable Long id,
-            @RequestBody UpdateOrderStatusRequest request) {
+            @Valid @RequestBody UpdateOrderStatusRequest request) {
 
         log.debug("PATCH /api/orders/{}/status - {}", id, request.status());
 
         OrderResponse updated = orderService.updateStatus(id, request.status());
-        if (updated == null) {
-            return ResponseEntity.notFound().build();
-        }
         return ResponseEntity.ok(updated);
     }
 

@@ -1,9 +1,12 @@
 package be.vives.pizzastore.service;
 
+import be.vives.pizzastore.domain.NutritionalInfo;
 import be.vives.pizzastore.domain.Pizza;
 import be.vives.pizzastore.dto.request.CreatePizzaRequest;
+import be.vives.pizzastore.dto.request.NutritionalInfoRequest;
 import be.vives.pizzastore.dto.request.UpdatePizzaRequest;
 import be.vives.pizzastore.dto.response.PizzaResponse;
+import be.vives.pizzastore.exception.ResourceNotFoundException;
 import be.vives.pizzastore.mapper.PizzaMapper;
 import be.vives.pizzastore.repository.PizzaRepository;
 import org.slf4j.Logger;
@@ -16,7 +19,6 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
 import java.util.List;
-import java.util.Optional;
 
 @Service
 @Transactional
@@ -40,10 +42,11 @@ public class PizzaService {
         return pizzaPage.map(pizzaMapper::toResponse);
     }
 
-    public Optional<PizzaResponse> findById(Long id) {
+    public PizzaResponse findById(Long id) {
         log.debug("Finding pizza with id: {}", id);
-        return pizzaRepository.findById(id)
-                .map(pizzaMapper::toResponse);
+        Pizza pizza = pizzaRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Pizza", id));
+        return pizzaMapper.toResponse(pizza);
     }
 
     public List<PizzaResponse> findByPriceLessThan(BigDecimal maxPrice) {
@@ -78,43 +81,61 @@ public class PizzaService {
         return pizzaMapper.toResponse(savedPizza);
     }
 
-    public Optional<PizzaResponse> update(Long id, UpdatePizzaRequest request) {
+    public PizzaResponse update(Long id, UpdatePizzaRequest request) {
         log.debug("Updating pizza with id: {}", id);
-        return pizzaRepository.findById(id)
-                .map(pizza -> {
-                    pizzaMapper.updateEntity(request, pizza);
-                    
-                    // Set bidirectional relationship for NutritionalInfo
-                    if (pizza.getNutritionalInfo() != null) {
-                        pizza.getNutritionalInfo().setPizza(pizza);
-                    }
-                    
-                    Pizza updatedPizza = pizzaRepository.save(pizza);
-                    log.info("Updated pizza with id: {}", id);
-                    return pizzaMapper.toResponse(updatedPizza);
-                });
-    }
+        Pizza pizza = pizzaRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Pizza", id));
 
-    public boolean delete(Long id) {
-        log.debug("Deleting pizza with id: {}", id);
-        if (pizzaRepository.existsById(id)) {
-            pizzaRepository.deleteById(id);
-            log.info("Deleted pizza with id: {}", id);
-            return true;
+        pizzaMapper.updateEntity(request, pizza);
+
+        // Set bidirectional relationship for NutritionalInfo
+        if (pizza.getNutritionalInfo() != null) {
+            pizza.getNutritionalInfo().setPizza(pizza);
         }
-        log.warn("Pizza with id {} not found for deletion", id);
-        return false;
+
+        Pizza updatedPizza = pizzaRepository.save(pizza);
+        log.info("Updated pizza with id: {}", id);
+        return pizzaMapper.toResponse(updatedPizza);
     }
 
-    public Optional<PizzaResponse> uploadImage(Long id, MultipartFile file) {
+    /** Creates or overwrites the nutritional info of a pizza (used by the Open Food Facts import). */
+    public PizzaResponse updateNutritionalInfo(Long id, NutritionalInfoRequest request) {
+        log.debug("Updating nutritional info of pizza with id: {}", id);
+        Pizza pizza = pizzaRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Pizza", id));
+
+        NutritionalInfo info = pizza.getNutritionalInfo();
+        if (info == null) {
+            info = new NutritionalInfo();
+            info.setPizza(pizza);
+            pizza.setNutritionalInfo(info);
+        }
+        info.setCalories(request.calories());
+        info.setProtein(request.protein());
+        info.setCarbohydrates(request.carbohydrates());
+        info.setFat(request.fat());
+
+        return pizzaMapper.toResponse(pizzaRepository.save(pizza));
+    }
+
+    public void delete(Long id) {
+        log.debug("Deleting pizza with id: {}", id);
+        if (!pizzaRepository.existsById(id)) {
+            throw new ResourceNotFoundException("Pizza", id);
+        }
+        pizzaRepository.deleteById(id);
+        log.info("Deleted pizza with id: {}", id);
+    }
+
+    public PizzaResponse uploadImage(Long id, MultipartFile file) {
         log.debug("Uploading image for pizza with id: {}", id);
-        return pizzaRepository.findById(id)
-                .map(pizza -> {
-                    String imageUrl = fileStorageService.storeFile(file, id);
-                    pizza.setImageUrl(imageUrl);
-                    Pizza updatedPizza = pizzaRepository.save(pizza);
-                    log.info("Updated image URL for pizza with id: {}", id);
-                    return pizzaMapper.toResponse(updatedPizza);
-                });
+        Pizza pizza = pizzaRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Pizza", id));
+
+        String imageUrl = fileStorageService.storeFile(file, id);
+        pizza.setImageUrl(imageUrl);
+        Pizza updatedPizza = pizzaRepository.save(pizza);
+        log.info("Updated image URL for pizza with id: {}", id);
+        return pizzaMapper.toResponse(updatedPizza);
     }
 }

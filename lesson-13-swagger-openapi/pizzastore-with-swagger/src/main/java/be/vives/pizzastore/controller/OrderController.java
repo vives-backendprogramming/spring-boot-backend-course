@@ -5,6 +5,7 @@ import be.vives.pizzastore.dto.request.CreateOrderRequest;
 import be.vives.pizzastore.dto.request.UpdateOrderStatusRequest;
 import be.vives.pizzastore.dto.response.OrderResponse;
 import be.vives.pizzastore.service.OrderService;
+import jakarta.validation.Valid;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -99,9 +100,6 @@ public class OrderController {
             @Parameter(description = "Order ID", required = true) @PathVariable Long id) {
         log.debug("GET /api/orders/{}", id);
         OrderResponse order = orderService.findById(id);
-        if (order == null) {
-            return ResponseEntity.notFound().build();
-        }
         return ResponseEntity.ok(order);
     }
 
@@ -121,7 +119,7 @@ public class OrderController {
             @ApiResponse(responseCode = "403", description = "Forbidden - CUSTOMER role required"),
             @ApiResponse(responseCode = "404", description = "Customer or pizza not found")
     })
-    public ResponseEntity<OrderResponse> createOrder(@RequestBody CreateOrderRequest request) {
+    public ResponseEntity<OrderResponse> createOrder(@Valid @RequestBody CreateOrderRequest request) {
         log.debug("POST /api/orders - {}", request);
 
         OrderResponse created = orderService.create(request);
@@ -153,14 +151,11 @@ public class OrderController {
     })
     public ResponseEntity<OrderResponse> updateOrderStatus(
             @Parameter(description = "Order ID", required = true) @PathVariable Long id,
-            @RequestBody UpdateOrderStatusRequest request) {
+            @Valid @RequestBody UpdateOrderStatusRequest request) {
 
         log.debug("PATCH /api/orders/{}/status - {}", id, request.status());
 
         OrderResponse updated = orderService.updateStatus(id, request.status());
-        if (updated == null) {
-            return ResponseEntity.notFound().build();
-        }
         return ResponseEntity.ok(updated);
     }
 

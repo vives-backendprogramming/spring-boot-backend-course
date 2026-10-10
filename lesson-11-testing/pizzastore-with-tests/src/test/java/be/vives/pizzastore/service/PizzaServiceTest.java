@@ -1,9 +1,12 @@
 package be.vives.pizzastore.service;
 
+import be.vives.pizzastore.domain.NutritionalInfo;
 import be.vives.pizzastore.domain.Pizza;
 import be.vives.pizzastore.dto.request.CreatePizzaRequest;
+import be.vives.pizzastore.dto.request.NutritionalInfoRequest;
 import be.vives.pizzastore.dto.request.UpdatePizzaRequest;
 import be.vives.pizzastore.dto.response.PizzaResponse;
+import be.vives.pizzastore.exception.ResourceNotFoundException;
 import be.vives.pizzastore.mapper.PizzaMapper;
 import be.vives.pizzastore.repository.PizzaRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -24,26 +27,27 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 /**
  * Pure unit test for PizzaService (NO Spring context).
- * 
- * Uses Mockito's @Mock to create mocks and @InjectMocks to inject them.
- * @ExtendWith(MockitoExtension.class) is REQUIRED for this to work (even in Spring Boot 3).
- * 
- * This is DIFFERENT from @MockBean which is used with Spring test slices like @WebMvcTest.
- * - @Mock = Mockito mock (fast, no Spring)
- * - @MockBean = Spring-managed mock (slower, with Spring context)
+ * <p>
+ * Mockito's {@code @Mock} creates the mocks and {@code @InjectMocks} injects them through the constructor.
+ * {@code @ExtendWith(MockitoExtension.class)} is required to activate those annotations.
+ * <p>
+ * Not to be confused with {@code @MockitoBean} (used in {@code @WebMvcTest}/{@code @SpringBootTest}):
+ * - {@code @Mock}        = plain Mockito mock, no Spring involved, fastest
+ * - {@code @MockitoBean} = mock registered as a bean in the Spring test context (replaces the real bean)
  */
 @ExtendWith(MockitoExtension.class)  // Required for @Mock and @InjectMocks
 class PizzaServiceTest {
 
-    @Mock  // Pure Mockito mock (not @MockBean!)
+    @Mock  // Pure Mockito mock (not @MockitoBean!)
     private PizzaRepository pizzaRepository;
 
-    @Mock  // Pure Mockito mock (not @MockBean!)
+    @Mock  // Pure Mockito mock (not @MockitoBean!)
     private PizzaMapper pizzaMapper;
 
     @Mock
@@ -75,28 +79,26 @@ class PizzaServiceTest {
         when(pizzaMapper.toResponse(testPizza)).thenReturn(testResponse);
 
         // When
-        Optional<PizzaResponse> result = pizzaService.findById(1L);
+        PizzaResponse result = pizzaService.findById(1L);
 
         // Then
-        assertThat(result).isPresent();
-        assertThat(result.get().id()).isEqualTo(1L);
-        assertThat(result.get().name()).isEqualTo("Margherita");
-        assertThat(result.get().price()).isEqualByComparingTo(new BigDecimal("8.50"));
+        assertThat(result.id()).isEqualTo(1L);
+        assertThat(result.name()).isEqualTo("Margherita");
+        assertThat(result.price()).isEqualByComparingTo(new BigDecimal("8.50"));
 
         verify(pizzaRepository).findById(1L);
         verify(pizzaMapper).toResponse(testPizza);
     }
 
     @Test
-    void findById_NonExistingPizza_ReturnsEmpty() {
+    void findById_NonExistingPizza_ThrowsResourceNotFoundException() {
         // Given
         when(pizzaRepository.findById(999L)).thenReturn(Optional.empty());
 
-        // When
-        Optional<PizzaResponse> result = pizzaService.findById(999L);
-
-        // Then
-        assertThat(result).isEmpty();
+        // When & Then
+        assertThatThrownBy(() -> pizzaService.findById(999L))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessage("Pizza with id 999 not found");
 
         verify(pizzaRepository).findById(999L);
         verify(pizzaMapper, never()).toResponse(any());
@@ -164,10 +166,10 @@ class PizzaServiceTest {
         when(pizzaMapper.toResponse(testPizza)).thenReturn(testResponse);
 
         // When
-        Optional<PizzaResponse> result = pizzaService.update(1L, updateRequest);
+        PizzaResponse result = pizzaService.update(1L, updateRequest);
 
         // Then
-        assertThat(result).isPresent();
+        assertThat(result).isNotNull();
 
         verify(pizzaRepository).findById(1L);
         verify(pizzaMapper).updateEntity(updateRequest, testPizza);
@@ -176,7 +178,7 @@ class PizzaServiceTest {
     }
 
     @Test
-    void update_NonExistingPizza_ReturnsEmpty() {
+    void update_NonExistingPizza_ThrowsResourceNotFoundException() {
         // Given
         UpdatePizzaRequest updateRequest = new UpdatePizzaRequest(
                 "Updated Name",
@@ -188,39 +190,34 @@ class PizzaServiceTest {
         when(pizzaRepository.findById(999L)).thenReturn(Optional.empty());
 
         // When
-        Optional<PizzaResponse> result = pizzaService.update(999L, updateRequest);
-
-        // Then
-        assertThat(result).isEmpty();
+        // When & Then
+        assertThatThrownBy(() -> pizzaService.update(999L, updateRequest))
+                .isInstanceOf(ResourceNotFoundException.class);
         verify(pizzaRepository).findById(999L);
         verify(pizzaRepository, never()).save(any());
     }
 
     @Test
-    void delete_ExistingPizza_ReturnsTrue() {
+    void delete_ExistingPizza_DeletesPizza() {
         // Given
         when(pizzaRepository.existsById(1L)).thenReturn(true);
 
         // When
-        boolean result = pizzaService.delete(1L);
+        pizzaService.delete(1L);
 
         // Then
-        assertThat(result).isTrue();
-
         verify(pizzaRepository).existsById(1L);
         verify(pizzaRepository).deleteById(1L);
     }
 
     @Test
-    void delete_NonExistingPizza_ReturnsFalse() {
+    void delete_NonExistingPizza_ThrowsResourceNotFoundException() {
         // Given
         when(pizzaRepository.existsById(999L)).thenReturn(false);
 
-        // When
-        boolean result = pizzaService.delete(999L);
-
-        // Then
-        assertThat(result).isFalse();
+        // When & Then
+        assertThatThrownBy(() -> pizzaService.delete(999L))
+                .isInstanceOf(ResourceNotFoundException.class);
 
         verify(pizzaRepository).existsById(999L);
         verify(pizzaRepository, never()).deleteById(any());
@@ -370,11 +367,10 @@ class PizzaServiceTest {
         when(pizzaMapper.toResponse(testPizza)).thenReturn(updatedResponse);
 
         // When
-        Optional<PizzaResponse> result = pizzaService.uploadImage(1L, mockFile);
+        PizzaResponse result = pizzaService.uploadImage(1L, mockFile);
 
         // Then
-        assertThat(result).isPresent();
-        assertThat(result.get().imageUrl()).isEqualTo(imageUrl);
+        assertThat(result.imageUrl()).isEqualTo(imageUrl);
 
         verify(pizzaRepository).findById(1L);
         verify(fileStorageService).storeFile(mockFile, 1L);
@@ -383,16 +379,14 @@ class PizzaServiceTest {
     }
 
     @Test
-    void uploadImage_NonExistingPizza_ReturnsEmpty() {
+    void uploadImage_NonExistingPizza_ThrowsResourceNotFoundException() {
         // Given
         MultipartFile mockFile = mock(MultipartFile.class);
         when(pizzaRepository.findById(999L)).thenReturn(Optional.empty());
 
-        // When
-        Optional<PizzaResponse> result = pizzaService.uploadImage(999L, mockFile);
-
-        // Then
-        assertThat(result).isEmpty();
+        // When & Then
+        assertThatThrownBy(() -> pizzaService.uploadImage(999L, mockFile))
+                .isInstanceOf(ResourceNotFoundException.class);
 
         verify(pizzaRepository).findById(999L);
         verify(fileStorageService, never()).storeFile(any(), any());
@@ -451,14 +445,57 @@ class PizzaServiceTest {
         when(pizzaMapper.toResponse(pizzaWithNutritionalInfo)).thenReturn(testResponse);
 
         // When
-        Optional<PizzaResponse> result = pizzaService.update(1L, updateRequest);
+        PizzaResponse result = pizzaService.update(1L, updateRequest);
 
         // Then
-        assertThat(result).isPresent();
+        assertThat(result).isNotNull();
         assertThat(nutritionalInfo.getPizza()).isEqualTo(pizzaWithNutritionalInfo);
 
         verify(pizzaRepository).findById(1L);
         verify(pizzaMapper).updateEntity(updateRequest, pizzaWithNutritionalInfo);
         verify(pizzaRepository).save(pizzaWithNutritionalInfo);
+    }
+
+    @Test
+    void updateNutritionalInfo_PizzaWithoutInfo_CreatesItAndLinksBothSides() {
+        NutritionalInfoRequest request = new NutritionalInfoRequest(539, new BigDecimal("6.30"), new BigDecimal("57.50"), new BigDecimal("30.90"));
+        when(pizzaRepository.findById(1L)).thenReturn(Optional.of(testPizza));
+        when(pizzaRepository.save(testPizza)).thenReturn(testPizza);
+        when(pizzaMapper.toResponse(testPizza)).thenReturn(testResponse);
+
+        pizzaService.updateNutritionalInfo(1L, request);
+
+        NutritionalInfo info = testPizza.getNutritionalInfo();
+        assertThat(info).isNotNull();
+        assertThat(info.getPizza()).isSameAs(testPizza);   // the owning side (pizza_id) must be set
+        assertThat(info.getCalories()).isEqualTo(539);
+        assertThat(info.getProtein()).isEqualByComparingTo("6.30");
+        assertThat(info.getCarbohydrates()).isEqualByComparingTo("57.50");
+        assertThat(info.getFat()).isEqualByComparingTo("30.90");
+    }
+
+    @Test
+    void updateNutritionalInfo_PizzaWithInfo_OverwritesTheExistingRow() {
+        NutritionalInfo existing = new NutritionalInfo(100, BigDecimal.ONE, BigDecimal.ONE, BigDecimal.ONE);
+        existing.setPizza(testPizza);
+        testPizza.setNutritionalInfo(existing);
+        NutritionalInfoRequest request = new NutritionalInfoRequest(539, new BigDecimal("6.30"), new BigDecimal("57.50"), new BigDecimal("30.90"));
+        when(pizzaRepository.findById(1L)).thenReturn(Optional.of(testPizza));
+        when(pizzaRepository.save(testPizza)).thenReturn(testPizza);
+        when(pizzaMapper.toResponse(testPizza)).thenReturn(testResponse);
+
+        pizzaService.updateNutritionalInfo(1L, request);
+
+        assertThat(testPizza.getNutritionalInfo()).isSameAs(existing);   // updated in place: no orphan row, no second row
+        assertThat(existing.getCalories()).isEqualTo(539);
+    }
+
+    @Test
+    void updateNutritionalInfo_NonExistingPizza_ThrowsResourceNotFoundException() {
+        when(pizzaRepository.findById(999L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> pizzaService.updateNutritionalInfo(999L, new NutritionalInfoRequest(1, null, null, null)))
+                .isInstanceOf(ResourceNotFoundException.class);
+        verify(pizzaRepository, never()).save(any());
     }
 }

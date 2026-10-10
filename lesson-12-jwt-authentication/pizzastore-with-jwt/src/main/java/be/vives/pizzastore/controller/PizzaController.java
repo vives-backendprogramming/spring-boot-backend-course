@@ -1,9 +1,12 @@
 package be.vives.pizzastore.controller;
 
 import be.vives.pizzastore.dto.request.CreatePizzaRequest;
+import be.vives.pizzastore.dto.request.ImportNutritionRequest;
 import be.vives.pizzastore.dto.request.UpdatePizzaRequest;
 import be.vives.pizzastore.dto.response.PizzaResponse;
+import be.vives.pizzastore.service.NutritionImportService;
 import be.vives.pizzastore.service.PizzaService;
+import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
@@ -24,9 +27,11 @@ public class PizzaController {
     private static final Logger log = LoggerFactory.getLogger(PizzaController.class);
 
     private final PizzaService pizzaService;
+    private final NutritionImportService nutritionImportService;
 
-    public PizzaController(PizzaService pizzaService) {
+    public PizzaController(PizzaService pizzaService, NutritionImportService nutritionImportService) {
         this.pizzaService = pizzaService;
+        this.nutritionImportService = nutritionImportService;
     }
 
     @GetMapping
@@ -65,13 +70,12 @@ public class PizzaController {
     @GetMapping("/{id}")
     public ResponseEntity<PizzaResponse> getPizza(@PathVariable Long id) {
         log.debug("GET /api/pizzas/{}", id);
-        return pizzaService.findById(id)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+        PizzaResponse pizza = pizzaService.findById(id);
+        return ResponseEntity.ok(pizza);
     }
 
     @PostMapping
-    public ResponseEntity<PizzaResponse> createPizza(@RequestBody CreatePizzaRequest request) {
+    public ResponseEntity<PizzaResponse> createPizza(@Valid @RequestBody CreatePizzaRequest request) {
         log.debug("POST /api/pizzas - {}", request);
 
         PizzaResponse created = pizzaService.create(request);
@@ -88,23 +92,20 @@ public class PizzaController {
     @PutMapping("/{id}")
     public ResponseEntity<PizzaResponse> updatePizza(
             @PathVariable Long id,
-            @RequestBody UpdatePizzaRequest request) {
+            @Valid @RequestBody UpdatePizzaRequest request) {
 
         log.debug("PUT /api/pizzas/{} - {}", id, request);
 
-        return pizzaService.update(id, request)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+        PizzaResponse updated = pizzaService.update(id, request);
+        return ResponseEntity.ok(updated);
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deletePizza(@PathVariable Long id) {
         log.debug("DELETE /api/pizzas/{}", id);
 
-        if (pizzaService.delete(id)) {
-            return ResponseEntity.noContent().build();
-        }
-        return ResponseEntity.notFound().build();
+        pizzaService.delete(id);
+        return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/{id}/image")
@@ -114,16 +115,19 @@ public class PizzaController {
         
         log.debug("POST /api/pizzas/{}/image", id);
 
-        try {
-            return pizzaService.uploadImage(id, file)
-                    .map(ResponseEntity::ok)
-                    .orElse(ResponseEntity.notFound().build());
-        } catch (IllegalArgumentException e) {
-            log.warn("Invalid file upload: {}", e.getMessage());
-            return ResponseEntity.badRequest().build();
-        } catch (RuntimeException e) {
-            log.error("Error uploading file: {}", e.getMessage());
-            return ResponseEntity.internalServerError().build();
-        }
+        PizzaResponse updated = pizzaService.uploadImage(id, file);
+        return ResponseEntity.ok(updated);
+    }
+
+    /** Fills the pizza's nutritional info (per 100 g) with the data Open Food Facts has for a barcode. */
+    @PostMapping("/{id}/nutritional-info/import")
+    public ResponseEntity<PizzaResponse> importNutritionalInfo(
+            @PathVariable Long id,
+            @Valid @RequestBody ImportNutritionRequest request) {
+
+        log.debug("POST /api/pizzas/{}/nutritional-info/import - {}", id, request);
+
+        PizzaResponse updated = nutritionImportService.importFromBarcode(id, request.barcode());
+        return ResponseEntity.ok(updated);
     }
 }

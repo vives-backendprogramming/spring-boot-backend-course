@@ -7,12 +7,13 @@ import be.vives.pizzastore.dto.response.CustomerResponse;
 import be.vives.pizzastore.dto.response.OrderResponse;
 import be.vives.pizzastore.dto.response.PizzaResponse;
 import be.vives.pizzastore.exception.GlobalExceptionHandler;
+import be.vives.pizzastore.exception.ResourceNotFoundException;
 import be.vives.pizzastore.service.CustomerService;
 import be.vives.pizzastore.service.OrderService;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -42,14 +43,13 @@ class CustomerControllerTest {
     private MockMvc mockMvc;
 
     @Autowired
-    private ObjectMapper objectMapper;
+    private JsonMapper objectMapper;
 
     @MockitoBean
     private CustomerService customerService;
 
     @MockitoBean
     private OrderService orderService;
-
     @Test
     void getAllCustomers_shouldReturnPageOfCustomers() throws Exception {
         // Arrange
@@ -87,6 +87,64 @@ class CustomerControllerTest {
                 .andExpect(jsonPath("$.email", is("john@example.com")))
                 .andExpect(jsonPath("$.address", is("123 Main St")))
                 .andExpect(jsonPath("$.phone", is("1234567890")));
+
+        verify(customerService).findById(1L);
+    }
+
+    @Test
+    void getCustomer_whenNotExists_shouldReturnProblemDetail() throws Exception {
+        // Arrange
+        when(customerService.findById(999L)).thenThrow(new ResourceNotFoundException("Customer", 999L));
+
+        // Act & Assert
+        mockMvc.perform(get("/api/customers/999"))
+                .andExpect(status().isNotFound())
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.status", is(404)))
+                .andExpect(jsonPath("$.title", is("Not Found")))
+                .andExpect(jsonPath("$.detail", is("Customer with id 999 not found")))
+                .andExpect(jsonPath("$.type", is("https://api.pizzastore.example.com/errors/not-found")))
+                .andExpect(jsonPath("$.instance", is("/api/customers/999")));
+
+        verify(customerService).findById(999L);
+    }
+
+    @Test
+    void createCustomer_withInvalidEmail_shouldReturnValidationProblemDetail() throws Exception {
+        // Arrange - every field is valid except email, so exactly one violation is produced
+        // (name="Jane Doe" satisfies @NotBlank+@Size, password="password123" satisfies
+        // @NotBlank+@Size(min=8), phone/address satisfy their @Size(max=...) constraints)
+        CreateCustomerRequest request = new CreateCustomerRequest(
+                "Jane Doe", "not-an-email", "password123", "1234567890", "123 Main St");
+
+        // Act & Assert
+        mockMvc.perform(post("/api/customers")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.status", is(400)))
+                .andExpect(jsonPath("$.title", is("Bad Request")))
+                .andExpect(jsonPath("$.detail", is("Validation failed")))
+                .andExpect(jsonPath("$.type", is("https://api.pizzastore.example.com/errors/validation")))
+                .andExpect(jsonPath("$.errors", hasSize(1)))
+                .andExpect(jsonPath("$.errors[0].field", is("email")));
+
+        verify(customerService, never()).create(any());
+    }
+
+    @Test
+    void getCustomer_whenUnexpectedErrorOccurs_shouldReturnProblemDetail() throws Exception {
+        // Arrange
+        when(customerService.findById(1L)).thenThrow(new IllegalStateException("boom"));
+
+        // Act & Assert
+        mockMvc.perform(get("/api/customers/1"))
+                .andExpect(status().isInternalServerError())
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.status", is(500)))
+                .andExpect(jsonPath("$.title", is("Internal Server Error")))
+                .andExpect(jsonPath("$.type", is("https://api.pizzastore.example.com/errors/internal-error")));
 
         verify(customerService).findById(1L);
     }

@@ -1,12 +1,18 @@
 # Lesson 12: Securing Web Applications - JWT Authentication
 
+**Who Are You and What May You Do? Stateless JWT Authentication and Role-Based Access for PizzaStore**
+
+---
+
 ## 📋 Table of Contents
 - [Learning Objectives](#-learning-objectives)
+- [Recap: Where Lesson 11 Left Us](#-recap-where-lesson-11-left-us)
+- [What This Lesson Adds to PizzaStore](#-what-this-lesson-adds-to-pizzastore)
 - [Introduction to Spring Security](#-introduction-to-spring-security)
 - [What is JWT?](#-what-is-jwt)
 - [JWT Structure](#-jwt-structure)
 - [Adding Dependencies](#-adding-dependencies)
-- [Security Configuration](#-security-configuration)
+- [Security Configuration](#%EF%B8%8F-security-configuration)
 - [JWT Utility Class](#-jwt-utility-class)
 - [JWT Authentication Filter](#-jwt-authentication-filter)
 - [UserDetailsService Implementation](#-userdetailsservice-implementation)
@@ -25,14 +31,48 @@
 
 By the end of this lesson, you will be able to:
 
-- ✅ Understand Spring Security fundamentals
-- ✅ Implement JWT-based authentication
-- ✅ Generate and validate JWT tokens
+- ✅ Understand Spring Security fundamentals: the filter chain and the `SecurityContext`
+- ✅ Implement JWT-based authentication with your own filter
+- ✅ Generate and validate JWT tokens with JJWT
 - ✅ Secure REST endpoints with role-based access control
 - ✅ Handle user registration and login
 - ✅ Encrypt passwords with BCrypt
 - ✅ Configure stateless session management
-- ✅ Test secured endpoints
+- ✅ Test secured endpoints, with mock users in a slice and with real tokens end to end
+
+---
+
+## 🔄 Recap: Where Lesson 11 Left Us
+
+After [Lesson 11](../lesson-11-testing/README.md) PizzaStore is a complete, tested REST API: pizzas, customers and orders, validation, `ProblemDetail` errors, the Open Food Facts import of Lesson 10, and 226 automated tests. But **every endpoint is open to everybody**: anyone can delete a pizza, read all customers or change the status of somebody else's order. The `Customer` entity already has a `password` and a `role` column (since Lesson 6a), and `data.sql` already contains an admin account, but nothing uses them yet.
+
+This lesson answers two questions for every request:
+
+1. **Authentication**: *who* is calling? A customer logs in once with e-mail and password and receives a **JWT token**; every following request carries that token.
+2. **Authorization**: *may* this caller do this? Reading the menu is public, ordering is for customers, managing the menu and the orders is for admins.
+
+---
+
+## 🧱 What This Lesson Adds to PizzaStore
+
+The project of this lesson, [`pizzastore-with-jwt`](pizzastore-with-jwt), is **Lesson 11's [`pizzastore-with-tests`](../lesson-11-testing/pizzastore-with-tests) plus exactly these changes**:
+
+| Added / changed | What it does |
+|-----------------|--------------|
+| [`pom.xml`](pizzastore-with-jwt/pom.xml) | Adds `spring-boot-starter-security`, the three JJWT artifacts and `spring-boot-starter-security-test` |
+| [`security/SecurityConfig.java`](pizzastore-with-jwt/src/main/java/be/vives/pizzastore/security/SecurityConfig.java) (new) | The `SecurityFilterChain`: public, customer and admin endpoints, stateless sessions, the JWT filter, `PasswordEncoder`, `AuthenticationManager` |
+| [`security/JwtUtil.java`](pizzastore-with-jwt/src/main/java/be/vives/pizzastore/security/JwtUtil.java) (new) | Creates and validates tokens |
+| [`security/JwtAuthenticationFilter.java`](pizzastore-with-jwt/src/main/java/be/vives/pizzastore/security/JwtAuthenticationFilter.java) (new) | Reads `Authorization: Bearer ...` and fills the `SecurityContext` |
+| [`security/CustomUserDetailsService.java`](pizzastore-with-jwt/src/main/java/be/vives/pizzastore/security/CustomUserDetailsService.java) (new) | Loads a `Customer` by e-mail for Spring Security |
+| [`controller/AuthController.java`](pizzastore-with-jwt/src/main/java/be/vives/pizzastore/controller/AuthController.java), [`dto/LoginRequest.java`](pizzastore-with-jwt/src/main/java/be/vives/pizzastore/dto/LoginRequest.java), [`RegisterRequest.java`](pizzastore-with-jwt/src/main/java/be/vives/pizzastore/dto/RegisterRequest.java), [`AuthResponse.java`](pizzastore-with-jwt/src/main/java/be/vives/pizzastore/dto/AuthResponse.java) (new) | `POST /api/auth/register` and `POST /api/auth/login` |
+| [`config/AuditorAwareImpl.java`](pizzastore-with-jwt/src/main/java/be/vives/pizzastore/config/AuditorAwareImpl.java) (new) | Fills `createdBy`/`updatedBy` (Lesson 6a's auditing) with the logged-in user, `system` otherwise |
+| [`exception/GlobalExceptionHandler.java`](pizzastore-with-jwt/src/main/java/be/vives/pizzastore/exception/GlobalExceptionHandler.java) | Two extra handlers: `AuthenticationException` (failed login) → `401`, `AccessDeniedException` → `403`, both as `ProblemDetail` |
+| [`application.properties`](pizzastore-with-jwt/src/main/resources/application.properties) | `jwt.secret` and `jwt.expiration` |
+| [`src/test`](pizzastore-with-jwt/src/test/java/be/vives/pizzastore) | The test suite adapted to security (see [Testing Secured Controllers](#-testing-secured-controllers)): 236 tests |
+
+The controllers, services, repositories, entities, mappers, request/response DTOs, the Open Food Facts client and `data.sql` are **unchanged**. That is the point of the design: security is added *around* the application, in one configuration class and one filter, not inside every controller (see [Keep Controllers Clean](#7-keep-controllers-clean---centralized-security-configuration)).
+
+The Open Food Facts import of Lesson 10, `POST /api/pizzas/{id}/nutritional-info/import`, needs no extra rule either: it changes the menu, so the existing rule *"`POST /api/pizzas/**` is for admins"* covers it.
 
 ---
 
@@ -275,7 +315,7 @@ Update your `pom.xml` to include Spring Security and JWT dependencies:
 ```xml
 <properties>
     <java.version>25</java.version>
-    <org.mapstruct.version>1.5.5.Final</org.mapstruct.version>
+    <org.mapstruct.version>1.6.3</org.mapstruct.version>
     <jjwt.version>0.13.0</jjwt.version>
 </properties>
 
@@ -305,14 +345,16 @@ Update your `pom.xml` to include Spring Security and JWT dependencies:
         <scope>runtime</scope>
     </dependency>
 
-    <!-- Spring Security Test -->
+    <!-- Spring Security Test: @WithMockUser, @WithAnonymousUser, ... (Spring Boot 4 test starter) -->
     <dependency>
-        <groupId>org.springframework.security</groupId>
-        <artifactId>spring-security-test</artifactId>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-security-test</artifactId>
         <scope>test</scope>
     </dependency>
 </dependencies>
 ```
+
+The versions of `spring-boot-starter-security` (Spring Security 7) and of the test starter come from the Spring Boot 4 parent; JJWT is not managed by Spring Boot, so its version is set in `<properties>`. Only `jjwt-api` is needed at compile time: the implementation and its Jackson binding are `runtime` dependencies, so your code cannot accidentally depend on JJWT internals. As with the other test starters of Lesson 11, `spring-boot-starter-security-test` is the Spring Boot 4 way to get `spring-security-test`.
 
 ---
 
@@ -340,6 +382,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/pizzas/**").permitAll()
                         .requestMatchers("/h2-console/**").permitAll()
+                        .requestMatchers("/error").permitAll()
 
                         // Pizza modification endpoints - require ADMIN role only
                         .requestMatchers(HttpMethod.POST, "/api/pizzas/**").hasRole("ADMIN")
@@ -359,6 +402,11 @@ public class SecurityConfig {
                 )
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+                )
+                // No (valid) token on a protected endpoint: 401 Unauthorized. Without this entry point Spring Security
+                // answers 403 Forbidden, which is meant for "authenticated, but not allowed" (wrong role)
+                .exceptionHandling(exceptions -> exceptions
+                        .authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED))
                 )
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
@@ -408,12 +456,12 @@ The `@EnableWebSecurity` annotation is a crucial annotation that **activates Spr
 
 ### ⚙️ Authentication Provider Auto-Configuration
 
-**Important Note about Modern Spring Security (Spring Boot 3.x+):**
+**Important Note about Modern Spring Security (Spring Security 6 and 7, Spring Boot 3 and 4):**
 
 In older versions of Spring Security, you had to manually create a `DaoAuthenticationProvider` bean:
 
 ```java
-// ❌ OLD WAY - No longer necessary in Spring Boot 3.x
+// ❌ OLD WAY - No longer necessary
 @Bean
 public AuthenticationProvider authenticationProvider() {
     DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider();
@@ -423,7 +471,7 @@ public AuthenticationProvider authenticationProvider() {
 }
 ```
 
-**In modern Spring Boot 3.x+**, Spring Security **automatically configures** the `DaoAuthenticationProvider` when it detects:
+**In current Spring Security**, Spring **automatically configures** the `DaoAuthenticationProvider` when it detects:
 1. A `UserDetailsService` bean (our `CustomUserDetailsService`)
 2. A `PasswordEncoder` bean (our `BCryptPasswordEncoder`)
 
@@ -452,12 +500,15 @@ The authentication provider is created and configured automatically by Spring Bo
    - `/api/auth/**`: Registration and login
    - `GET /api/pizzas/**`: Anonymous users can view pizzas (read-only)
    - `/h2-console/**`: H2 database console (development only)
+   - `/error`: Spring Boot's error page. When Spring Security refuses a logged-in user, it calls `response.sendError(403)`, and the servlet container *forwards* the request to `/error` to render the body. That forward carries no JWT (our filter runs once per request, not again for the forward), so if `/error` were protected the user would be anonymous there and get a `401` instead of the `403`. Permitting `/error` keeps the right status code
 3. **Role-Based Access**:
-   - **CUSTOMER**: Can access all `/api/customers/**` endpoints (view, manage favorites) and `/api/orders/**` endpoints (create and view orders)
-   - **ADMIN**: Has CUSTOMER privileges + can modify pizzas (POST, PUT, PATCH, DELETE on `/api/pizzas/**`)
+   - **CUSTOMER**: can use `/api/customers/**` (view, manage favorites) and can **place** an order (`POST /api/orders`)
+   - **ADMIN**: can use `/api/customers/**`, can modify the menu (`POST`, `PUT`, `PATCH`, `DELETE` on `/api/pizzas/**`, which includes the image upload and the Open Food Facts import) and manages the orders (every other `/api/orders/**` request)
+   - The roles do not include each other: an admin cannot place an order and a customer cannot list all orders. `hasRole("X")` checks for exactly that role
 4. **Stateless Sessions**: No session storage on the server
-5. **JWT Filter**: Added before Spring Security's authentication filter
-6. **Auto-Configuration**: Spring Boot automatically configures the authentication provider using our `UserDetailsService` and `PasswordEncoder` beans
+5. **401 vs 403**: `HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)` answers `401 Unauthorized` when a protected endpoint is called without a valid token ("who are you?"). A *logged-in* user without the right role gets `403 Forbidden` ("I know you, but you may not"). Without the entry point Spring Security answers `403` in both cases: stateless configurations have no login form or HTTP Basic that would register a `401` entry point
+6. **JWT Filter**: Added before Spring Security's authentication filter
+7. **Auto-Configuration**: Spring Boot automatically configures the authentication provider using our `UserDetailsService` and `PasswordEncoder` beans
 
 ---
 
@@ -538,10 +589,10 @@ jwt.secret=MySecretKeyForJWTTokenGenerationThatShouldBeAtLeast256BitsLong
 jwt.expiration=86400000
 ```
 
-- `jwt.secret`: Secret key for signing tokens (must be at least 256 bits for HS256)
+- `jwt.secret`: Secret key for signing tokens (must be at least 256 bits for HS256). `Keys.hmacShaKeyFor(...)` picks the strongest HMAC algorithm the key length allows: this 63-character secret (504 bits) gives **HS384**, which is why the example token above has `"alg": "HS384"`
 - `jwt.expiration`: Token validity in milliseconds (86400000 = 24 hours)
 
-⚠️ **Security Note**: In production, store the secret in environment variables, not in property files!
+⚠️ **Security Note**: In production, store the secret in environment variables, not in property files! Spring Boot's relaxed binding maps an environment variable `JWT_SECRET` onto `jwt.secret` automatically. The tests use a secret of their own in `src/test/resources/application.properties`.
 
 ---
 
@@ -569,24 +620,24 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         final String authorizationHeader = request.getHeader("Authorization");
 
-        String username = null;
-        String jwt = null;
+        if (authorizationHeader != null && authorizationHeader.startsWith("Bearer ")
+                && SecurityContextHolder.getContext().getAuthentication() == null) {
+            String jwt = authorizationHeader.substring(7);
+            try {
+                String username = jwtUtil.extractUsername(jwt);
+                UserDetails userDetails = this.userDetailsService.loadUserByUsername(username);
 
-        if (authorizationHeader != null && authorizationHeader.startsWith("Bearer ")) {
-            jwt = authorizationHeader.substring(7);
-            username = jwtUtil.extractUsername(jwt);
-        }
-
-        if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-            UserDetails userDetails = this.userDetailsService.loadUserByUsername(username);
-
-            if (jwtUtil.validateToken(jwt, userDetails)) {
-                UsernamePasswordAuthenticationToken authenticationToken =
-                        new UsernamePasswordAuthenticationToken(
-                                userDetails, null, userDetails.getAuthorities());
-                authenticationToken.setDetails(
-                        new WebAuthenticationDetailsSource().buildDetails(request));
-                SecurityContextHolder.getContext().setAuthentication(authenticationToken);
+                if (jwtUtil.validateToken(jwt, userDetails)) {
+                    UsernamePasswordAuthenticationToken authenticationToken =
+                            new UsernamePasswordAuthenticationToken(
+                                    userDetails, null, userDetails.getAuthorities());
+                    authenticationToken.setDetails(
+                            new WebAuthenticationDetailsSource().buildDetails(request));
+                    SecurityContextHolder.getContext().setAuthentication(authenticationToken);
+                }
+            } catch (JwtException | UsernameNotFoundException e) {
+                // malformed, tampered or expired token, or a user that no longer exists: the request simply stays
+                // anonymous, so a protected endpoint answers 401 (see SecurityConfig) instead of failing with a 500
             }
         }
 
@@ -598,9 +649,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 ### How It Works:
 
 1. Extracts the JWT from the `Authorization` header
-2. Validates the token
+2. Reads the e-mail address (the `sub` claim) and loads the user. Reading the claims also **verifies the signature and the expiration**: JJWT throws a `JwtException` (`MalformedJwtException`, `SignatureException`, `ExpiredJwtException`, ...) for a token that is not valid
 3. If valid, creates an authentication object and stores it in the `SecurityContext`
-4. Continues the filter chain
+4. If not, it catches the exception and does **nothing**: the request continues as anonymous, and the authorization rules decide. A public endpoint still works, a protected one answers `401`. Without the `catch` the exception would escape from the filter and the client would get a `500` for an expired token
+5. Continues the filter chain
 
 ---
 
@@ -786,6 +838,17 @@ public class AuthResponse {
 
 ### Controller Implementation
 
+[`AuthController`](pizzastore-with-jwt/src/main/java/be/vives/pizzastore/controller/AuthController.java) follows the status-code rules of Lesson 10: an e-mail address that is already registered is a **`409 Conflict`** (`DuplicateResourceException`, like `CustomerService` does for `POST /api/customers`), and a failed login is a **`401 Unauthorized`**. For the login it does not catch anything itself: `authenticationManager.authenticate(...)` throws an `AuthenticationException` (`BadCredentialsException` for a wrong password or an unknown e-mail address), and one new handler in `GlobalExceptionHandler` translates it:
+
+```java
+@ExceptionHandler(AuthenticationException.class)
+public ProblemDetail handleAuthenticationException(AuthenticationException ex, WebRequest request) {
+    // one message for "unknown e-mail" and "wrong password": never reveal which e-mail addresses have an account
+    log.warn("Authentication failed: {}", ex.getMessage());
+    return buildProblemDetail(HttpStatus.UNAUTHORIZED, "Invalid email or password", "unauthorized", request);
+}
+```
+
 ```java
 @RestController
 @RequestMapping("/api/auth")
@@ -809,7 +872,7 @@ public class AuthController {
     @PostMapping("/register")
     public ResponseEntity<AuthResponse> register(@Valid @RequestBody RegisterRequest request) {
         if (customerRepository.findByEmail(request.getEmail()).isPresent()) {
-            throw new PizzaStoreException("Email already exists");
+            throw new DuplicateResourceException("Email already exists");   // 409 Conflict
         }
 
         Customer customer = new Customer();
@@ -836,29 +899,24 @@ public class AuthController {
 
     @PostMapping("/login")
     public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
-        try {
-            Authentication authentication = authenticationManager.authenticate(
-                    new UsernamePasswordAuthenticationToken(
-                            request.getEmail(), 
-                            request.getPassword())
-            );
+        // wrong e-mail or password: throws an AuthenticationException, which GlobalExceptionHandler turns into a 401
+        authenticationManager.authenticate(
+                new UsernamePasswordAuthenticationToken(request.getEmail(), request.getPassword())
+        );
 
-            Customer customer = customerRepository.findByEmail(request.getEmail())
-                    .orElseThrow(() -> new PizzaStoreException("User not found"));
+        Customer customer = customerRepository.findByEmail(request.getEmail())
+                .orElseThrow(() -> new PizzaStoreException("User not found"));
 
-            String token = jwtUtil.generateToken(customer.getEmail(), customer.getRole().name());
+        String token = jwtUtil.generateToken(customer.getEmail(), customer.getRole().name());
 
-            AuthResponse response = new AuthResponse(
-                    token,
-                    customer.getEmail(),
-                    customer.getName(),
-                    customer.getRole().name()
-            );
+        AuthResponse response = new AuthResponse(
+                token,
+                customer.getEmail(),
+                customer.getName(),
+                customer.getRole().name()
+        );
 
-            return ResponseEntity.ok(response);
-        } catch (AuthenticationException e) {
-            throw new PizzaStoreException("Invalid email or password");
-        }
+        return ResponseEntity.ok(response);
     }
 }
 ```
@@ -953,7 +1011,9 @@ curl -X POST http://localhost:8080/api/pizzas \
   }'
 ```
 
-❌ **403 Forbidden** - Authentication required
+❌ **401 Unauthorized** - Authentication required
+
+The `401` comes from the `HttpStatusEntryPoint` in `SecurityConfig`. Compare it with step 6: there the caller *is* logged in, but as a customer, and gets `403 Forbidden`. The difference tells a client what to do: after a `401` it should (re)log in, after a `403` logging in again won't help. Sending an expired or tampered token gives the same `401`.
 
 ### 5. Create Order with Customer Token
 
@@ -1018,7 +1078,38 @@ curl -X POST http://localhost:8080/api/pizzas \
 
 ✅ **201 Created** - Admin can create pizzas
 
+### 8. Import Nutrition Data (Admin Only)
+
+The Open Food Facts import of [Lesson 10](../lesson-10-validation-exception-handling/README.md#-part-3-calling-an-external-api) changes the menu, so it follows the same rule as creating a pizza:
+
+```bash
+# with the customer token: 403 Forbidden
+curl -X POST http://localhost:8080/api/pizzas/1/nutritional-info/import \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $CUSTOMER_TOKEN" \
+  -d '{"barcode":"3017620422003"}'
+
+# with the admin token: 200 OK, the pizza with its new nutritionalInfo (needs internet)
+curl -X POST http://localhost:8080/api/pizzas/1/nutritional-info/import \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -d '{"barcode":"3017620422003"}'
+```
+
+Security is checked **before** anything else: a customer gets the `403` without the request ever reaching the controller, so no request is sent to Open Food Facts either.
+
+### 9. Wrong Credentials
+
+```bash
+curl -X POST http://localhost:8080/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"admin@pizzastore.be","password":"wrong"}'
+```
+
+❌ **401 Unauthorized** with a `ProblemDetail` whose `detail` is `"Invalid email or password"` (see [Controller Implementation](#controller-implementation)). The message deliberately does not say *which* of the two was wrong, so nobody can find out which e-mail addresses have an account. A request without e-mail or password is a `400` (validation), and registering an e-mail address that already exists is a `409 Conflict` "Email already exists".
+
 ---
+
 
 ## 🎭 Role-Based Access Control
 
@@ -1028,7 +1119,7 @@ curl -X POST http://localhost:8080/api/pizzas \
 |----------|--------|-----------|----------|-------|
 | `/api/auth/**` | ALL | ✅ | ✅ | ✅ |
 | `/api/pizzas/**` | GET | ✅ | ✅ | ✅ |
-| `/api/pizzas/**` | POST/PUT/PATCH/DELETE | ❌ | ❌ | ✅ |
+| `/api/pizzas/**` | POST/PUT/PATCH/DELETE (incl. `/{id}/image` and `/{id}/nutritional-info/import`) | ❌ | ❌ | ✅ |
 | `/api/customers/**` | ALL | ❌ | ✅ | ✅ |
 | `/api/orders` | POST | ❌ | ✅ | ❌ |
 | `/api/orders/**` | GET/PATCH/DELETE | ❌ | ❌ | ✅ |
@@ -1157,28 +1248,29 @@ public class PizzaController {
 
 #### Clean Controller Example
 
+PizzaStore's [`PizzaController`](pizzastore-with-jwt/src/main/java/be/vives/pizzastore/controller/PizzaController.java) is **byte-for-byte the same** as in Lesson 11: not a single line changed to secure it.
+
 ```java
 @RestController
 @RequestMapping("/api/pizzas")
-@RequiredArgsConstructor
 public class PizzaController {
-    
+
     private final PizzaService pizzaService;
-    
-    // No security annotations needed!
-    // Security is configured in SecurityConfig
-    
+    private final NutritionImportService nutritionImportService;
+    ...
+
+    // No security annotations needed: SecurityConfig decides who may call this
     @PostMapping
-    public ResponseEntity<PizzaResponse> createPizza(@Valid @RequestBody PizzaRequest request) {
-        PizzaResponse pizza = pizzaService.createPizza(request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(pizza);
+    public ResponseEntity<PizzaResponse> createPizza(@Valid @RequestBody CreatePizzaRequest request) {
+        PizzaResponse created = pizzaService.create(request);
+        URI location = ServletUriComponentsBuilder.fromCurrentRequest()
+                .path("/{id}").buildAndExpand(created.id()).toUri();
+        return ResponseEntity.created(location).body(created);
     }
-    
+
     @GetMapping("/{id}")
     public ResponseEntity<PizzaResponse> getPizza(@PathVariable Long id) {
-        return pizzaService.findById(id)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+        return ResponseEntity.ok(pizzaService.findById(id));
     }
 }
 ```
@@ -1205,226 +1297,169 @@ For most REST APIs with standard URL-based security, **centralized configuration
 
 ## 🧪 Testing Secured Controllers
 
-When testing controllers that are secured with Spring Security, you need to handle authentication in your tests. Here's how to effectively test secured endpoints.
+Add Spring Security to a tested application and many of the tests of [Lesson 11](../lesson-11-testing/README.md) turn red: a `POST /api/pizzas` without a user now gets `401`, and full-stack tests that create data need a token. That is the safety net doing its job. This section shows how the test suite of [`pizzastore-with-jwt`](pizzastore-with-jwt/src/test/java/be/vives/pizzastore) deals with security, at two levels:
 
-### Using `@WithMockUser`
+| Level | How the user is simulated | Proves |
+|-------|---------------------------|--------|
+| `@WebMvcTest` slice | `@WithMockUser(roles = "...")`, `@WithAnonymousUser` | the URL rules of `SecurityConfig`, per role, in milliseconds |
+| `@SpringBootTest` with a real server | real accounts and real JWT tokens, sent as `Authorization: Bearer ...` | the whole chain: login, token, filter, role check, controller |
 
-The `@WithMockUser` annotation from Spring Security Test allows you to simulate an authenticated user without going through the entire authentication process.
+### Slice Tests: `@WithMockUser`
 
-#### Basic Setup
+[`PizzaControllerTest`](pizzastore-with-jwt/src/test/java/be/vives/pizzastore/controller/PizzaControllerTest.java) is a `@WebMvcTest` with `RestTestClient`, as in Lesson 11, plus the real security configuration:
 
 ```java
-@WebMvcTest(PizzaController.class)
-@Import({SecurityConfig.class, JwtAuthenticationFilter.class, JwtUtil.class})
+@WebMvcTest(controllers = PizzaController.class)
+@AutoConfigureRestTestClient
+@Import({SecurityConfig.class, GlobalExceptionHandler.class})
+@WithMockUser(roles = "ADMIN")                       // default user for every test of the class
 class PizzaControllerTest {
 
     @Autowired
-    private MockMvc mockMvc;
+    private RestTestClient client;
 
     @MockitoBean
     private PizzaService pizzaService;
 
     @MockitoBean
-    private CustomUserDetailsService customUserDetailsService;
+    private NutritionImportService nutritionImportService;
 
-    // Tests...
+    // needed by SecurityConfig / JwtAuthenticationFilter, which are part of the slice
+    @MockitoBean
+    private UserDetailsService userDetailsService;
+
+    @MockitoBean
+    private JwtUtil jwtUtil;
+    ...
 }
 ```
 
-#### Why Mock `CustomUserDetailsService`?
+Four things to understand:
 
-Even though we're using `@WithMockUser` for authentication in tests, Spring Security still expects the `UserDetailsService` bean to be available in the application context. Here's why:
+1. **`@Import(SecurityConfig.class)`**: a slice does not scan `@Configuration` classes (the same lesson as `@Import(JpaConfig.class)` in Lesson 11). Without the import the slice would use Spring Boot's default security (every request needs a login, CSRF protection on), and the tests would check rules PizzaStore does not have.
+2. **`JwtAuthenticationFilter` *is* part of the slice**: `@WebMvcTest` includes every `Filter` bean, and our filter is a `@Component`. Its constructor needs a `JwtUtil` and a `UserDetailsService`, which are not in the slice, hence the two `@MockitoBean`s. They are never really called: no request in these tests carries a token.
+3. **`@WithMockUser(roles = "ADMIN")`** (from `spring-security-test`) puts an authenticated user with `ROLE_ADMIN` straight into the `SecurityContext`, without passwords or tokens. On the class it is the default; a test overrides it with its own annotation.
+4. **The service is a mock**, so a denied request can be proven by `verify(..., never())`: the controller was never reached.
 
-1. **Spring Security Configuration**: The `SecurityConfig` requires a `UserDetailsService` bean to be configured in the authentication manager
-2. **Filter Chain Initialization**: During test setup, Spring Security initializes the filter chain, which references the `UserDetailsService`
-3. **Not Actually Called**: In `@WebMvcTest` with `@WithMockUser`, the service is **never actually invoked** because `@WithMockUser` bypasses the normal authentication flow
-
-**Without mocking it:**
-```
-Error creating bean 'customUserDetailsService': 
-Unsatisfied dependency - no qualifying bean of type 'CustomerRepository'
-```
-
-**With mocking it:**
-```java
-@MockitoBean
-private CustomUserDetailsService customUserDetailsService;
-```
-✅ Spring Security context initializes successfully  
-✅ Tests run without needing the full repository layer  
-✅ `@WithMockUser` handles authentication
-
-### Testing Different Roles
-
-#### Admin-Only Endpoint
+The security tests of the class:
 
 ```java
 @Test
-@WithMockUser(roles = "ADMIN")
-void createPizza_WithAdminRole_ReturnsCreated() throws Exception {
-    // Given
-    PizzaRequest request = new PizzaRequest("Margherita", "Classic pizza", 
-                                            8.50, true);
-    PizzaResponse response = new PizzaResponse(1L, "Margherita", 
-                                                "Classic pizza", 8.50, true, null);
-    
-    when(pizzaService.createPizza(any(PizzaRequest.class))).thenReturn(response);
+@WithAnonymousUser
+void getPizzas_Anonymous_ReturnsOk() {
+    // GET /api/pizzas/** is permitAll()
+    when(pizzaService.findAll(any(Pageable.class)))
+            .thenReturn(new PageImpl<>(List.of(pizza(1, "Margherita", "8.50", "Classic"))));
 
-    // When / Then
-    mockMvc.perform(post("/api/pizzas")
-            .contentType(MediaType.APPLICATION_JSON)
-            .content(objectMapper.writeValueAsString(request)))
-            .andExpect(status().isCreated())
-            .andExpect(jsonPath("$.id").value(1))
-            .andExpect(jsonPath("$.name").value("Margherita"));
+    client.get().uri("/api/pizzas")
+            .exchange()
+            .expectStatus().isOk();
 }
-```
 
-#### Testing Forbidden Access
+@Test
+@WithMockUser(roles = "CUSTOMER")
+void createPizza_WithCustomerRole_ReturnsForbidden() {
+    // customers cannot create pizzas, only admins can
+    client.post().uri("/api/pizzas")
+            .contentType(MediaType.APPLICATION_JSON)
+            .body(newPizzaRequest())
+            .exchange()
+            .expectStatus().isForbidden();
 
-```java
+    verify(pizzaService, never()).create(any());
+}
+
 @Test
 @WithMockUser(roles = "CUSTOMER")
-void createPizza_WithCustomerRole_ReturnsForbidden() throws Exception {
-    // Given
-    PizzaRequest request = new PizzaRequest("Margherita", "Classic pizza", 
-                                            8.50, true);
-
-    // When / Then - Customers cannot create pizzas, only admins can
-    mockMvc.perform(post("/api/pizzas")
+void importNutritionalInfo_WithCustomerRole_ReturnsForbidden() {
+    // only admins edit the menu
+    client.post().uri("/api/pizzas/{id}/nutritional-info/import", 1)
             .contentType(MediaType.APPLICATION_JSON)
-            .content(objectMapper.writeValueAsString(request)))
-            .andExpect(status().isForbidden());
+            .body(new ImportNutritionRequest("3017620422003"))
+            .exchange()
+            .expectStatus().isForbidden();
 
-    // Verify service was never called because Spring Security blocked the request
-    verify(pizzaService, never()).createPizza(any());
+    verifyNoInteractions(nutritionImportService);
 }
 ```
 
-#### Testing Unauthorized Access
+An anonymous `POST` gets `401` (`createPizza_Anonymous_ReturnsUnauthorized`): `@WithAnonymousUser` plus the real `SecurityConfig` also tests the `HttpStatusEntryPoint` (see [Testing the Authentication](#4-try-to-create-pizza-without-auth)).
+
+[`OrderControllerTest`](pizzastore-with-jwt/src/test/java/be/vives/pizzastore/controller/OrderControllerTest.java) and [`CustomerControllerTest`](pizzastore-with-jwt/src/test/java/be/vives/pizzastore/controller/CustomerControllerTest.java) follow the same pattern, with `@WithMockUser` per test. They check the less obvious rules of the [access table](#access-control-summary): a customer may place an order, but an **admin may not** (`createOrder_withAdminRole_returnsForbidden`), and a customer may not list, read, update or cancel orders. [`AuthControllerTest`](pizzastore-with-jwt/src/test/java/be/vives/pizzastore/controller/AuthControllerTest.java) tests the public `/api/auth` endpoints without any user: a duplicate e-mail address gives a `409` and invalid registration data a `400`, both as `ProblemDetail`.
+
+> **Multipart in a slice.** The four image-upload tests are in a separate class, [`PizzaImageUploadControllerTest`](pizzastore-with-jwt/src/test/java/be/vives/pizzastore/controller/PizzaImageUploadControllerTest.java), that uses MockMvc instead of `RestTestClient`: a `RestTestClient` bound to MockMvc does not turn a multipart body into request parts (Lesson 11, *Which one should I use?*). `@WithMockUser` works with both.
+
+### Full-Stack Tests: Real Tokens
+
+`@WithMockUser` skips everything this lesson built: the login, the token, the filter. [`SecurityIntegrationTest`](pizzastore-with-jwt/src/test/java/be/vives/pizzastore/integration/SecurityIntegrationTest.java) therefore starts the real application on a random port and works with real accounts. The helper [`TestAccounts`](pizzastore-with-jwt/src/test/java/be/vives/pizzastore/integration/TestAccounts.java) creates them:
+
+```java
+Account registerCustomer() {
+    String email = uniqueEmail();
+    AuthResponse response = client.post().uri("/api/auth/register")      // like a real client
+            .contentType(MediaType.APPLICATION_JSON)
+            .body(new RegisterRequest("Test Customer", email, PASSWORD))
+            .exchange()
+            .expectStatus().isCreated()
+            .expectBody(AuthResponse.class)
+            .returnResult().getResponseBody();
+    ...
+    return new Account(id, email, response.getToken());
+}
+
+Account createAdmin() {
+    // there is no API to create an admin (that would be a security hole): save it through the repository...
+    Customer admin = new Customer("Test Admin", uniqueEmail());
+    admin.setPassword(passwordEncoder.encode(PASSWORD));
+    admin.setRole(Role.ADMIN);
+    admin = customerRepository.save(admin);
+    // ...and log in through the API like everybody else
+    ...
+}
+```
+
+A test then sends the token like any client would:
 
 ```java
 @Test
-void createPizza_WithoutAuthentication_ReturnsUnauthorized() throws Exception {
-    // Given
-    PizzaRequest request = new PizzaRequest("Margherita", "Classic pizza", 
-                                            8.50, true);
+void customer_CannotListAllOrders_ButAdminCan() {
+    client.get().uri("/api/orders")
+            .header(HttpHeaders.AUTHORIZATION, customer.bearer())    // "Bearer eyJhbGciOiJIUzM4NCJ9..."
+            .exchange()
+            .expectStatus().isForbidden();
 
-    // When / Then - No authentication provided
-    mockMvc.perform(post("/api/pizzas")
-            .contentType(MediaType.APPLICATION_JSON)
-            .content(objectMapper.writeValueAsString(request)))
-            .andExpect(status().isUnauthorized());
-
-    verify(pizzaService, never()).createPizza(any());
+    client.get().uri("/api/orders")
+            .header(HttpHeaders.AUTHORIZATION, admin.bearer())
+            .exchange()
+            .expectStatus().isOk();
 }
 ```
 
-#### Testing Public Endpoints
+The other tests of the class: anonymous users can read pizzas but get `401` when they try to create one, a customer gets `403` and an admin `201`, a garbage token gives `401` (not a `500`), a wrong password gives `401`, and the token returned by `register` works immediately.
 
-```java
-@Test
-void getPizzas_WithoutAuthentication_ReturnsOk() throws Exception {
-    // Given - Public endpoint, no authentication required
-    Page<PizzaResponse> pizzaPage = new PageImpl<>(List.of(
-        new PizzaResponse(1L, "Margherita", "Classic pizza", 8.50, true, null),
-        new PizzaResponse(2L, "Pepperoni", "Spicy pepperoni", 9.50, true, null)
-    ));
-    
-    when(pizzaService.findAll(any(Pageable.class))).thenReturn(pizzaPage);
+The full-stack tests of Lesson 11 needed the same change: [`PizzaStoreApiIntegrationTest`](pizzastore-with-jwt/src/test/java/be/vives/pizzastore/integration/PizzaStoreApiIntegrationTest.java) creates an admin and a customer in `@BeforeEach` and sends their tokens with every request that needs one, and the MockMvc-based [`PizzaIntegrationTest`](pizzastore-with-jwt/src/test/java/be/vives/pizzastore/integration/PizzaIntegrationTest.java) uses `@WithMockUser(roles = "ADMIN")`, which works because MockMvc runs on the test thread.
 
-    // When / Then - Anyone can access GET /api/pizzas
-    mockMvc.perform(get("/api/pizzas"))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.content", hasSize(2)));
-}
-```
+### The Test Suite of This Lesson
 
-### Testing Customer or Admin Endpoints
+`mvn test` runs **236 tests**:
 
-```java
-@Test
-@WithMockUser(roles = "CUSTOMER")
-void createOrder_WithCustomerRole_ReturnsCreated() throws Exception {
-    // Given
-    CreateOrderRequest request = new CreateOrderRequest(1L, List.of(
-        new OrderLineRequest(1L, 2)
-    ));
-    OrderResponse response = new OrderResponse(/* ... */);
-    
-    when(orderService.createOrder(anyLong(), any())).thenReturn(response);
+| Kind | Test classes | Tests |
+|------|--------------|------:|
+| Unit (no Spring) | `PizzaServiceTest`, `CustomerServiceTest`, `OrderServiceTest`, `NutritionImportServiceTest`, `RequestValidationTest`, `PizzaControllerStandaloneTest` | 95 |
+| Slice | `PizzaRepositoryTest`, `CustomerRepositoryTest`, `OrderRepositoryTest` (`@DataJpaTest`) | 40 |
+| | `PizzaControllerTest`, `CustomerControllerTest`, `OrderControllerTest`, `AuthControllerTest` (`@WebMvcTest` + `RestTestClient` + security), `PizzaImageUploadControllerTest` (MockMvc) | 60 |
+| | `PizzaJsonTest`, `PizzaMapperTest`, `OpenFoodFactsClientTest` | 13 |
+| Full stack | `ApplicationSmokeTest`, `PizzaIntegrationTest`, `PizzaStoreApiIntegrationTest`, `BeanOverrideIntegrationTest`, `SecurityIntegrationTest` | 28 |
 
-    // When / Then - Customers can create orders
-    mockMvc.perform(post("/api/orders")
-            .contentType(MediaType.APPLICATION_JSON)
-            .content(objectMapper.writeValueAsString(request)))
-            .andExpect(status().isCreated());
-}
-
-@Test
-@WithMockUser(roles = "ADMIN")
-void createOrder_WithAdminRole_ReturnsCreated() throws Exception {
-    // Given
-    CreateOrderRequest request = new CreateOrderRequest(1L, List.of(
-        new OrderLineRequest(1L, 2)
-    ));
-    OrderResponse response = new OrderResponse(/* ... */);
-    
-    when(orderService.createOrder(anyLong(), any())).thenReturn(response);
-
-    // When / Then - Admins can also create orders
-    mockMvc.perform(post("/api/orders")
-            .contentType(MediaType.APPLICATION_JSON)
-            .content(objectMapper.writeValueAsString(request)))
-            .andExpect(status().isCreated());
-}
-```
+Compared with Lesson 11, this is the test suite of the final PizzaStore: the controller tests are written with `RestTestClient` only (Lesson 11's side-by-side comparison classes `PizzaControllerRestTestClientTest` and `PizzaControllerMockMvcTesterTest` have done their job and are not carried over), and `AuthControllerTest`, `SecurityIntegrationTest` and the role tests are new.
 
 ### Best Practices for Security Testing
 
-1. **Test all access levels**: Test with ADMIN, CUSTOMER, and no authentication
-2. **Test forbidden access**: Verify users can't access resources they shouldn't
-3. **Keep tests focused**: Test security separately from business logic when possible
-4. **Use meaningful test names**: Clearly indicate what role and outcome is being tested
-5. **Import necessary security components**: Include `SecurityConfig`, `JwtAuthenticationFilter`, and `JwtUtil`
-6. **Mock UserDetailsService**: Always mock it to satisfy Spring Security's context initialization
-
-### Integration Tests vs Controller Tests
-
-**Controller Tests (`@WebMvcTest`)**:
-- Use `@WithMockUser` for authentication
-- Mock the service layer
-- Fast and isolated
-- Test security at the controller level
-
-**Integration Tests (`@SpringBootTest`)**:
-- Use real JWT tokens with `Bearer` authorization header
-- Test the entire authentication flow
-- Include database and all layers
-- Test security end-to-end
-
-Example integration test:
-```java
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-class PizzaIntegrationTest {
-
-    @Autowired
-    private TestRestTemplate restTemplate;
-
-    @Test
-    @WithMockUser(roles = "ADMIN")
-    void createPizza_WithValidToken_ReturnsCreated() {
-        // Test with real security context
-        PizzaRequest request = new PizzaRequest("Margherita", "Classic pizza", 
-                                                8.50, true);
-        
-        ResponseEntity<PizzaResponse> response = restTemplate
-            .postForEntity("/api/pizzas", request, PizzaResponse.class);
-        
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
-    }
-}
-```
+1. **Test every access level**: anonymous, CUSTOMER and ADMIN, for each kind of endpoint.
+2. **Test what is forbidden**, not only what is allowed, and prove with `verify(..., never())` that the controller was never reached.
+3. **Import the real `SecurityConfig`** in slice tests, so you test your rules instead of Spring Boot's defaults.
+4. **Keep the security tests in the slice** (fast, one rule per test) and add a few full-stack tests with real tokens for the chain itself.
+5. **Never weaken security for tests** (no `permitAll()` profile for tests): test the configuration that runs in production.
 
 ---
 
@@ -1451,57 +1486,59 @@ In this lesson, you learned:
 
 ---
 
+**Note on the book**: *Pro Spring Boot 4* covers security in Chapter 11, *Securing Spring Boot Applications* (p. 281-311). Its *Modern Security Architecture* section describes the security filter chain configured with the Lambda DSL, the modular starters and `requestMatchers` for URL-based rules, which is exactly how `SecurityConfig` works; *Secure Credential Storage* recommends BCrypt (the book wraps it in a `DelegatingPasswordEncoder`, PizzaStore uses `BCryptPasswordEncoder` directly); and *The Identity Contract* implements a custom `UserDetailsService` on top of a repository, like `CustomUserDetailsService`. *Fine-Grained Authorization* shows `@EnableMethodSecurity` and `@PreAuthorize`, discussed under [When to Use @PreAuthorize](#when-to-use-preauthorize). Where the course differs: the book's *Modern Identity: OAuth2 and JWT* section explains stateless JWT security (Table 11-1) but delegates token issuing to an external identity provider (OAuth2/OIDC with Keycloak, or `spring-boot-starter-oauth2-resource-server`), and its case studies use one-time tokens, two-factor authentication and reactive security. The book **does not build its own JWT filter**; this lesson does, because writing `JwtUtil` and `JwtAuthenticationFilter` yourself shows what a resource server does behind the scenes. The book's *Testing Your Security* uses `@SpringBootTest` with a test client and `@WithMockUser`/`mockOidcLogin()`, the same ideas as [Testing Secured Controllers](#-testing-secured-controllers).
+
+---
+
 ## 🚀 Runnable Project
 
-A complete, production-ready Spring Boot project demonstrating **JWT Authentication** is available in:
-
-**`pizzastore-with-jwt/`**
+**[`pizzastore-with-jwt/`](pizzastore-with-jwt)** is Lesson 11's [`pizzastore-with-tests`](../lesson-11-testing/pizzastore-with-tests) plus the changes listed in [What This Lesson Adds to PizzaStore](#-what-this-lesson-adds-to-pizzastore). Apart from the OpenAPI documentation of Lesson 13, it is the final PizzaStore.
 
 ### Features
 
-✅ **JWT Authentication**: Token-based authentication  
-✅ **User Registration & Login**: Complete auth flow  
-✅ **Role-Based Access Control**: CUSTOMER and ADMIN roles  
+✅ **Spring Boot 4.0** on **Java 25**, Spring Security 7, JJWT 0.13  
+✅ **JWT Authentication**: token-based, stateless  
+✅ **User Registration & Login**: `POST /api/auth/register`, `POST /api/auth/login`  
+✅ **Role-Based Access Control**: CUSTOMER and ADMIN roles, see the [access table](#access-control-summary)  
 ✅ **Password Encryption**: BCrypt password hashing  
-✅ **Stateless Sessions**: No server-side session storage  
-✅ **Secured Endpoints**: Public, customer, and admin endpoints  
-✅ **Sample Users**: Pre-loaded with test accounts
+✅ **Everything from Lessons 6a-11**, including the Open Food Facts import (admin only)  
+✅ **236 tests**, including role tests in the web slice and end-to-end tests with real tokens  
+❌ No API documentation yet: Lesson 13
 
 ### Test Accounts
 
-**Customer Account:**
-- Email: `emma.johnson@example.com`
-- Password: `password123`
-- Role: `CUSTOMER`
+All accounts in `data.sql` have the password `password123`.
 
-**Admin Account:**
-- Email: `admin@pizzastore.be`
-- Password: `password123`
-- Role: `ADMIN`
+| Email | Role |
+|-------|------|
+| `emma.johnson@example.com` | `CUSTOMER` |
+| `liam.smith@example.com` | `CUSTOMER` |
+| `admin@pizzastore.be` | `ADMIN` |
 
 ### Running the Project
 
 ```bash
 cd pizzastore-with-jwt
-mvn clean install
 mvn spring-boot:run
 ```
+
+Run the tests with `mvn test`. Both need JDK 25: if your default `mvn` picks another JDK, point `JAVA_HOME` to JDK 25 first. The H2 console is at http://localhost:8080/h2-console (JDBC URL `jdbc:h2:mem:pizzastore_jwt`, user `sa`, no password).
 
 ### Quick Test
 
 ```bash
-# Login
-curl -X POST http://localhost:8080/api/auth/login \
+# Login as admin and keep the token
+ADMIN_TOKEN=$(curl -s -X POST http://localhost:8080/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"email":"admin@pizzastore.be","password":"password123"}'
+  -d '{"email":"admin@pizzastore.be","password":"password123"}' | jq -r '.token')
 
-# Use the returned token
+# Use the token
 curl -X POST http://localhost:8080/api/pizzas \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_TOKEN_HERE" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
   -d '{"name":"Secure Pizza","price":12.99,"available":true}'
 ```
 
 ---
 
-🎉 You've successfully implemented JWT authentication in your Spring Boot application!
+🎉 You've successfully implemented JWT authentication in your Spring Boot application! Continue to [Lesson 13: Swagger/OpenAPI](../lesson-13-swagger-openapi/README.md) to document the secured API.

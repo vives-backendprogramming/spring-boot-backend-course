@@ -3,8 +3,9 @@ package be.vives.pizzastore.repository;
 import be.vives.pizzastore.domain.Pizza;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
-import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
+import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
+import org.springframework.boot.jpa.test.autoconfigure.TestEntityManager;
+import be.vives.pizzastore.config.JpaConfig;
 import org.springframework.context.annotation.Import;
 
 import java.math.BigDecimal;
@@ -14,7 +15,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @DataJpaTest
-@Import({be.vives.pizzastore.config.JpaConfig.class, be.vives.pizzastore.config.AuditorAwareImpl.class})  // Enable JPA Auditing and provide auditor
+@Import(JpaConfig.class)  // @DataJpaTest does not scan @Configuration classes: import the one that enables JPA auditing
 class PizzaRepositoryTest {
 
     @Autowired

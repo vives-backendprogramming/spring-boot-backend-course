@@ -3,10 +3,10 @@ package be.vives.pizzastore.integration;
 import be.vives.pizzastore.dto.request.CreatePizzaRequest;
 import be.vives.pizzastore.dto.request.UpdatePizzaRequest;
 import be.vives.pizzastore.dto.response.PizzaResponse;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
@@ -30,7 +30,7 @@ class PizzaIntegrationTest {
     private MockMvc mockMvc;
 
     @Autowired
-    private ObjectMapper objectMapper;
+    private JsonMapper objectMapper;
 
     @Test
     @WithMockUser(roles = "ADMIN")
@@ -139,24 +139,21 @@ class PizzaIntegrationTest {
 
     @Test
     @WithMockUser(roles = "ADMIN")
-    void createPizza_WithInvalidData_StillCreates() throws Exception {
-        // Given - Invalid pizza (multiple validation errors)
-        // Note: Validation is not enforced at controller level without @Valid annotation
+    void createPizza_WithInvalidData_ReturnsBadRequest() throws Exception {
+        // Given - Invalid pizza (blank name, negative price)
         CreatePizzaRequest request = new CreatePizzaRequest(
-                "",  // Blank - would be invalid with @Valid
-                new BigDecimal("-5.00"),  // Negative - would be invalid with @Valid
+                "",
+                new BigDecimal("-5.00"),
                 "Test description",
                 true,
                 null
         );
 
-        // When / Then - without @Valid, invalid requests are still processed
+        // When / Then - @Valid rejects the request; nothing is persisted
         mockMvc.perform(post("/api/pizzas")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.name", is("")))
-                .andExpect(jsonPath("$.price", is(-5.00)));
+                .andExpect(status().isBadRequest());
     }
 
     private void createPizza(String name, String price) throws Exception {

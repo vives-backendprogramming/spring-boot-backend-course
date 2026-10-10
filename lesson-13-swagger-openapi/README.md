@@ -1,21 +1,26 @@
 # Lesson 13: API Documentation with Swagger/OpenAPI
 
+**Describing PizzaStore's Secured API So Others Can Use It: OpenAPI 3, springdoc-openapi and Swagger UI**
+
 ---
 
 ## 📋 Table of Contents
 
 1. [Learning Objectives](#-learning-objectives)
-2. [Introduction to OpenAPI](#-introduction-to-openapi)
-3. [Integrating Springdoc OpenAPI](#-integrating-springdoc-openapi)
-4. [Configuring OpenAPI](#-configuring-openapi)
-5. [Documenting Controllers](#-documenting-controllers)
-6. [Documenting DTOs](#-documenting-dtos)
-7. [Security Configuration](#-security-configuration)
-8. [Handling Pageable Parameters](#-handling-pageable-parameters)
-9. [Accessing Swagger UI](#-accessing-swagger-ui)
-10. [Testing with Swagger UI](#-testing-with-swagger-ui)
-11. [Best Practices](#-best-practices)
-12. [Runnable Project](#-runnable-project)
+2. [Recap: Where Lesson 12 Left Us](#-recap-where-lesson-12-left-us)
+3. [What This Lesson Adds to PizzaStore](#-what-this-lesson-adds-to-pizzastore)
+4. [Introduction to OpenAPI](#-introduction-to-openapi)
+5. [Integrating Springdoc OpenAPI](#-integrating-springdoc-openapi)
+6. [Configuring OpenAPI](#%EF%B8%8F-configuring-openapi)
+7. [Documenting Controllers](#-documenting-controllers)
+8. [Documenting DTOs](#%EF%B8%8F-documenting-dtos)
+9. [Security Configuration](#-security-configuration)
+10. [Handling Pageable Parameters](#-handling-pageable-parameters)
+11. [Accessing Swagger UI](#-accessing-swagger-ui)
+12. [Testing with Swagger UI](#-testing-with-swagger-ui)
+13. [Best Practices](#-best-practices)
+14. [Summary](#-summary)
+15. [Runnable Project](#-runnable-project)
 
 ---
 
@@ -24,14 +29,37 @@
 By the end of this lesson, you will be able to:
 
 - ✅ Understand the OpenAPI Specification (OAS)
-- ✅ Integrate Springdoc OpenAPI into a Spring Boot application
+- ✅ Integrate Springdoc OpenAPI into a Spring Boot 4 application
 - ✅ Configure API metadata and security schemes
-- ✅ Document REST API endpoints with annotations
+- ✅ Document REST API endpoints with annotations, including their error responses
 - ✅ Document DTOs with schema descriptions and examples
 - ✅ Access and use Swagger UI for API testing
 - ✅ Test authenticated endpoints via Swagger UI
 - ✅ Generate OpenAPI specifications in JSON/YAML format
 - ✅ Apply best practices for API documentation
+
+---
+
+## 🔄 Recap: Where Lesson 12 Left Us
+
+After [Lesson 12](../lesson-12-jwt-authentication/README.md) PizzaStore is complete: a tested REST API with validation, `ProblemDetail` errors, the Open Food Facts import and JWT security. What is missing is a **description for the people who have to use it**. A front-end or mobile developer now has to read our Java code (or ask us) to know which endpoints exist, what to send, what comes back, which role is needed and which errors are possible. This lesson generates that description from the code, as an **OpenAPI 3** document, and makes it browsable and testable with **Swagger UI**.
+
+---
+
+## 🧱 What This Lesson Adds to PizzaStore
+
+The project of this lesson, [`pizzastore-with-swagger`](pizzastore-with-swagger), is **Lesson 12's [`pizzastore-with-jwt`](../lesson-12-jwt-authentication/pizzastore-with-jwt) plus exactly these changes**, and with them it is the final PizzaStore:
+
+| Added / changed | What it does |
+|-----------------|--------------|
+| [`pom.xml`](pizzastore-with-swagger/pom.xml) | Adds `springdoc-openapi-starter-webmvc-ui` 3.0.3 |
+| [`config/OpenApiConfig.java`](pizzastore-with-swagger/src/main/java/be/vives/pizzastore/config/OpenApiConfig.java) (new) | API metadata, servers, the `bearerAuth` security scheme, and `ProblemDetail` as the schema of every error response |
+| [`controller/*.java`](pizzastore-with-swagger/src/main/java/be/vives/pizzastore/controller) | `@Tag`, `@Operation`, `@ApiResponses`, `@Parameter`, `@SecurityRequirement` and `@ParameterObject` on every endpoint. **Only annotations**: not one line of logic changed |
+| [`dto/LoginRequest.java`](pizzastore-with-swagger/src/main/java/be/vives/pizzastore/dto/LoginRequest.java), [`RegisterRequest.java`](pizzastore-with-swagger/src/main/java/be/vives/pizzastore/dto/RegisterRequest.java), [`dto/request/CreatePizzaRequest.java`](pizzastore-with-swagger/src/main/java/be/vives/pizzastore/dto/request/CreatePizzaRequest.java) | `@Schema` descriptions and examples |
+| [`security/SecurityConfig.java`](pizzastore-with-swagger/src/main/java/be/vives/pizzastore/security/SecurityConfig.java) | One extra rule: the documentation endpoints are public |
+| [`application.properties`](pizzastore-with-swagger/src/main/resources/application.properties) | `springdoc.*` settings |
+
+Services, repositories, entities, mappers, the Open Food Facts client, `data.sql` and the 236 tests are unchanged. Documentation is metadata *about* the code.
 
 ---
 
@@ -66,7 +94,7 @@ Add the `springdoc-openapi-starter-webmvc-ui` dependency to your `pom.xml`:
 
 ```xml
 <properties>
-    <springdoc.version>2.8.13</springdoc.version>
+    <springdoc.version>3.0.3</springdoc.version>
 </properties>
 
 <dependencies>
@@ -78,6 +106,8 @@ Add the `springdoc-openapi-starter-webmvc-ui` dependency to your `pom.xml`:
     </dependency>
 </dependencies>
 ```
+
+springdoc's version line follows Spring Boot: **springdoc 3.x is for Spring Boot 4** (Spring Framework 7, Jackson 3), springdoc 2.x for Spring Boot 3. Spring Boot does not manage its version, so it is set in `<properties>`.
 
 This single dependency includes:
 - OpenAPI specification generation
@@ -103,35 +133,23 @@ Once added, Springdoc automatically exposes:
 
 ### Basic Configuration Class
 
-Create an `OpenApiConfig` class to define global API metadata:
+[`OpenApiConfig`](pizzastore-with-swagger/src/main/java/be/vives/pizzastore/config/OpenApiConfig.java) defines the global API metadata:
 
 ```java
-package be.vives.pizzastore.config;
-
-import io.swagger.v3.oas.annotations.OpenAPIDefinition;
-import io.swagger.v3.oas.annotations.enums.SecuritySchemeType;
-import io.swagger.v3.oas.annotations.info.Contact;
-import io.swagger.v3.oas.annotations.info.Info;
-import io.swagger.v3.oas.annotations.info.License;
-import io.swagger.v3.oas.annotations.security.SecurityRequirement;
-import io.swagger.v3.oas.annotations.security.SecurityScheme;
-import io.swagger.v3.oas.annotations.servers.Server;
-import org.springframework.context.annotation.Configuration;
-
 @Configuration
 @OpenAPIDefinition(
         info = @Info(
                 title = "PizzaStore API",
                 version = "1.0.0",
                 description = """
-                        RESTful API for managing a pizza store.
+                        RESTful API for managing a pizza store, including pizzas, customers, and orders.
                         
-                        **Authentication**: JWT Bearer token authentication.
+                        **Authentication**: This API uses JWT Bearer token authentication.
                         
                         **Authorization**:
-                        - Anonymous users: Can view available pizzas
-                        - CUSTOMER role: Can place orders and manage profile
-                        - ADMIN role: Can manage pizzas and view all orders
+                        - **Anonymous users**: Can view available pizzas (GET /api/pizzas)
+                        - **CUSTOMER role**: Can place orders and manage their profile
+                        - **ADMIN role**: Can manage pizzas (create, update, delete) and view all orders
                         """,
                 contact = @Contact(
                         name = "VIVES",
@@ -150,21 +168,23 @@ import org.springframework.context.annotation.Configuration;
         type = SecuritySchemeType.HTTP,
         scheme = "bearer",
         bearerFormat = "JWT",
-        description = "JWT authentication token. Obtain via /api/auth/register or /api/auth/login"
+        description = "JWT authentication token. Obtain a token by registering or logging in via /api/auth/register or /api/auth/login"
 )
 public class OpenApiConfig {
+    ...   // plus the OpenApiCustomizer of "Error Responses: ProblemDetail" below
 }
 ```
 
 **Key Elements:**
 
 - `@OpenAPIDefinition`: Global API metadata
-- `@Info`: API title, version, description, contact, and license
-- `@Server`: Available servers (development, staging, production)
+- `@Info`: API title, version, description and contact (a `license` can be added too)
+- `@Server`: Available servers (development, staging, production); Swagger UI lets you pick one
 - `@SecurityScheme`: Authentication mechanism (JWT Bearer token)
 - `@SecurityRequirement`: Global security requirement
 
 ### Application Properties Configuration
+
 
 Fine-tune Springdoc behavior in `application.properties`:
 
@@ -316,13 +336,13 @@ Our PizzaStore API uses JWT Bearer authentication:
 
 **How it works in Swagger UI:**
 1. Click the **"Authorize"** button (lock icon) in Swagger UI
-2. Enter your JWT token in the format: `Bearer <your-jwt-token>` or just `<your-jwt-token>`
+2. Paste **only the token** (`eyJhbGciOi...`): because the scheme is `type = HTTP, scheme = "bearer"`, Swagger UI adds the `Bearer ` prefix itself. Typing `Bearer <token>` would send `Bearer Bearer <token>`, which fails
 3. Click **"Authorize"**
 4. All subsequent requests will include the token in the `Authorization` header
 
 #### OAuth2 / OpenID Connect (IdP Authentication)
 
-For Identity Provider (IdP) based authentication (covered in Lesson 13), you would configure:
+For Identity Provider (IdP) based authentication (not used in PizzaStore; it is the approach of the book's Chapter 11, see the note at the end of [Lesson 12](../lesson-12-jwt-authentication/README.md)), you would configure:
 
 ```java
 @SecurityScheme(
@@ -352,9 +372,77 @@ For Identity Provider (IdP) based authentication (covered in Lesson 13), you wou
 
 **Key Difference between JWT and IdP:**
 - **JWT (Lesson 12)**: Your application manages users, passwords, and token generation
-- **IdP (Lesson 13)**: External identity provider (like Dex, Keycloak, Google, Azure AD) manages authentication
+- **IdP**: External identity provider (like Dex, Keycloak, Google, Azure AD) manages authentication
 - **Both** can use the same `@SecurityRequirement` annotations on endpoints
 - **Swagger UI** integration is simpler with JWT, more complex with OAuth2/OIDC flows
+
+### Error Responses: `ProblemDetail`
+
+An `@ApiResponse` without `content`, such as `@ApiResponse(responseCode = "404", description = "Pizza not found")`, is documented by springdoc with the **return type of the method**. Swagger UI would then claim that a `404` returns a `PizzaResponse`, which is wrong: since Lesson 10 every error is an RFC 7807 `ProblemDetail`. You could add `content = @Content(mediaType = "application/problem+json", schema = @Schema(implementation = ProblemDetail.class))` to every error response of every endpoint, but that is a lot of repetition. PizzaStore fixes it once, with an `OpenApiCustomizer` bean in `OpenApiConfig` that edits the generated document:
+
+```java
+@Bean
+public OpenApiCustomizer problemDetailForErrorResponses() {
+    return openApi -> {
+        Schema<?> problemDetail = ModelConverters.getInstance().read(ProblemDetail.class).get("ProblemDetail");
+        // extension members such as "errors" are written at the top level of the JSON, not inside "properties"
+        problemDetail.getProperties().remove("properties");
+        problemDetail.setAdditionalProperties(true);
+        openApi.getComponents().addSchemas("ProblemDetail", problemDetail);
+        Content problemJson = new Content().addMediaType(org.springframework.http.MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+                new MediaType().schema(new Schema<>().$ref("#/components/schemas/ProblemDetail")));
+
+        openApi.getPaths().values().forEach(path -> path.readOperations().forEach(operation ->
+                operation.getResponses().forEach((code, response) -> {
+                    if (code.startsWith("4") || code.startsWith("5")) {
+                        response.setContent(problemJson);
+                    }
+                })));
+    };
+}
+```
+
+An `OpenApiCustomizer` runs after springdoc has built the document from the annotations, and can change anything in it. Here it adds a `ProblemDetail` schema (read from Spring's own `ProblemDetail` class) to the components, and gives every `4xx`/`5xx` response the content type `application/problem+json` with that schema. The annotations on the controllers stay short, and the documentation matches what `GlobalExceptionHandler` really returns.
+
+### Documenting the Open Food Facts Import
+
+The endpoint of [Lesson 10, Part 3](../lesson-10-validation-exception-handling/README.md#-part-3-calling-an-external-api) shows everything together: a description that says what the endpoint does and where the data comes from, the security requirement, and **every** status code it can return, including the two that come from the external service:
+
+```java
+@PostMapping("/{id}/nutritional-info/import")
+@Operation(
+        summary = "Import nutritional info from Open Food Facts",
+        description = """
+                Fills the nutritional info of a pizza (per 100 g) with the data that the free
+                [Open Food Facts](https://world.openfoodfacts.org) database has for a barcode,
+                e.g. of a comparable packaged product. An existing nutritional info is overwritten.
+                Requires ADMIN role.
+                """,
+        security = @SecurityRequirement(name = "bearerAuth")
+)
+@ApiResponses(value = {
+        @ApiResponse(
+                responseCode = "200",
+                description = "Nutritional info imported",
+                content = @Content(schema = @Schema(implementation = PizzaResponse.class))
+        ),
+        @ApiResponse(responseCode = "400", description = "Barcode is missing or not a valid EAN/UPC number"),
+        @ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid"),
+        @ApiResponse(responseCode = "403", description = "Forbidden - ADMIN role required"),
+        @ApiResponse(responseCode = "404", description = "Pizza not found"),
+        @ApiResponse(responseCode = "422", description = "Open Food Facts does not know the barcode, or has no complete nutritional data for it"),
+        @ApiResponse(responseCode = "502", description = "Open Food Facts is unavailable, too slow or rate-limiting us")
+})
+public ResponseEntity<PizzaResponse> importNutritionalInfo(
+        @Parameter(description = "Pizza ID", required = true) @PathVariable Long id,
+        @Valid @RequestBody ImportNutritionRequest request) {
+    ...
+}
+```
+
+The description field accepts **Markdown**, so the link to Open Food Facts is clickable in Swagger UI. A client developer reading this knows, without opening our code, that a `502` is not their fault and can be retried, while a `422` means they should try another barcode. `ImportNutritionRequest` has no `@Schema` at all, yet Swagger UI shows the barcode as required with its regular expression: springdoc reads `@NotBlank` and `@Pattern` (see [Validation Annotations Integration](#validation-annotations-integration)).
+
+> **`401` or `403`?** The two are documented separately because PizzaStore really returns both: `401 Unauthorized` when the token is missing, expired or invalid (the `HttpStatusEntryPoint` of [Lesson 12's `SecurityConfig`](../lesson-12-jwt-authentication/README.md#key-points)), `403 Forbidden` when a logged-in user lacks the role. A client developer needs that difference: after a `401` the app shows the login screen again, after a `403` it doesn't.
 
 ---
 
@@ -569,8 +657,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/pizzas/**").permitAll()
                         
                         // Swagger/OpenAPI endpoints - PUBLIC ACCESS!
-                        .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**")
-                        .permitAll()
+                        .requestMatchers("/swagger-ui/**", "/swagger-ui.html",
+                                "/v3/api-docs", "/v3/api-docs/**", "/v3/api-docs.yaml").permitAll()
                         
                         // Secured endpoints
                         .anyRequest().authenticated()
@@ -584,7 +672,10 @@ public class SecurityConfig {
 **Important paths to allow:**
 - `/swagger-ui/**` - Swagger UI static resources (CSS, JS, etc.)
 - `/swagger-ui.html` - Swagger UI entry point
-- `/v3/api-docs/**` - OpenAPI specification endpoints
+- `/v3/api-docs`, `/v3/api-docs/**` - OpenAPI specification endpoints (JSON, and per group)
+- `/v3/api-docs.yaml` - the YAML version. It needs its own pattern: `/v3/api-docs/**` matches `/v3/api-docs` and everything *below* it, but `/v3/api-docs.yaml` is a different path next to it. Without the pattern the YAML link answers `403`
+
+The snippet shows only the relevant lines; the complete rules are in [`SecurityConfig`](pizzastore-with-swagger/src/main/java/be/vives/pizzastore/security/SecurityConfig.java) (Lesson 12). Do you want the documentation to be private in production? Then do not permit these paths there, or switch springdoc off with `springdoc.api-docs.enabled=false` and `springdoc.swagger-ui.enabled=false` in a production profile.
 
 ---
 
@@ -617,46 +708,21 @@ When executing, this results in an error:
 No property '["id"]' found for type 'Pizza'
 ```
 
-### The Solution: PageableArgumentResolver
+### The Solution: `@ParameterObject`
 
-Add a custom `PageableArgumentResolver` bean to properly configure how Springdoc interprets `Pageable` parameters:
-
-```java
-package be.vives.pizzastore.config;
-
-import org.springdoc.core.converters.models.PageableAsQueryParam;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.data.web.PageableHandlerMethodArgumentResolver;
-
-@Configuration
-public class SpringDocConfig {
-
-    @Bean
-    public PageableHandlerMethodArgumentResolver pageableResolver() {
-        PageableHandlerMethodArgumentResolver resolver = new PageableHandlerMethodArgumentResolver();
-        resolver.setMaxPageSize(100);
-        resolver.setFallbackPageable(org.springframework.data.domain.PageRequest.of(0, 20));
-        return resolver;
-    }
-}
-```
-
-### Alternative: Use @ParameterObject
-
-You can also explicitly tell Springdoc to treat `Pageable` as query parameters:
+Tell springdoc to document the fields of the `Pageable` as separate query parameters. That is what PizzaStore's [`PizzaController`](pizzastore-with-swagger/src/main/java/be/vives/pizzastore/controller/PizzaController.java), `CustomerController` and `OrderController` do:
 
 ```java
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
 
 @GetMapping
-@Operation(summary = "Get all pizzas", description = "Retrieves all pizzas with pagination support")
-public ResponseEntity<Page<PizzaResponse>> getPizzas(
-        @ParameterObject Pageable pageable,
-        @RequestParam(required = false) BigDecimal minPrice,
-        @RequestParam(required = false) BigDecimal maxPrice,
-        @RequestParam(required = false) String name) {
+@Operation(summary = "Get all pizzas", description = "...")
+public ResponseEntity<?> getPizzas(
+        @Parameter(description = "Minimum price filter") @RequestParam(required = false) BigDecimal minPrice,
+        @Parameter(description = "Maximum price filter") @RequestParam(required = false) BigDecimal maxPrice,
+        @Parameter(description = "Name filter (case-insensitive partial match)") @RequestParam(required = false) String name,
+        @ParameterObject Pageable pageable) {
     // Implementation
 }
 ```
@@ -729,15 +795,14 @@ The Swagger UI interface displays:
 
 For endpoints requiring authentication:
 
-#### Step 1: Register or Login
+#### Step 1: Log In
 
-1. Navigate to **Authentication** → `POST /api/auth/register` or `POST /api/auth/login`
+1. Navigate to **Authentication** → `POST /api/auth/login`
 2. Click **"Try it out"**
-3. Fill in the request body:
+3. Fill in the request body. Creating a pizza needs the ADMIN role, so log in as the admin of `data.sql` (registering through `/api/auth/register` always gives you the CUSTOMER role):
    ```json
    {
-     "name": "John Doe",
-     "email": "john@example.com",
+     "email": "admin@pizzastore.be",
      "password": "password123"
    }
    ```
@@ -745,18 +810,18 @@ For endpoints requiring authentication:
 5. **Copy the JWT token** from the response:
    ```json
    {
-     "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-     "email": "john@example.com",
-     "name": "John Doe",
-     "role": "CUSTOMER"
+     "token": "eyJhbGciOiJIUzM4NCJ9...",
+     "email": "admin@pizzastore.be",
+     "name": "Admin User",
+     "role": "ADMIN"
    }
    ```
 
 #### Step 2: Authorize in Swagger UI
 
 1. Click the **"Authorize"** button (🔒 icon) at the top right
-2. In the dialog, enter: `Bearer <your-token>`
-   - Example: `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...`
+2. In the dialog, paste the token **without** `Bearer ` (Swagger UI adds it)
+   - Example: `eyJhbGciOiJIUzM4NCJ9...`
 3. Click **"Authorize"**
 4. Click **"Close"**
 
@@ -778,7 +843,7 @@ Now you can test secured endpoints:
 4. Click **"Execute"**
 5. View the response (201 Created)
 
-The JWT token is automatically included in the `Authorization` header for all subsequent requests!
+The JWT token is automatically included in the `Authorization` header for all subsequent requests! Try the Open Food Facts import the same way: **Pizza Management** → `POST /api/pizzas/{id}/nutritional-info/import`, `id` = `1`, body `{ "barcode": "3017620422003" }`. Then log in as `emma.johnson@example.com`, authorize with her token and repeat: now you get the `403` that the documentation promises.
 
 ---
 
@@ -835,6 +900,8 @@ Document all possible HTTP status codes:
         @ApiResponse(responseCode = "500", description = "Internal server error")
 })
 ```
+
+Include the status codes that come from *other* systems: the Open Food Facts import documents its `422` and `502` (see [Documenting the Open Food Facts Import](#documenting-the-open-food-facts-import)).
 
 ### 4. Group Related Endpoints
 
@@ -898,31 +965,48 @@ private String name;  // Automatically documented!
 
 ---
 
+## 📚 Summary
+
+In this lesson, you learned:
+
+- ✅ How to integrate **Springdoc OpenAPI** into Spring Boot 4
+- ✅ How to configure **global API metadata** and **security schemes**
+- ✅ How to document **controllers** with `@Operation`, `@ApiResponses`, `@Parameter`
+- ✅ How to document **error responses** once, as `ProblemDetail`, with an `OpenApiCustomizer`
+- ✅ How to document **DTOs** with `@Schema`, and how validation annotations end up in the schema
+- ✅ How to configure **Spring Security** to allow Swagger UI access
+- ✅ How to access and use **Swagger UI** for interactive API testing
+- ✅ How to **test JWT-secured endpoints** via Swagger UI
+- ✅ **Best practices** for API documentation
+
+---
+
+**Note on the book**: *Pro Spring Boot 4* does not cover API documentation: the words OpenAPI, Swagger and springdoc do not occur in the book. This lesson is the course's own addition, based on the [springdoc-openapi documentation](https://springdoc.org/) and the [OpenAPI Specification](https://spec.openapis.org/oas/latest.html).
+
+---
+
 ## 🚀 Runnable Project
 
-A complete, production-ready Spring Boot project with **OpenAPI/Swagger documentation** is available in:
-
-**`pizzastore-with-swagger/`**
+**[`pizzastore-with-swagger/`](pizzastore-with-swagger)** is Lesson 12's [`pizzastore-with-jwt`](../lesson-12-jwt-authentication/pizzastore-with-jwt) plus the changes listed in [What This Lesson Adds to PizzaStore](#-what-this-lesson-adds-to-pizzastore). Its code is the **final PizzaStore** of this course.
 
 The project includes:
 
-✅ **Springdoc OpenAPI integration**  
-✅ **Comprehensive API documentation**  
+✅ **Spring Boot 4.0** on **Java 25**, springdoc-openapi 3.0.3  
+✅ **Everything from Lessons 6a-12**: domain, repositories, DTOs, services, REST API, validation, `ProblemDetail` errors, the Open Food Facts import, JWT security  
+✅ **All controllers documented** with `@Operation`, `@ApiResponses`, `@Parameter`; error responses as `ProblemDetail`  
+✅ **DTOs documented** with `@Schema`  
 ✅ **JWT Bearer authentication in Swagger UI**  
-✅ **All controllers documented with @Operation, @ApiResponses, @Parameter**  
-✅ **All DTOs documented with @Schema**  
-✅ **Interactive Swagger UI at `/swagger-ui.html`**  
-✅ **OpenAPI spec at `/v3/api-docs`**  
-✅ **Security configuration allowing Swagger UI access**  
-✅ **All tests passing**
+✅ **Swagger UI** at `/swagger-ui.html`, **OpenAPI spec** at `/v3/api-docs` and `/v3/api-docs.yaml`  
+✅ **236 tests** (`mvn test`)
 
 ### Running the Project
 
 ```bash
 cd pizzastore-with-swagger
-mvn clean install
 mvn spring-boot:run
 ```
+
+Both the application and the tests need JDK 25: if your default `mvn` picks another JDK, point `JAVA_HOME` to JDK 25 first. The H2 console is at http://localhost:8080/h2-console (JDBC URL `jdbc:h2:mem:pizzastore_swagger`, user `sa`, no password).
 
 ### Accessing Documentation
 
@@ -933,25 +1017,11 @@ mvn spring-boot:run
 ### Testing Flow
 
 1. Open Swagger UI
-2. Register a user via `/api/auth/register`
-3. Copy the JWT token
-4. Click "Authorize" and paste: `Bearer <token>`
-5. Test any secured endpoint!
+2. Log in via `POST /api/auth/login` as `admin@pizzastore.be` / `password123` (or as the customer `emma.johnson@example.com`)
+3. Copy the `token` from the response
+4. Click **Authorize** and paste the token (without `Bearer `)
+5. Test any secured endpoint, for example the Open Food Facts import with barcode `3017620422003`
 
 ---
 
-## 📚 Summary
-
-In this lesson, you learned:
-
-- ✅ How to integrate **Springdoc OpenAPI** into Spring Boot
-- ✅ How to configure **global API metadata** and **security schemes**
-- ✅ How to document **controllers** with `@Operation`, `@ApiResponses`, `@Parameter`
-- ✅ How to document **DTOs** with `@Schema`
-- ✅ How to configure **Spring Security** to allow Swagger UI access
-- ✅ How to access and use **Swagger UI** for interactive API testing
-- ✅ How to **test JWT-secured endpoints** via Swagger UI
-- ✅ **Best practices** for API documentation
-
----
-
+🎉 Congratulations: you have built, tested, secured and documented a complete Spring Boot 4 REST API!

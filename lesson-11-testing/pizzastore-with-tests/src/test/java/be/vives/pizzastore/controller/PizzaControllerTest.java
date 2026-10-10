@@ -2,13 +2,20 @@ package be.vives.pizzastore.controller;
 
 import be.vives.pizzastore.dto.request.CreatePizzaRequest;
 import be.vives.pizzastore.dto.request.UpdatePizzaRequest;
+import be.vives.pizzastore.dto.response.NutritionalInfoResponse;
 import be.vives.pizzastore.dto.response.PizzaResponse;
+import be.vives.pizzastore.exception.BusinessException;
+import be.vives.pizzastore.exception.ExternalServiceException;
 import be.vives.pizzastore.exception.GlobalExceptionHandler;
+import be.vives.pizzastore.exception.InvalidFileException;
+import be.vives.pizzastore.exception.ResourceNotFoundException;
+import be.vives.pizzastore.service.NutritionImportService;
 import be.vives.pizzastore.service.PizzaService;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.dao.DataIntegrityViolationException;
+import tools.jackson.databind.json.JsonMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -21,17 +28,21 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.math.BigDecimal;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Optional;
+
 
 import static org.hamcrest.Matchers.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@WebMvcTest(controllers = PizzaController.class)  // Loads only Spring MVC components
+@WebMvcTest(controllers = PizzaController.class)
 @Import(GlobalExceptionHandler.class)
 class PizzaControllerTest {
 
@@ -39,11 +50,13 @@ class PizzaControllerTest {
     private MockMvc mockMvc;
 
     @Autowired
-    private ObjectMapper objectMapper;
+    private JsonMapper objectMapper;
 
     @MockitoBean
     private PizzaService pizzaService;
 
+    @MockitoBean
+    private NutritionImportService nutritionImportService;
     @Test
     void getPizzas_NoPizzas_ReturnsEmptyPage() throws Exception {
         // Given
@@ -87,7 +100,7 @@ class PizzaControllerTest {
     void getPizza_ExistingId_ReturnsPizza() throws Exception {
         // Given
         PizzaResponse pizza = new PizzaResponse(1L, "Margherita", new BigDecimal("8.50"), "Classic", null, true, null);
-        when(pizzaService.findById(1L)).thenReturn(Optional.of(pizza));
+        when(pizzaService.findById(1L)).thenReturn(pizza);
 
         // When / Then
         mockMvc.perform(get("/api/pizzas/1"))
@@ -103,11 +116,15 @@ class PizzaControllerTest {
     @Test
     void getPizza_NonExistingId_Returns404() throws Exception {
         // Given
-        when(pizzaService.findById(999L)).thenReturn(Optional.empty());
+        when(pizzaService.findById(999L)).thenThrow(new ResourceNotFoundException("Pizza", 999L));
 
         // When / Then
         mockMvc.perform(get("/api/pizzas/999"))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isNotFound())
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.status", is(404)))
+                .andExpect(jsonPath("$.detail", is("Pizza with id 999 not found")))
+                .andExpect(jsonPath("$.instance", is("/api/pizzas/999")));
 
         verify(pizzaService).findById(999L);
     }
@@ -141,9 +158,8 @@ class PizzaControllerTest {
     }
 
     @Test
-    void createPizza_InvalidRequest_StillCreates() throws Exception {
+    void createPizza_InvalidRequest_ReturnsBadRequest() throws Exception {
         // Given - invalid request (blank name, negative price)
-        // Note: Validation is not enforced at controller level without @Valid annotation
         CreatePizzaRequest request = new CreatePizzaRequest(
                 "",
                 new BigDecimal("-5.00"),
@@ -152,16 +168,13 @@ class PizzaControllerTest {
                 null
         );
 
-        PizzaResponse response = new PizzaResponse(1L, "", new BigDecimal("-5.00"), "Short", null, true, null);
-        when(pizzaService.create(any(CreatePizzaRequest.class))).thenReturn(response);
-
-        // When / Then - without @Valid, invalid requests are still processed
+        // When / Then - @Valid rejects the request before it reaches the service
         mockMvc.perform(post("/api/pizzas")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isCreated());
+                .andExpect(status().isBadRequest());
 
-        verify(pizzaService).create(any(CreatePizzaRequest.class));
+        verify(pizzaService, never()).create(any(CreatePizzaRequest.class));
     }
 
     @Test
@@ -177,7 +190,7 @@ class PizzaControllerTest {
 
         PizzaResponse response = new PizzaResponse(1L, "Updated Pizza", new BigDecimal("11.00"), 
                 "Updated description for this amazing pizza", null, true, null);
-        when(pizzaService.update(eq(1L), any(UpdatePizzaRequest.class))).thenReturn(Optional.of(response));
+        when(pizzaService.update(eq(1L), any(UpdatePizzaRequest.class))).thenReturn(response);
 
         // When / Then
         mockMvc.perform(put("/api/pizzas/1")
@@ -192,6 +205,23 @@ class PizzaControllerTest {
     }
 
     @Test
+    void updatePizza_MissingRequiredFields_ReturnsValidationProblemDetail() throws Exception {
+        // Given - PUT replaces the whole pizza, so only sending the price is not enough
+        String partialBody = "{\"price\": 12.00}";
+
+        // When / Then
+        mockMvc.perform(put("/api/pizzas/1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(partialBody))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.detail", is("Validation failed")))
+                .andExpect(jsonPath("$.errors[*].field", containsInAnyOrder("name", "available")));
+
+        verify(pizzaService, never()).update(any(), any());
+    }
+
+    @Test
     void updatePizza_NonExistingId_Returns404() throws Exception {
         // Given
         UpdatePizzaRequest request = new UpdatePizzaRequest(
@@ -203,7 +233,7 @@ class PizzaControllerTest {
         );
 
         when(pizzaService.update(eq(999L), any(UpdatePizzaRequest.class)))
-                .thenReturn(Optional.empty());
+                .thenThrow(new ResourceNotFoundException("Pizza", 999L));
 
         // When / Then
         mockMvc.perform(put("/api/pizzas/999")
@@ -217,7 +247,7 @@ class PizzaControllerTest {
     @Test
     void deletePizza_ExistingId_Returns204() throws Exception {
         // Given
-        when(pizzaService.delete(1L)).thenReturn(true);
+        doNothing().when(pizzaService).delete(1L);
 
         // When / Then
         mockMvc.perform(delete("/api/pizzas/1"))
@@ -227,9 +257,20 @@ class PizzaControllerTest {
     }
 
     @Test
+    void deletePizza_StillReferenced_Returns409() throws Exception {
+        // Given - e.g. the pizza is still in a customer's favorites
+        doThrow(new DataIntegrityViolationException("FK constraint violation")).when(pizzaService).delete(1L);
+
+        // When / Then - the SQL error is not leaked to the client
+        mockMvc.perform(delete("/api/pizzas/1"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.detail", not(containsString("FK"))));
+    }
+
+    @Test
     void deletePizza_NonExistingId_Returns404() throws Exception {
         // Given
-        when(pizzaService.delete(999L)).thenReturn(false);
+        doThrow(new ResourceNotFoundException("Pizza", 999L)).when(pizzaService).delete(999L);
 
         // When / Then
         mockMvc.perform(delete("/api/pizzas/999"))
@@ -309,7 +350,7 @@ class PizzaControllerTest {
 
         PizzaResponse response = new PizzaResponse(1L, "Margherita", new BigDecimal("8.50"), 
                 "Classic", "/uploads/pizza-1.jpg", true, null);
-        when(pizzaService.uploadImage(eq(1L), any())).thenReturn(Optional.of(response));
+        when(pizzaService.uploadImage(eq(1L), any())).thenReturn(response);
 
         // When / Then
         mockMvc.perform(multipart("/api/pizzas/1/image")
@@ -331,7 +372,7 @@ class PizzaControllerTest {
                 "test image content".getBytes()
         );
 
-        when(pizzaService.uploadImage(eq(999L), any())).thenReturn(Optional.empty());
+        when(pizzaService.uploadImage(eq(999L), any())).thenThrow(new ResourceNotFoundException("Pizza", 999L));
 
         // When / Then
         mockMvc.perform(multipart("/api/pizzas/999/image")
@@ -352,12 +393,13 @@ class PizzaControllerTest {
         );
 
         when(pizzaService.uploadImage(eq(1L), any()))
-                .thenThrow(new IllegalArgumentException("Invalid file type"));
+                .thenThrow(new InvalidFileException("Only JPG, JPEG, and PNG files are allowed"));
 
         // When / Then
         mockMvc.perform(multipart("/api/pizzas/1/image")
                         .file(file))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail", is("Only JPG, JPEG, and PNG files are allowed")));
 
         verify(pizzaService).uploadImage(eq(1L), any());
     }
@@ -381,5 +423,70 @@ class PizzaControllerTest {
                 .andExpect(status().isInternalServerError());
 
         verify(pizzaService).uploadImage(eq(1L), any());
+    }
+
+    // --- POST /api/pizzas/{id}/nutritional-info/import (NutritionImportService is a mock: Open Food Facts is never called) ---
+
+    @Test
+    void importNutritionalInfo_ValidBarcode_ReturnsUpdatedPizza() throws Exception {
+        PizzaResponse updated = new PizzaResponse(1L, "Margherita", new BigDecimal("8.50"), "Classic", null, true,
+                new NutritionalInfoResponse(539, new BigDecimal("6.30"), new BigDecimal("57.50"), new BigDecimal("30.90")));
+        when(nutritionImportService.importFromBarcode(1L, "3017620422003")).thenReturn(updated);
+
+        mockMvc.perform(post("/api/pizzas/1/nutritional-info/import")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"barcode\":\"3017620422003\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.nutritionalInfo.calories", is(539)))
+                .andExpect(jsonPath("$.nutritionalInfo.protein", is(6.30)));
+    }
+
+    @Test
+    void importNutritionalInfo_InvalidBarcode_Returns400AndNeverCallsService() throws Exception {
+        mockMvc.perform(post("/api/pizzas/1/nutritional-info/import")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"barcode\":\"abc\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors[0].field", is("barcode")));
+
+        verifyNoInteractions(nutritionImportService);
+    }
+
+    @Test
+    void importNutritionalInfo_UnknownPizza_Returns404() throws Exception {
+        when(nutritionImportService.importFromBarcode(999L, "3017620422003"))
+                .thenThrow(new ResourceNotFoundException("Pizza", 999L));
+
+        mockMvc.perform(post("/api/pizzas/999/nutritional-info/import")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"barcode\":\"3017620422003\"}"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void importNutritionalInfo_UnknownBarcode_Returns422() throws Exception {
+        when(nutritionImportService.importFromBarcode(1L, "0000000000017"))
+                .thenThrow(new BusinessException("Open Food Facts does not know a product with barcode 0000000000017"));
+
+        mockMvc.perform(post("/api/pizzas/1/nutritional-info/import")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"barcode\":\"0000000000017\"}"))
+                .andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.detail", containsString("0000000000017")));
+    }
+
+    @Test
+    void importNutritionalInfo_OpenFoodFactsDown_Returns502WithoutLeakingDetails() throws Exception {
+        when(nutritionImportService.importFromBarcode(1L, "3017620422003"))
+                .thenThrow(new ExternalServiceException("Open Food Facts is currently unavailable, please try again later",
+                        new RuntimeException("Connection refused: secret-internal-host:443")));
+
+        mockMvc.perform(post("/api/pizzas/1/nutritional-info/import")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"barcode\":\"3017620422003\"}"))
+                .andExpect(status().isBadGateway())
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.detail", is("Open Food Facts is currently unavailable, please try again later")))
+                .andExpect(content().string(not(containsString("secret-internal-host"))));
     }
 }

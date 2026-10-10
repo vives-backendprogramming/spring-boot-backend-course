@@ -1,11 +1,15 @@
 package be.vives.pizzastore.repository;
 
 import be.vives.pizzastore.domain.*;
+import be.vives.pizzastore.repository.projection.PizzaSalesStatistics;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
-import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
+import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
+import org.springframework.boot.jpa.test.autoconfigure.TestEntityManager;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -61,6 +65,31 @@ class OrderRepositoryTest {
         assertThat(orders).hasSize(2);
         assertThat(orders).extracting(Order::getOrderNumber)
                 .containsExactlyInAnyOrder("ORD-2024-000001", "ORD-2024-000002");
+    }
+
+    @Test
+    void findByCustomerIdWithPageable_shouldReturnOnlyCustomerOrdersPaged() {
+        // Arrange
+        Customer customer1 = createTestCustomer("John Doe", "john@example.com");
+        Customer customer2 = createTestCustomer("Jane Smith", "jane@example.com");
+        entityManager.persist(customer1);
+        entityManager.persist(customer2);
+
+        entityManager.persist(new Order("ORD-2024-000001", customer1, OrderStatus.PENDING));
+        entityManager.persist(new Order("ORD-2024-000002", customer2, OrderStatus.PENDING));
+        entityManager.persist(new Order("ORD-2024-000003", customer1, OrderStatus.DELIVERED));
+        entityManager.persist(new Order("ORD-2024-000004", customer1, OrderStatus.CONFIRMED));
+        entityManager.flush();
+
+        // Act
+        Page<Order> page = orderRepository.findByCustomerId(customer1.getId(),
+                PageRequest.of(0, 2, Sort.by("orderNumber")));
+
+        // Assert
+        assertThat(page.getTotalElements()).isEqualTo(3);
+        assertThat(page.getTotalPages()).isEqualTo(2);
+        assertThat(page.getContent()).extracting(Order::getOrderNumber)
+                .containsExactly("ORD-2024-000001", "ORD-2024-000003");
     }
 
     @Test
@@ -233,6 +262,49 @@ class OrderRepositoryTest {
         // Assert
         Optional<Order> found = orderRepository.findById(orderId);
         assertThat(found).isEmpty();
+    }
+
+    @Test
+    void findPizzaSalesStatistics_shouldAggregateQuantityAndRevenuePerPizza() {
+        // Arrange
+        Customer customer = createTestCustomer("John Doe", "john@example.com");
+        Pizza margherita = createTestPizza("Margherita", BigDecimal.valueOf(8.50), "Classic pizza");
+        Pizza pepperoni = createTestPizza("Pepperoni", BigDecimal.valueOf(10.00), "Spicy pizza");
+        entityManager.persist(customer);
+        entityManager.persist(margherita);
+        entityManager.persist(pepperoni);
+
+        Order order1 = new Order("ORD-2024-000001", customer, OrderStatus.DELIVERED);
+        order1.addOrderLine(new OrderLine(margherita, 2));
+        order1.addOrderLine(new OrderLine(pepperoni, 1));
+        entityManager.persist(order1);
+
+        Order order2 = new Order("ORD-2024-000002", customer, OrderStatus.DELIVERED);
+        order2.addOrderLine(new OrderLine(margherita, 1));
+        entityManager.persist(order2);
+        entityManager.flush();
+
+        // Act
+        List<PizzaSalesStatistics> statistics = orderRepository.findPizzaSalesStatistics();
+
+        // Assert
+        assertThat(statistics).hasSize(2);
+
+        PizzaSalesStatistics margheritaStats = statistics.stream()
+                .filter(s -> s.pizzaName().equals("Margherita"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(margheritaStats.timesOrdered()).isEqualTo(2L);
+        assertThat(margheritaStats.totalQuantitySold()).isEqualTo(3L);
+        assertThat(margheritaStats.totalRevenue()).isEqualByComparingTo(BigDecimal.valueOf(25.50));
+
+        PizzaSalesStatistics pepperoniStats = statistics.stream()
+                .filter(s -> s.pizzaName().equals("Pepperoni"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(pepperoniStats.timesOrdered()).isEqualTo(1L);
+        assertThat(pepperoniStats.totalQuantitySold()).isEqualTo(1L);
+        assertThat(pepperoniStats.totalRevenue()).isEqualByComparingTo(BigDecimal.valueOf(10.00));
     }
 
     @Test

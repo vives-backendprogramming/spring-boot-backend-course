@@ -1,6 +1,7 @@
 package be.vives.pizzastore.dto.request;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -22,9 +23,11 @@ public record CreatePizzaRequest(
         @Schema(description = "Description of the pizza", example = "Classic pizza with tomato sauce, mozzarella, and fresh basil")
         String description,
 
-        @Schema(description = "Whether the pizza is available for ordering", example = "true", defaultValue = "true")
+        @NotNull(message = "Availability is required")
+        @Schema(description = "Whether the pizza is available for ordering", example = "true", required = true)
         Boolean available,
 
+        @Valid
         @Schema(description = "Nutritional information for the pizza")
         NutritionalInfoRequest nutritionalInfo
 ) {

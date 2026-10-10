@@ -90,6 +90,13 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return buildProblemDetail(HttpStatus.UNPROCESSABLE_CONTENT, ex.getMessage(), "business-rule", request);
     }
 
+    @ExceptionHandler(ExternalServiceException.class)
+    public ProblemDetail handleExternalServiceException(ExternalServiceException ex, WebRequest request) {
+        // The cause (timeout, 503, ...) is logged by the service; the client only needs to know it is not their fault
+        log.warn("External service failure: {}", ex.getMessage());
+        return buildProblemDetail(HttpStatus.BAD_GATEWAY, ex.getMessage(), "external-service", request);
+    }
+
     @ExceptionHandler(PizzaStoreException.class)
     public ProblemDetail handlePizzaStoreException(PizzaStoreException ex, WebRequest request) {
         log.warn("PizzaStore error: {}", ex.getMessage());

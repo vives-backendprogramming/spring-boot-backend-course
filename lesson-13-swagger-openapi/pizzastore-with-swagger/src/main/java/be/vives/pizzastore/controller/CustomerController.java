@@ -7,6 +7,7 @@ import be.vives.pizzastore.dto.response.OrderResponse;
 import be.vives.pizzastore.dto.response.PizzaResponse;
 import be.vives.pizzastore.service.CustomerService;
 import be.vives.pizzastore.service.OrderService;
+import jakarta.validation.Valid;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -152,7 +153,7 @@ public class CustomerController {
             @ApiResponse(responseCode = "400", description = "Invalid request data"),
             @ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid")
     })
-    public ResponseEntity<CustomerResponse> createCustomer(@RequestBody CreateCustomerRequest request) {
+    public ResponseEntity<CustomerResponse> createCustomer(@Valid @RequestBody CreateCustomerRequest request) {
         log.debug("POST /api/customers - {}", request);
 
         CustomerResponse created = customerService.create(request);
@@ -183,7 +184,7 @@ public class CustomerController {
     })
     public ResponseEntity<CustomerResponse> updateCustomer(
             @Parameter(description = "Customer ID", required = true) @PathVariable Long id,
-            @RequestBody UpdateCustomerRequest request) {
+            @Valid @RequestBody UpdateCustomerRequest request) {
 
         log.debug("PUT /api/customers/{} - {}", id, request);
 

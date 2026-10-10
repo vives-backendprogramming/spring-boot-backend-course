@@ -1,7 +1,9 @@
 package be.vives.pizzastore.service;
 
+import be.vives.pizzastore.domain.NutritionalInfo;
 import be.vives.pizzastore.domain.Pizza;
 import be.vives.pizzastore.dto.request.CreatePizzaRequest;
+import be.vives.pizzastore.dto.request.NutritionalInfoRequest;
 import be.vives.pizzastore.dto.request.UpdatePizzaRequest;
 import be.vives.pizzastore.dto.response.PizzaResponse;
 import be.vives.pizzastore.exception.ResourceNotFoundException;
@@ -94,6 +96,26 @@ public class PizzaService {
         Pizza updatedPizza = pizzaRepository.save(pizza);
         log.info("Updated pizza with id: {}", id);
         return pizzaMapper.toResponse(updatedPizza);
+    }
+
+    /** Creates or overwrites the nutritional info of a pizza (used by the Open Food Facts import). */
+    public PizzaResponse updateNutritionalInfo(Long id, NutritionalInfoRequest request) {
+        log.debug("Updating nutritional info of pizza with id: {}", id);
+        Pizza pizza = pizzaRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Pizza", id));
+
+        NutritionalInfo info = pizza.getNutritionalInfo();
+        if (info == null) {
+            info = new NutritionalInfo();
+            info.setPizza(pizza);
+            pizza.setNutritionalInfo(info);
+        }
+        info.setCalories(request.calories());
+        info.setProtein(request.protein());
+        info.setCarbohydrates(request.carbohydrates());
+        info.setFat(request.fat());
+
+        return pizzaMapper.toResponse(pizzaRepository.save(pizza));
     }
 
     public void delete(Long id) {
