@@ -1398,7 +1398,6 @@ curl http://localhost:8080/actuator/mappings
 | **Setup Time** | Hours to days | Minutes |
 | **Production Features** | Manual setup required | Actuator built-in |
 | **Learning Curve** | Steeper | Gentler - sensible defaults |
-| **JPA Setup** | Manual EntityManagerFactory, TransactionManager | Auto-configured with starter |
 
 ### Benefits of Spring Boot
 
@@ -1409,8 +1408,6 @@ curl http://localhost:8080/actuator/mappings
 ✅ **Convention over Configuration** - Sensible defaults that just work  
 ✅ **Still flexible** - Can override any auto-configuration  
 ✅ **Better developer experience** - DevTools for rapid development  
-✅ **Cloud-native ready** - Perfect for containerization and cloud deployment  
-✅ **JPA made easy** - Spring Data JPA eliminates boilerplate
 
 ---
 
