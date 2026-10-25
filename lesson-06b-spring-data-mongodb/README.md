@@ -4,11 +4,10 @@
 
 ---
 
-> This lesson assumes you've read [Lesson 6: Spring Data with Spring Boot](../lesson-06-spring-data/README.md) (repository proxy pattern, query-method naming conventions) and, ideally, [Lesson 6a: Spring Data JPA](../lesson-06a-spring-data-jpa/README.md) — this lesson constantly compares against the relational version you just built.
-
 ## 📋 Learning Objectives
 
 By the end of this lesson, you will be able to:
+
 - Explain how MongoDB's document model differs from a relational schema
 - Map a domain model to `@Document` classes with `@Id`, `@Indexed`, and Spring Data auditing
 - Decide when to **embed** and when to **reference** related data in a document database
@@ -20,21 +19,30 @@ By the end of this lesson, you will be able to:
 
 ## 📚 Table of Contents
 
-- [📋 Learning Objectives](#-learning-objectives)
-- [🍃 From Tables to Documents](#-from-tables-to-documents)
-- [⭐ Key Features of Spring Data MongoDB](#-key-features-of-spring-data-mongodb)
-- [🗺️ Mapping the PizzaStore Domain Model](#️-mapping-the-pizzastore-domain-model)
-- [🧱 Embedding vs. Referencing](#-embedding-vs-referencing)
-- [🗄️ The MongoRepository Interface](#️-the-mongorepository-interface)
-- [🔍 Custom Queries](#-custom-queries)
-- [🕐 Auditing](#-auditing)
-- [📇 Indexes](#-indexes)
-- [🚫 No Joins: What Replaces JOIN FETCH](#-no-joins-what-replaces-join-fetch)
-- [🧪 Testing with Testcontainers](#-testing-with-testcontainers)
-- [🚀 Runnable Project](#-runnable-project)
-- [⚖️ Comparison: JPA vs. MongoDB](#️-comparison-jpa-vs-mongodb)
-- [🎓 Summary](#-summary)
-- [📖 Additional Resources](#-additional-resources)
+1. [Recap: Where Lesson 6a Left Us](#-recap-where-lesson-6a-left-us)
+2. [From Tables to Documents](#-from-tables-to-documents)
+3. [Key Features of Spring Data MongoDB](#-key-features-of-spring-data-mongodb)
+4. [Mapping the PizzaStore Domain Model](#️-mapping-the-pizzastore-domain-model)
+5. [Embedding vs. Referencing](#-embedding-vs-referencing)
+6. [The MongoRepository Interface](#️-the-mongorepository-interface)
+7. [Custom Queries](#-custom-queries)
+8. [Auditing](#-auditing)
+9. [Indexes](#-indexes)
+10. [No Joins: What Replaces JOIN FETCH](#-no-joins-what-replaces-join-fetch)
+11. [Testing with Testcontainers](#-testing-with-testcontainers)
+12. [Comparison: JPA vs. MongoDB](#️-comparison-jpa-vs-mongodb)
+13. [Best Practices](#-best-practices)
+14. [Summary](#-summary)
+15. [Additional Resources](#-additional-resources)
+16. [Runnable Project](#-runnable-project)
+
+---
+
+## 🔄 Recap: Where Lesson 6a Left Us
+
+[Lesson 6](../lesson-06-spring-data/README.md) introduced the concepts every Spring Data module shares, and [Lesson 6a](../lesson-06a-spring-data-jpa/README.md) built PizzaStore's domain model and repositories on a relational database with Spring Data JPA.
+
+This lesson re-expresses that same domain model as MongoDB documents, and constantly compares against the JPA version. It is a **side branch**: the final PizzaStore has no MongoDB version, and Lesson 7 continues on the JPA project.
 
 ---
 
@@ -44,18 +52,22 @@ MongoDB is the leading document-oriented NoSQL database. Instead of rows in tabl
 
 Spring Data MongoDB gives you the exact same programming model as Spring Data JPA from [Lesson 6a](../lesson-06a-spring-data-jpa/README.md) — a repository interface, query-method derivation, auditing annotations — over a fundamentally different storage engine underneath.
 
+---
+
 ## ⭐ Key Features of Spring Data MongoDB
 
 - **`MongoRepository`** — the module's equivalent of `JpaRepository`, adding MongoDB-specific operations like geo-spatial queries.
-- **`MongoTemplate`** — a lower-level, fluent API for complex aggregations and custom updates, comparable to `JdbcClient` for relational access.
+- **`MongoTemplate`** — a lower-level, fluent API for complex aggregations and custom updates, for when a repository method isn't enough.
 - **GridFS support** — for storing files (images, videos) that exceed MongoDB's per-document BSON size limit.
-- **Multi-document transactions** — MongoDB supports ACID transactions across documents and collections, so complex business logic isn't automatically off the table just because you're using a document store.
+- **Multi-document transactions** — MongoDB supports ACID transactions across documents and collections (on a replica set, not on a single standalone server), so complex business logic isn't automatically off the table just because you're using a document store.
 
 Best practices the book calls out, and that this lesson's project follows:
 
 - **Use records or plain immutable-leaning classes** — MongoDB documents map well to immutability. This lesson's project keeps mutable classes instead, matching the style of the final PizzaStore project (see the [comparison table](#%EF%B8%8F-comparison-jpa-vs-mongodb) below for why).
 - **Implement `Persistable`** when you assign IDs yourself, to avoid an extra existence check before every insert. This lesson lets MongoDB generate `ObjectId`-backed string IDs instead, so it doesn't come up — worth knowing about if you ever assign your own IDs.
 - **Manage indexes explicitly** with `@Indexed`, so query performance doesn't silently degrade as a collection grows.
+
+---
 
 ## 🗺️ Mapping the PizzaStore Domain Model
 
@@ -93,6 +105,8 @@ public class Pizza {
 
 Compare that to the JPA version's `@OneToOne` + separate `nutritional_info` table from Lesson 6a — the MongoDB version needs neither a second collection nor a foreign key, because `nutritionalInfo` is simply a nested object inside the `pizzas` document.
 
+---
+
 ## 🧱 Embedding vs. Referencing
 
 This is *the* modeling decision in every document database, and it doesn't have a JPA equivalent — in a relational database, every relationship becomes a foreign key by default, and you rarely choose otherwise. In MongoDB, you choose per relationship:
@@ -106,6 +120,8 @@ This is *the* modeling decision in every document database, and it doesn't have 
 
 The rule of thumb: **embed what you always read together and that has a bounded size; reference what grows without bound, is large, or needs to be queried/updated independently.**
 
+---
+
 ## 🗄️ The MongoRepository Interface
 
 Just like `JpaRepository<T, ID>` in Lesson 6a, `MongoRepository<T, ID>` is the module-specific specialization of the shared `Repository`/`CrudRepository` hierarchy from [Lesson 6](../lesson-06-spring-data/README.md#-the-repository-abstraction) — the id type is `String` here instead of `Long`:
@@ -116,6 +132,8 @@ public interface PizzaRepository extends MongoRepository<Pizza, String> {
     // findAll(), findById(), save(), deleteById(), count(), … already included
 }
 ```
+
+---
 
 ## 🔍 Custom Queries
 
@@ -136,7 +154,9 @@ For anything the naming convention can't express, `@Query` takes a **MongoDB que
 List<Pizza> searchByKeyword(String keyword);
 ```
 
-For real full-text search or aggregation pipelines, you'd reach for `MongoTemplate` instead of a repository method — out of scope here, but worth knowing it exists for when `@Query` isn't enough.
+For real full-text search or aggregation pipelines, you'd reach for `@Aggregation` or `MongoTemplate` instead of a derived query — out of scope here, but worth knowing they exist for when `@Query` isn't enough.
+
+---
 
 ## 🕐 Auditing
 
@@ -152,6 +172,8 @@ public class MongoConfig {
 
 The one difference from JPA: **no `@EntityListeners(AuditingEntityListener.class)` is needed on each document class.** `@EnableMongoAuditing` alone is enough to make `@CreatedDate`/`@LastModifiedDate` work on every `@Document`. As in Lesson 6a, there's no `AuditorAware` bean in this project (it needs Spring Security), so `@CreatedBy`/`@LastModifiedBy` on `Order` simply stay `null` — harmless, since MongoDB documents have no `NOT NULL` constraint to violate.
 
+---
+
 ## 📇 Indexes
 
 `@Indexed` defines an index directly on the field, right next to the mapping annotation — no separate DDL or migration file:
@@ -166,7 +188,17 @@ private String email;
 private String orderNumber;
 ```
 
-These mirror the `unique = true` constraints on the same two fields in the JPA version's `@Column` annotations — same intent, index created automatically by Spring Data MongoDB on startup instead of via a `UNIQUE` constraint in generated DDL.
+These mirror the `unique = true` constraints on the same two fields in the JPA version's `@Column` annotations — same intent, but an index instead of a `UNIQUE` constraint in generated DDL.
+
+⚠️ **`@Indexed` alone does nothing at startup.** Since Spring Data MongoDB 3.0, automatic index creation is **off** by default (creating indexes on a large production collection can block it). This lesson's project switches it on in `application.properties`:
+
+```properties
+spring.data.mongodb.auto-index-creation=true
+```
+
+Without that line, the annotations are only documentation and two customers *can* have the same e-mail address. In production, create indexes explicitly (a migration, or `MongoTemplate.indexOps(...)`) instead.
+
+---
 
 ## 🚫 No Joins: What Replaces JOIN FETCH
 
@@ -178,6 +210,8 @@ List<Order> orders = orderRepository.findByCustomerId(customer.getId());
 ```
 
 This is a real trade-off, not just an inconvenience: a relational join happens inside the database in one round trip; two repository calls are two round trips. For cases where that matters, `MongoTemplate`'s aggregation pipeline supports a `$lookup` stage that performs a join-like operation inside MongoDB itself — worth knowing exists, but not covered hands-on in this lesson.
+
+---
 
 ## 🧪 Testing with Testcontainers
 
@@ -199,7 +233,80 @@ class PizzaRepositoryTest {
 }
 ```
 
-`@ServiceConnection` (Spring Boot 3.1+, refined in 4.0) is what makes this "zero configuration": it detects the running container and wires `spring.data.mongodb.uri` automatically — no manual `@DynamicPropertySource` needed. This lesson's project doesn't include tests (domain + repository only, as with Lesson 6a), but the `pom.xml` already has the Testcontainers dependencies in place if you want to add one yourself as an exercise.
+`@ServiceConnection` (Spring Boot 3.1+) is what makes this "zero configuration": it detects the running container and wires `spring.data.mongodb.uri` automatically — no manual `@DynamicPropertySource` needed. The imports reflect Spring Boot 4 and Testcontainers 2:
+
+```java
+import org.springframework.boot.data.mongodb.test.autoconfigure.DataMongoTest;   // Boot 4 test module
+import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.mongodb.MongoDBContainer;                              // Testcontainers 2 package
+```
+
+This lesson's project doesn't include tests (domain + repository only, as with Lesson 6a), but its `pom.xml` already has `spring-boot-starter-data-mongodb-test`, `testcontainers-mongodb` and `testcontainers-junit-jupiter` (versions managed by Spring Boot), so the test above compiles as-is if you want to add it as an exercise. Running it needs Docker.
+
+---
+
+## ⚖️ Comparison: JPA vs. MongoDB
+
+| Feature | Spring Data JPA (Lesson 6a) | Spring Data MongoDB (this lesson) |
+|---|---|---|
+| Data model | Tables and rows, fixed schema | Flexible BSON documents |
+| Id type | `Long` (auto-increment) | `String` (MongoDB `ObjectId`) |
+| Relationships | Foreign keys, joins | Embedding or manual references |
+| Many-to-many | Join table, both sides mapped | One-sided list of referenced ids |
+| Query language | JPQL / native SQL | MongoDB query documents (BSON) |
+| Auditing | `@EntityListeners` + `@EnableJpaAuditing` | `@EnableMongoAuditing` alone |
+| Dummy data | `data.sql` (SQL init) | `CommandLineRunner` (no built-in equivalent) |
+| Local dev database | H2, in-memory, zero setup | Real MongoDB instance (e.g. via Docker) |
+| Best fit | Complex relational graphs, reporting, legacy databases | Flexible/evolving schemas, horizontal scaling |
+
+One deliberate style choice: the book models MongoDB documents as Java **records** (promoting immutability). This lesson keeps mutable classes with getters/setters instead, matching the established style of the final PizzaStore project and Lesson 6a — the same kind of "keep the reference solution's conventions" trade-off already made for MapStruct vs. the book's manual DTO mapping in Lesson 7.
+
+---
+
+## 💡 Best Practices
+
+1. **Embed what is read together and bounded in size; reference what grows without bound** or is queried on its own.
+2. **Store a relationship on one side only** — MongoDB has no join to keep two copies in sync.
+3. **Declare indexes with `@Indexed`, and make sure they are actually created** (`auto-index-creation` in development, explicit index management in production).
+4. **Test against a real MongoDB** with Testcontainers, not an embedded imitation.
+5. **Plan the queries before the documents**: without joins, the document shape decides which queries are cheap.
+
+---
+
+## 🎓 Summary
+
+### What We Learned
+
+1. MongoDB stores **documents**, not rows — there's no fixed schema and no joins.
+2. **Embed** data that's always read together and bounded in size (`NutritionalInfo` in `Pizza`, `OrderLine`s in `Order`); **reference** data that grows without bound or needs independent access (`Order.customerId`, `Customer.favoritePizzaIds`).
+3. `MongoRepository`, derived queries, and Spring Data auditing all work the same way conceptually as their JPA counterparts — only the underlying query language and a few annotations differ.
+4. There is no `JOIN FETCH` equivalent — plan for extra repository calls, or reach for `MongoTemplate`'s aggregation pipeline when a real join is unavoidable.
+5. `data.sql` has no MongoDB equivalent — seed dummy data with a `CommandLineRunner` instead.
+
+### Key Takeaways
+
+- Spring Data's programming model carries over; the **data modeling** is what really changes
+- The embed-or-reference decision replaces the relational "everything is a foreign key" default
+- Relational and document databases each have a best fit — neither is "better"
+
+### What's Next?
+
+PizzaStore continues on the JPA project from Lesson 6a. [Lesson 7](../lesson-07-dtos-mappers/README.md) adds DTOs, MapStruct mappers and the service layer on top of it.
+
+---
+
+## 📖 Additional Resources
+
+- [Spring Data MongoDB Documentation](https://docs.spring.io/spring-data/mongodb/reference/)
+- [MongoDB Manual](https://www.mongodb.com/docs/manual/)
+- [MongoDB Data Modeling: Embedding vs. Referencing](https://www.mongodb.com/docs/manual/core/data-model-design/)
+- [Testcontainers for MongoDB](https://testcontainers.com/modules/mongodb/)
+
+**Note on the book**: This lesson corresponds to *Pro Spring Boot 4*, Chapter 7: *NoSQL with Spring Boot* — specifically the *Document Persistence with Spring Data MongoDB* section (pp. 167–172): *Key Features* (p. 167), *Best Practices* (p. 168), *Implementation: Customer CRM (Maven)* (p. 168) and *Testing with Testcontainers* (p. 170). The rest of Chapter 7 — Spring Data Redis (key-value), Spring Data Neo4j (graph), and the closing section on AI vector search — is out of scope for this course; PizzaStore stays with the two technologies covered in depth here and in [Lesson 6a](../lesson-06a-spring-data-jpa/README.md): relational (JPA) and document (MongoDB).
+
+---
 
 ## 🚀 Runnable Project
 
@@ -268,43 +375,8 @@ mvn spring-boot:run
 mongosh mongodb://localhost:27017/pizzastore_dev --eval "db.pizzas.find().pretty()"
 ```
 
-> This lesson's compilation and dependency wiring were verified in this environment; the live run against a real MongoDB instance was not (no Docker available here) — run it yourself as described above to see the seeded data.
-
-## ⚖️ Comparison: JPA vs. MongoDB
-
-| Feature | Spring Data JPA (Lesson 6a) | Spring Data MongoDB (this lesson) |
-|---|---|---|
-| Data model | Tables and rows, fixed schema | Flexible BSON documents |
-| Id type | `Long` (auto-increment) | `String` (MongoDB `ObjectId`) |
-| Relationships | Foreign keys, joins | Embedding or manual references |
-| Many-to-many | Join table, both sides mapped | One-sided list of referenced ids |
-| Query language | JPQL / native SQL | MongoDB query documents (BSON) |
-| Auditing | `@EntityListeners` + `@EnableJpaAuditing` | `@EnableMongoAuditing` alone |
-| Dummy data | `data.sql` (SQL init) | `CommandLineRunner` (no built-in equivalent) |
-| Local dev database | H2, in-memory, zero setup | Real MongoDB instance (e.g. via Docker) |
-| Best fit | Complex relational graphs, reporting, legacy databases | Flexible/evolving schemas, horizontal scaling |
-
-One deliberate style choice: the book models MongoDB documents as Java **records** (promoting immutability). This lesson keeps mutable classes with getters/setters instead, matching the established style of the final PizzaStore project and Lesson 6a — the same kind of "keep the reference solution's conventions" trade-off already made for MapStruct vs. the book's manual DTO mapping in Lesson 7.
-
-## 🎓 Summary
-
-1. MongoDB stores **documents**, not rows — there's no fixed schema and no joins.
-2. **Embed** data that's always read together and bounded in size (`NutritionalInfo` in `Pizza`, `OrderLine`s in `Order`); **reference** data that grows without bound or needs independent access (`Order.customerId`, `Customer.favoritePizzaIds`).
-3. `MongoRepository`, derived queries, and Spring Data auditing all work the same way conceptually as their JPA counterparts — only the underlying query language and a few annotations differ.
-4. There is no `JOIN FETCH` equivalent — plan for extra repository calls, or reach for `MongoTemplate`'s aggregation pipeline when a real join is unavoidable.
-5. `data.sql` has no MongoDB equivalent — seed dummy data with a `CommandLineRunner` instead.
+> This project was compiled and its test setup type-checked against Spring Boot 4.0.8; a live run against MongoDB still has to be done on a machine with Docker.
 
 ---
 
-## 📖 Additional Resources
-
-- [Spring Data MongoDB Documentation](https://docs.spring.io/spring-data/mongodb/reference/)
-- [MongoDB Manual](https://www.mongodb.com/docs/manual/)
-- [MongoDB Data Modeling: Embedding vs. Referencing](https://www.mongodb.com/docs/manual/core/data-model-design/)
-- [Testcontainers for MongoDB](https://testcontainers.com/modules/mongodb/)
-
-**Note on the book**: This lesson corresponds to *Pro Spring Boot 4*, Chapter 7: *NoSQL with Spring Boot* — specifically the *Document Persistence with Spring Data MongoDB* section (key features, best practices, the Customer CRM implementation, and testing with Testcontainers). The rest of Chapter 7 — Spring Data Redis (key-value), Spring Data Neo4j (graph), and the closing section on AI vector search — is out of scope for this course; PizzaStore stays with the two technologies covered in depth here and in [Lesson 6a](../lesson-06a-spring-data-jpa/README.md): relational (JPA) and document (MongoDB).
-
----
-
-**Congratulations!** 🎉 You've now seen the same domain model implemented two ways — relational with Spring Data JPA, and document-oriented with Spring Data MongoDB — and understand the modeling trade-offs between them.
+**Congratulations!** 🎉 You've now seen the same domain model implemented two ways — relational with Spring Data JPA, and document-oriented with Spring Data MongoDB. Continue to [Lesson 7: DTOs, Mappers & the Service Layer](../lesson-07-dtos-mappers/README.md), which builds on the JPA project.

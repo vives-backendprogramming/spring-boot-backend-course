@@ -7,6 +7,7 @@
 ## 📋 Learning Objectives
 
 By the end of this lesson, you will be able to:
+
 - Implement complete CRUD operations for a REST API on top of a service layer
 - Apply the right HTTP method (GET, POST, PUT, PATCH, DELETE) for each operation
 - Return appropriate HTTP status codes and a `Location` header for created resources
@@ -32,7 +33,7 @@ By the end of this lesson, you will be able to:
 10. [File Upload for Images](#-file-upload-for-images)
 11. [Complete PizzaStore API](#-complete-pizzastore-api)
 12. [What Happens When Things Go Wrong?](#%EF%B8%8F-what-happens-when-things-go-wrong)
-13. [Best Practices Summary](#-best-practices-summary)
+13. [Best Practices](#-best-practices)
 14. [Summary](#-summary)
 15. [Additional Resources](#-additional-resources)
 16. [Runnable Project](#-runnable-project)
@@ -44,18 +45,21 @@ By the end of this lesson, you will be able to:
 Before building our complete REST API, let's recap the key concepts from previous lessons:
 
 ### From Lesson 4 & 5: Spring Boot & Spring MVC
+
 - ✅ Spring MVC architecture (`DispatcherServlet`, handler mapping, message converters)
 - ✅ `@RestController` and `@RequestMapping`
 - ✅ Request handling with `@GetMapping`, `@PostMapping`, `@PathVariable`, `@RequestParam`, `@RequestBody`
 - ✅ `ResponseEntity<T>` for full control over HTTP responses
 
 ### From Lesson 6a: Spring Data JPA
+
 - ✅ Entity relationships (`@OneToOne`, `@OneToMany`, `@ManyToOne`, `@ManyToMany`)
 - ✅ Spring Data JPA repositories and derived query methods
 - ✅ Custom queries, `Pageable` and `Page` in repositories
 - ✅ `JOIN FETCH` to avoid N+1 problems
 
 ### From Lesson 7: DTOs, Mappers & the Service Layer
+
 - ✅ Never expose entities directly
 - ✅ Request DTOs for input (`CreatePizzaRequest`, `UpdatePizzaRequest`)
 - ✅ Response DTOs for output (`PizzaResponse`)
@@ -64,6 +68,7 @@ Before building our complete REST API, let's recap the key concepts from previou
 - ✅ Services signal "not found" with `Optional.empty()` or `false`
 
 ### From Lesson 8: REST Principles
+
 - ✅ Resource-based URLs (`/api/pizzas`, not `/api/getPizzas`)
 - ✅ HTTP methods for actions, and their safety/idempotency
 - ✅ HTTP status codes (200, 201, 204, 404, ...)
@@ -190,6 +195,7 @@ public ResponseEntity<PizzaResponse> createPizza(@RequestBody CreatePizzaRequest
 `ServletUriComponentsBuilder.fromCurrentRequest()` starts from the URL of the request being handled (`http://localhost:8080/api/pizzas`), so the controller never has to hard-code a host name or port.
 
 **Request**:
+
 ```bash
 curl -i -X POST http://localhost:8080/api/pizzas \
   -H "Content-Type: application/json" \
@@ -198,6 +204,7 @@ curl -i -X POST http://localhost:8080/api/pizzas \
 ```
 
 **Response**:
+
 ```http
 HTTP/1.1 201
 Location: http://localhost:8080/api/pizzas/7
@@ -241,6 +248,7 @@ public ResponseEntity<OrderResponse> createOrder(@RequestBody CreateOrderRequest
 ```
 
 **Request**:
+
 ```json
 {
   "customerId": 2,
@@ -252,6 +260,7 @@ public ResponseEntity<OrderResponse> createOrder(@RequestBody CreateOrderRequest
 ```
 
 **Response** (`201 Created`, `Location: http://localhost:8080/api/orders/4`):
+
 ```json
 {
   "id" : 4,
@@ -298,6 +307,7 @@ public ResponseEntity<PizzaResponse> getPizza(@PathVariable Long id) {
 ```
 
 **Success Response**:
+
 ```http
 HTTP/1.1 200
 Content-Type: application/json
@@ -319,6 +329,7 @@ Content-Type: application/json
 ```
 
 **Not Found Response** (`GET /api/pizzas/999`):
+
 ```http
 HTTP/1.1 404
 Content-Length: 0
@@ -368,6 +379,7 @@ public ResponseEntity<PizzaResponse> updatePizza(
 ```
 
 **Request** (`PUT /api/pizzas/1`, body = `UpdatePizzaRequest`):
+
 ```json
 {
   "name": "Margherita Deluxe",
@@ -408,6 +420,7 @@ public ResponseEntity<OrderResponse> updateOrderStatus(
 ```
 
 **Request** (`PATCH /api/orders/1/status`, body = `UpdateOrderStatusRequest`):
+
 ```json
 {
   "status": "PREPARING"
@@ -460,6 +473,7 @@ public ResponseEntity<Void> deletePizza(@PathVariable Long id) {
 ```
 
 **Response**:
+
 ```http
 HTTP/1.1 204
 ```
@@ -517,10 +531,12 @@ Page<Order> findByStatusNot(OrderStatus status, Pageable pageable);   // called 
 ### When to Use Hard vs Soft Delete
 
 **Hard Delete**:
+
 - ✅ When data should be permanently removed (e.g. GDPR "right to be forgotten")
 - ✅ For data without historical value (test data, temporary records)
 
 **Soft Delete**:
+
 - ✅ When you need an audit trail
 - ✅ When data might need to be restored
 - ✅ When other records reference the deleted data
@@ -599,6 +615,7 @@ Each branch calls one service method, which in turn uses one derived query metho
 | no filter | `findAll(pageable)` | `findAll(pageable)` |
 
 **Usage**:
+
 ```bash
 # Pizzas between €8 and €12
 GET /api/pizzas?minPrice=8.00&maxPrice=12.00
@@ -642,6 +659,7 @@ public ResponseEntity<Page<OrderResponse>> getOrders(
 ```
 
 **Usage**:
+
 ```bash
 # All orders of customer 1, newest first
 GET /api/orders?customerId=1&sort=orderDate,desc
@@ -691,6 +709,7 @@ public Page<CustomerResponse> findAll(Pageable pageable) {
 ```
 
 **Usage**:
+
 ```bash
 # First page with the default size (20)
 GET /api/pizzas
@@ -776,6 +795,7 @@ Returning a `Page<T>` produces a JSON object with the items in `content` plus pa
 ```
 
 **Key fields**:
+
 - `content`: the resources on this page
 - `totalElements`: total number of items across all pages
 - `totalPages`: total number of pages
@@ -915,6 +935,7 @@ curl -X POST http://localhost:8080/api/pizzas/1/image \
 ```
 
 **Response** (`200 OK`):
+
 ```json
 {
   "id" : 1,
@@ -936,6 +957,7 @@ The image is now available at the returned URL. Uploading a `.txt` file returns 
 All endpoints of this lesson's project. This is the same set of endpoints as the final PizzaStore, apart from `/api/auth/**`, which is added in Lesson 13.
 
 #### Pizza API — [`PizzaController`](pizzastore-complete-api/src/main/java/be/vives/pizzastore/controller/PizzaController.java)
+
 ```
 GET    /api/pizzas              - List pizzas (paginated, or filtered by price/name)
 GET    /api/pizzas/{id}         - Get a single pizza
@@ -946,12 +968,14 @@ POST   /api/pizzas/{id}/image   - Upload a pizza image (multipart)
 ```
 
 **Query Parameters for GET /api/pizzas:**
+
 - `minPrice` & `maxPrice`: filter by price range (both required)
 - `maxPrice`: filter on price below a maximum
 - `name`: search by name (contains, case-insensitive)
 - `page`, `size`, `sort`: pagination and sorting (only when no filter is used)
 
 #### Customer API — [`CustomerController`](pizzastore-complete-api/src/main/java/be/vives/pizzastore/controller/CustomerController.java)
+
 ```
 GET    /api/customers                              - List customers (paginated)
 GET    /api/customers/{id}                         - Get a single customer
@@ -965,6 +989,7 @@ DELETE /api/customers/{customerId}/favorites/{pizzaId} - Remove a favorite pizza
 ```
 
 #### Order API — [`OrderController`](pizzastore-complete-api/src/main/java/be/vives/pizzastore/controller/OrderController.java)
+
 ```
 GET    /api/orders              - List orders (paginated, optionally filtered)
 GET    /api/orders/{id}         - Get a single order with its order lines
@@ -974,6 +999,7 @@ DELETE /api/orders/{id}         - Cancel an order (soft delete)      → 204
 ```
 
 **Query Parameters for GET /api/orders:**
+
 - `customerId`: filter by customer
 - `status`: filter by order status (`PENDING`, `CONFIRMED`, `PREPARING`, `READY`, `DELIVERED`, `CANCELLED`)
 - `page`, `size`, `sort`: pagination and sorting
@@ -996,7 +1022,7 @@ So far every controller handles "not found" by checking an `Optional` or `boolea
 | `DELETE /api/pizzas/1` (pizza is someone's favorite) | `500` (foreign-key violation) | `409 Conflict` |
 | Upload a 6 MB image | `413 Payload Too Large` | ✅ |
 
-The error bodies Spring Boot generates for these look like this:
+Run as a plain JAR, the error bodies Spring Boot generates for these look like this:
 
 ```json
 {
@@ -1007,13 +1033,16 @@ The error bodies Spring Boot generates for these look like this:
 }
 ```
 
-Two problems stand out: **client errors show up as server errors** (500 means "our bug", but these are the client's mistakes), and the body never says **what** went wrong. [Lesson 10](../lesson-10-validation-exception-handling/README.md) fixes both: Bean Validation rejects invalid input with a `400`, the services throw specific exceptions like `ResourceNotFoundException`, and a single `@RestControllerAdvice` turns every exception into an RFC 7807 `ProblemDetail` response.
+Started with `mvn spring-boot:run` (or from the IDE), DevTools is active and the same body also contains a `message` and the full stack `trace` — handy while developing, but nothing a real client should ever see (see [Lesson 4](../lesson-04-spring-boot-intro/README.md#what-the-error-responses-look-like)).
+
+Two problems stand out: **client errors show up as server errors** (500 means "our bug", but these are the client's mistakes), and the body never says **what** went wrong. [Lesson 10](../lesson-10-validation-exception-handling/README.md) fixes both: Bean Validation rejects invalid input with a `400`, the services throw specific exceptions like `ResourceNotFoundException`, and a single `@RestControllerAdvice` turns every exception into a `ProblemDetail` response (RFC 9457, formerly RFC 7807).
 
 ---
 
-## 💡 Best Practices Summary
+## 💡 Best Practices
 
 ### 1. Use Proper HTTP Methods
+
 - ✅ GET for reading (safe, idempotent)
 - ✅ POST for creating (not idempotent)
 - ✅ PUT for full updates (idempotent)
@@ -1021,12 +1050,14 @@ Two problems stand out: **client errors show up as server errors** (500 means "o
 - ✅ DELETE for removing (idempotent)
 
 ### 2. Return Proper Status Codes
+
 - ✅ `200 OK` - Success with response body
 - ✅ `201 Created` - Resource created successfully (plus `Location`)
 - ✅ `204 No Content` - Success without response body
 - ✅ `404 Not Found` - Resource doesn't exist
 
 ### 3. Use Location Headers
+
 ```java
 return ResponseEntity
     .created(location)  // Sets Location header + 201 status
@@ -1034,11 +1065,13 @@ return ResponseEntity
 ```
 
 ### 4. Keep Controllers Thin
+
 - ✅ One service call per endpoint
 - ✅ Controllers only see DTOs — never entities or repositories
 - ✅ Business rules (prices, totals, order numbers) live in the service
 
 ### 5. Implement Pagination
+
 ```java
 @GetMapping
 public ResponseEntity<Page<CustomerResponse>> getAllCustomers(Pageable pageable) {
@@ -1047,17 +1080,20 @@ public ResponseEntity<Page<CustomerResponse>> getAllCustomers(Pageable pageable)
 ```
 
 ### 6. Use Query Parameters for Filtering
+
 ```
 GET /api/pizzas?maxPrice=10.00
 GET /api/orders?status=PENDING
 ```
 
 ### 7. Consistent Resource Naming
+
 - ✅ Use plural nouns: `/api/pizzas`
 - ✅ Use sub-resources for relationships: `/api/customers/{id}/favorites`
 - ❌ Avoid verbs: `/api/getPizzas`
 
 ### 8. Handle Optional Results
+
 ```java
 return pizzaService.findById(id)
     .map(ResponseEntity::ok)
@@ -1065,6 +1101,7 @@ return pizzaService.findById(id)
 ```
 
 ### 9. Never Trust Uploaded File Names
+
 - ✅ Generate the stored file name on the server
 - ✅ Validate type and size
 - ✅ Store the file on disk / object storage and only the URL in the database
@@ -1111,6 +1148,10 @@ return pizzaService.findById(id)
 - 🗑️ **Hard vs Soft delete** - Based on requirements
 - 🚧 **Error handling is still minimal** - Lesson 10 fixes that
 
+### What's Next?
+
+[Lesson 10](../lesson-10-validation-exception-handling/README.md) makes the API robust: Bean Validation on the request DTOs, specific exceptions thrown by the services, and one global exception handler that turns every error from the table above into the right status code with a `ProblemDetail` body.
+
 ---
 
 ## 📖 Additional Resources
@@ -1121,14 +1162,16 @@ return pizzaService.findById(id)
 - [HTTP Status Codes Reference](https://developer.mozilla.org/en-US/docs/Web/HTTP/Status)
 - [Roy Fielding's REST Dissertation](https://www.ics.uci.edu/~fielding/pubs/dissertation/rest_arch_style.htm)
 
-**Note on the book**: *Pro Spring Boot 4* covers this lesson's core in Chapter 3's *Implementing Full CRUD* section, whose *The Complete CustomerController* is the book's counterpart of the controllers in this lesson: `ResponseEntity<T>` for full control over the response, `ServletUriComponentsBuilder` to build the `Location` header of a `201 Created`, `@PathVariable` for the resource ID and `@RequestBody` for its state, and `204 No Content` / `404 Not Found` for delete and missing resources — the same patterns PizzaStore uses. The book's controller talks to a repository directly and exchanges its `Customer` record as-is; PizzaStore puts the Lesson 7 service layer and DTOs in between. The book adds `@Valid` in the same listing; this course deliberately postpones validation, `ProblemDetail` and `@RestControllerAdvice` to [Lesson 10](../lesson-10-validation-exception-handling/README.md), which is why this lesson's error handling is still minimal. Pagination appears in Chapter 6's *Pagination and Sorting* section (`PageRequest.of(page, size, Sort.by(...))` in the service layer, as in `getCustomerOrders` above). PATCH, soft deletes, filtering with query parameters, `Pageable` as a controller parameter and file upload with `MultipartFile` are not covered in the book; this lesson adds them because a complete API needs them.
+**Note on the book**: *Pro Spring Boot 4* covers this lesson's core in Chapter 3's *Implementing Full CRUD* section (p. 64), whose *The Complete CustomerController* (p. 66) is the book's counterpart of the controllers in this lesson: `ResponseEntity<T>` for full control over the response, `ServletUriComponentsBuilder` to build the `Location` header of a `201 Created`, `@PathVariable` for the resource ID and `@RequestBody` for its state, and `204 No Content` / `404 Not Found` for delete and missing resources — the same patterns PizzaStore uses. The book's controller talks to a repository directly and exchanges its `Customer` record as-is; PizzaStore puts the Lesson 7 service layer and DTOs in between. The book adds `@Valid` in the same listing; this course deliberately postpones validation, `ProblemDetail` and `@RestControllerAdvice` to [Lesson 10](../lesson-10-validation-exception-handling/README.md), which is why this lesson's error handling is still minimal. Pagination appears in Chapter 6's *Pagination and Sorting* section (p. 158) (`PageRequest.of(page, size, Sort.by(...))` in the service layer, as in `getCustomerOrders` above). PATCH, soft deletes, filtering with query parameters, `Pageable` as a controller parameter and file upload with `MultipartFile` are not covered in the book; this lesson adds them because a complete API needs them.
 
 ---
 
 ## 🚀 Runnable Project
 
+[`pizzastore-complete-api/`](pizzastore-complete-api) is Lesson 7's [`pizzastore-with-dtos`](../lesson-07-dtos-mappers/pizzastore-with-dtos) plus the changes listed in [What This Lesson Adds to PizzaStore](#-what-this-lesson-adds-to-pizzastore).
 
 The project includes:
+
 - ✅ **Spring Boot 4.0** on **Java 25** (`spring-boot-starter-webmvc`, `spring-boot-starter-data-jpa`, H2, MapStruct 1.6.3)
 - ✅ The domain model, repositories, DTOs, mappers, services and seed data from Lessons 6a and 7
 - ✅ Complete CRUD for pizzas, customers and orders
@@ -1141,7 +1184,7 @@ The project includes:
 ### Running It
 
 ```bash
-cd pizzastore-complete-api
+cd lesson-09-complete-rest-api/pizzastore-complete-api
 mvn spring-boot:run
 ```
 

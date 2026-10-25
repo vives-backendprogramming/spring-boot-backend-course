@@ -7,6 +7,7 @@
 ## 📋 Learning Objectives
 
 By the end of this lesson, you will be able to:
+
 - Explain why a back-end calls other APIs, and what changes when your API depends on somebody else's
 - Compare Spring's HTTP clients (`RestTemplate`, `RestClient`, `WebClient`, HTTP service interfaces) and choose one
 - Map the JSON of an external API onto a small set of Java records, ignoring what you don't need
@@ -37,7 +38,7 @@ By the end of this lesson, you will be able to:
 
 ## 🔄 Recap: Where Lesson 10 Left Us
 
-After [Lesson 10](../lesson-10-validation-exception-handling/README.md) PizzaStore rejects invalid input with a `400`, answers every other error with the right status code (`404`, `409`, `422`, `500`) and always uses the same RFC 7807 `ProblemDetail` body. Every failure so far had one of two causes: **the client sent something wrong**, or **our own code has a bug**.
+After [Lesson 10](../lesson-10-validation-exception-handling/README.md) PizzaStore rejects invalid input with a `400`, answers every other error with the right status code (`404`, `409`, `422`, `500`) and always uses the same `ProblemDetail` body (RFC 9457). Every failure so far had one of two causes: **the client sent something wrong**, or **our own code has a bug**.
 
 Until now PizzaStore only *answered* requests. Real back-ends also *make* them: a payment provider, an address lookup, a nutrition database. This lesson adds PizzaStore's first outgoing call, to the free [Open Food Facts](https://world.openfoodfacts.org) database. It also brings a third cause of failure: **the other side can be down, slow or return unusable data, and that must not break your API**. Lesson 10's exception handling is exactly what we need to deal with it.
 
@@ -451,8 +452,10 @@ Why `POST` and not `PUT`? The client does not send the new state of the resource
 | Unknown pizza | pizza `999` | `pizzaService.findById` (step 8) | `404`, Open Food Facts is never called |
 | Unknown barcode, HTTP 404 | `5412345678901` | `catch NotFound` (step 8) | `422` "Open Food Facts does not know a product with barcode ..." |
 | Unknown barcode, **HTTP 200 with `"status": 0`** | `0000000000017` | status check (step 8) | `422`, same message |
-| Product exists, but has no nutrition data | `1234567890128` | completeness check (step 8) | `422` "Open Food Facts has no complete nutritional data ..." |
+| Product exists, but has no (complete) nutrition data | a product whose page lacks kcal, protein, carbohydrates or fat | completeness check (step 8) | `422` "Open Food Facts has no complete nutritional data ..." |
 | Open Food Facts down (`5xx`), rate limit (`429`), timeout, no network | — | `catch RestClientException` (step 8) | `502 Bad Gateway` "Open Food Facts is currently unavailable, please try again later" |
+
+There's no fixed example barcode for the incomplete-data row: Open Food Facts is crowd-sourced, and a product without nutrition values today may be completed by a volunteer tomorrow (that happened to the barcode this lesson used to show). That's exactly why Lesson 12 tests this case in `NutritionImportServiceTest`, with a mocked client whose answer you control.
 
 The rows with the **unknown barcode** show why you must read the documentation *and* try the real API: Open Food Facts answers some unknown barcodes with a `404` and others with `200` plus `"status": 0` in the body. A client that only checks the HTTP status would store `null` values.
 
@@ -542,8 +545,6 @@ PizzaStore now answers valid and invalid requests correctly and even fetches dat
 - [Open Food Facts API documentation](https://openfoodfacts.github.io/openfoodfacts-server/api/)
 - [RFC 9110, section 15.6.3: 502 Bad Gateway](https://www.rfc-editor.org/rfc/rfc9110#section-15.6.3)
 
----
-
 **Note on the book**: *Pro Spring Boot 4* covers this lesson in Chapter 3, section *Declarative HTTP Service Clients* (p. 74-77): a `CurrencyClient` interface with `@HttpExchange` and `@GetExchange` for an exchange-rate API (Listing 3-7), `@ImportHttpServices` on a configuration class (Listing 3-8), and a `@SpringBootTest` that calls the real API (Listing 3-9). This lesson applies the same building blocks to Open Food Facts. Where it goes further: the book hard-codes the URL in `@HttpExchange` and advises to externalize it, and only mentions a `RestClientCustomizer` for timeouts; PizzaStore puts base URL, `User-Agent` and timeouts in `spring.http.serviceclient.<group>.*` with a named group, and shows how the failures of the other side surface as `422`/`502` — the book does not handle errors of the remote API at all. Chapter 18 (*Modern, Declarative HTTP Clients* and *Modern Synchronous HTTP Clients: RestClient*, p. 492-494) puts both in the list of Spring Boot 4 highlights, with a fluent `RestClient` example (Listing 18-5). Note that, despite the book's wording that Spring Boot 4 "introduces" `RestClient`, it has existed since Spring Framework 6.1 / Spring Boot 3.2; what is new in Spring Framework 7 / Spring Boot 4 is the HTTP service registry (`@ImportHttpServices`, client groups and their properties) and the separate `spring-boot-starter-restclient`. More advanced uses appear later in the book and are outside this course: a client with mutual TLS through an SSL bundle (Chapter 11, Listings 11-24 and 11-25), and declarative and load-balanced clients between microservices (Chapters 15 and 16). Testing the client without the real server is covered in Chapter 10 (`@RestClientTest`) and in [Lesson 12](../lesson-12-testing/README.md).
 
 ---
@@ -553,6 +554,7 @@ PizzaStore now answers valid and invalid requests correctly and even fetches dat
 **[`pizzastore-with-external-api/`](pizzastore-with-external-api)** is Lesson 10's [`pizzastore-with-validation`](../lesson-10-validation-exception-handling/pizzastore-with-validation) plus the changes listed in [What This Lesson Adds to PizzaStore](#-what-this-lesson-adds-to-pizzastore). Its client, configuration, services and controllers are the same as in the final PizzaStore, minus the security handler (Lesson 13) and the OpenAPI annotations (Lesson 14).
 
 The project includes:
+
 - ✅ **Spring Boot 4.0** on **Java 25** (`spring-boot-starter-webmvc`, `spring-boot-starter-data-jpa`, `spring-boot-starter-validation`, `spring-boot-starter-restclient`, H2, MapStruct 1.6.3)
 - ✅ Everything from Lessons 6a, 7, 9 and 10: domain model, repositories, DTOs, mappers, services, complete REST API, validation and `ProblemDetail` errors
 - ✅ A declarative `@HttpExchange` client for Open Food Facts, with timeouts and `422`/`502` error handling (needs internet access to try it out)
@@ -562,7 +564,7 @@ The project includes:
 ### Running It
 
 ```bash
-cd pizzastore-with-external-api
+cd lesson-11-external-api/pizzastore-with-external-api
 mvn spring-boot:run
 ```
 

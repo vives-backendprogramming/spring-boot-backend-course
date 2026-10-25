@@ -7,6 +7,7 @@
 ## 📋 Learning Objectives
 
 By the end of this lesson, you will be able to:
+
 - Understand why DTOs are essential and why entities should **never** be exposed directly
 - Differentiate between Request DTOs and Response DTOs
 - Implement DTOs for proper API design using Java Records
@@ -14,33 +15,69 @@ By the end of this lesson, you will be able to:
 - Use MapStruct for automatic, compile-time mapping between entities and DTOs
 - Structure your Spring Boot project with proper layering and explain the responsibilities of the service layer
 - Explain what a transaction is (ACID) and why the service method is the natural transaction boundary
-- Use `@Transactional` and explain how it works (proxy, commit/rollback, dirty checking, rollback rules, `readOnly`, propagation, isolation)
+- Use `@Transactional` and explain how it works (proxy, commit/rollback, dirty checking, rollback rules, `readOnly`, propagation, isolation levels)
 - Apply the DTO pattern to the PizzaStore application
 
 ---
 
 ## 📚 Table of Contents
 
-1. [The Problem: Why Not Expose Entities?](#-the-problem-why-not-expose-entities)
-2. [What Are DTOs?](#-what-are-dtos)
-3. [Request vs Response DTOs](#-request-vs-response-dtos)
-4. [Java Records for DTOs](#-java-records-for-dtos)
-5. [Mapping Strategies](#%EF%B8%8F-mapping-strategies)
-6. [MapStruct: The Best Choice](#-mapstruct-the-best-choice)
-7. [Service Layer Pattern](#-service-layer-pattern)
-8. [Transactions](#-transactions)
-9. [Project Structure with DTOs](#-project-structure-with-dtos)
-10. [Best Practices](#-best-practices)
-11. [Common Pitfalls](#%EF%B8%8F-common-pitfalls)
-12. [Summary](#-summary)
-13. [Runnable Project](#-runnable-project)
-14. [Further Reading](#-further-reading)
+1. [Recap: Where Lesson 6a Left Us](#-recap-where-lesson-6a-left-us)
+2. [What This Lesson Adds to PizzaStore](#-what-this-lesson-adds-to-pizzastore)
+3. [The Problem: Why Not Expose Entities?](#-the-problem-why-not-expose-entities)
+4. [What Are DTOs?](#-what-are-dtos)
+5. [Request vs Response DTOs](#-request-vs-response-dtos)
+6. [Java Records for DTOs](#-java-records-for-dtos)
+7. [Mapping Strategies](#%EF%B8%8F-mapping-strategies)
+8. [MapStruct: The Best Choice](#-mapstruct-the-best-choice)
+9. [Service Layer Pattern](#-service-layer-pattern)
+10. [Transactions](#-transactions)
+11. [Project Structure with DTOs](#-project-structure-with-dtos)
+12. [Best Practices](#-best-practices)
+13. [Common Pitfalls](#%EF%B8%8F-common-pitfalls)
+14. [Summary](#-summary)
+15. [Additional Resources](#-additional-resources)
+16. [Runnable Project](#-runnable-project)
+
+---
+
+## 🔄 Recap: Where Lesson 6a Left Us
+
+[Lesson 6a](../lesson-06a-spring-data-jpa/README.md) built PizzaStore's data layer: the JPA entities (`Pizza`, `Customer`, `Order`, `OrderLine`, `NutritionalInfo`) with their relationships, and Spring Data repositories to store and query them. [Lesson 5](../lesson-05-spring-mvc/README.md) showed how controllers turn Java objects into JSON.
+
+The tempting next step is to connect the two: hand those entities straight to a controller. This lesson shows why that's a bad idea, and adds the two layers that sit in between: **DTOs with their mappers**, and the **service layer** with its **transactions**.
+
+---
+
+## 🧱 What This Lesson Adds to PizzaStore
+
+```
+┌─────────────────┐
+│    Service      │  ← NEW: use cases, transactions, DTO ↔ entity mapping
+├─────────────────┤
+│  DTO + Mapper   │  ← NEW: request/response records, MapStruct mappers
+├─────────────────┤
+│   Repository    │  ← Lesson 6a
+├─────────────────┤
+│     Domain      │  ← Lesson 6a
+└─────────────────┘
+```
+
+The project, [`pizzastore-with-dtos`](pizzastore-with-dtos), is **Lesson 6a's [`pizzastore-jpa`](../lesson-06a-spring-data-jpa/pizzastore-jpa) plus**:
+
+| Added / changed | What it does |
+|---|---|
+| [`dto/request/`](pizzastore-with-dtos/src/main/java/be/vives/pizzastore/dto/request) | Records for incoming data: create/update pizza and customer, create order, update order status |
+| [`dto/response/`](pizzastore-with-dtos/src/main/java/be/vives/pizzastore/dto/response) | Records for outgoing data: pizza, nutritional info, customer, order, order line |
+| [`mapper/`](pizzastore-with-dtos/src/main/java/be/vives/pizzastore/mapper) | MapStruct mappers between entities and DTOs |
+| [`service/`](pizzastore-with-dtos/src/main/java/be/vives/pizzastore/service) | `PizzaService`, `CustomerService`, `OrderService`, all `@Transactional` |
+| [`pom.xml`](pizzastore-with-dtos/pom.xml) | MapStruct dependency and its annotation processor |
+
+Everything else (`domain`, `repository`, `config/JpaConfig`, `data.sql`) is **unchanged** from Lesson 6a.
 
 ---
 
 ## 🚫 The Problem: Why Not Expose Entities?
-
-In [Lesson 6a](../lesson-06a-spring-data-jpa/README.md) we built PizzaStore's data layer: JPA entities and Spring Data repositories. The tempting next step is to hand those entities straight to a controller.
 
 ### What's Wrong with This Code?
 
@@ -100,6 +137,7 @@ public class Customer {
 ```
 
 When you return this entity, **all fields** are serialized to JSON, including:
+
 - Passwords (even if hashed!)
 - Audit fields (when/by whom the record was created or updated)
 - Relationships that cause circular references
@@ -217,6 +255,7 @@ public record CreatePizzaRequest(
 ```
 
 **Characteristics:**
+
 - No `id` (generated by database)
 - No audit fields (set by JPA Auditing)
 - No `imageUrl` (set by a separate upload endpoint in Lesson 9)
@@ -244,6 +283,7 @@ public record UpdatePizzaRequest(
 ```
 
 **Characteristics:**
+
 - Same fields as Create, but a separate type — so create and update can evolve (and be validated) independently
 - No `id` (passed in URL)
 - Wrapper types (`Boolean`, `BigDecimal`) instead of primitives, so "not sent" (`null`) is distinguishable from `false`/`0` — see [pitfall 6](#6-null-values-in-update-mappings) for what the mapper does with those `null`s
@@ -270,6 +310,7 @@ public record PizzaResponse(
 ```
 
 **Characteristics:**
+
 - Includes `id` (client needs to know it)
 - **Never** includes audit fields (internal data)
 - No `favoritedByCustomers` — no way to create a cycle
@@ -319,6 +360,7 @@ public record PizzaResponse(
 ```
 
 Records automatically generate:
+
 - A canonical constructor
 - Accessor methods (`id()`, `name()` — no `get` prefix!)
 - `equals()`, `hashCode()`, `toString()`
@@ -435,6 +477,7 @@ public interface PizzaMapper {
 ```
 
 **Benefits:**
+
 - Type-safe: compile-time checking, and **warnings for target fields you forgot to map**
 - Fast: generated plain Java code, no reflection at runtime
 - Transparent: you can open and read the generated code
@@ -622,7 +665,7 @@ If a target field has no matching source and you did *not* ignore it, MapStruct 
 [WARNING] PizzaMapper.java:[26,11] Unmapped target property: "imageUrl".
 ```
 
-That's MapStruct's biggest advantage over manual mapping: add a field to `Pizza`, recompile, and you're told about every mapper that doesn't handle it yet. (Tip: read these warnings when you build `pizzastore-with-dtos` — you'll see exactly this one, because `imageUrl` is deliberately not part of `CreatePizzaRequest`.)
+That's MapStruct's biggest advantage over manual mapping: add a field to `Pizza`, recompile, and you're told about every mapper that doesn't handle it yet. (Tip: read these warnings when you build `pizzastore-with-dtos` — you'll see exactly this one, because `imageUrl` is deliberately not part of `CreatePizzaRequest`. You'll also see `Unmapped target properties: "id, pizza"` for the nested `NutritionalInfo`: MapStruct can't know the back-reference, which is why `PizzaService.create` sets it by hand — see [Service Layer Implementation](#service-layer-implementation).)
 
 #### `@MappingTarget`
 
@@ -896,6 +939,7 @@ public PizzaService(PizzaRepository pizzaRepository, PizzaMapper pizzaMapper) {
 ```
 
 **Benefits:**
+
 - Immutable dependencies (`final`)
 - Easy to test (can pass mocks — Lesson 12)
 - Explicit dependencies
@@ -1109,6 +1153,24 @@ What happens when a transactional method calls another transactional method (in 
 
 That's what the log line `Participating in existing transaction` means: the repository methods have the default `REQUIRED` propagation and join the service's transaction. In PizzaStore the default is all you need.
 
+### Isolation Levels
+
+The **I** of ACID is not all-or-nothing: the **isolation level** decides how much of other, concurrent transactions a transaction can see.
+
+| Isolation level | Prevents |
+|-----------------|----------|
+| `READ_UNCOMMITTED` | nothing — you can read another transaction's uncommitted changes (*dirty read*) |
+| `READ_COMMITTED` | dirty reads (the default of H2, PostgreSQL, Oracle) |
+| `REPEATABLE_READ` | + reading the same row twice and getting different values (default of MySQL/InnoDB) |
+| `SERIALIZABLE` | + new rows appearing between two identical queries (*phantom reads*); the safest and slowest |
+
+```java
+@Transactional(isolation = Isolation.SERIALIZABLE)
+public OrderResponse create(CreateOrderRequest request) { ... }
+```
+
+`ISOLATION_DEFAULT` in the log above means "whatever the database's default is". Stricter levels cost concurrency (more locking or more failed transactions), so PizzaStore keeps the default.
+
 ### Transaction Pitfalls
 
 1. **Self-invocation.** A call from one method to another method *in the same class* doesn't go through the proxy, so the `@Transactional` settings of the called method are ignored:
@@ -1191,7 +1253,7 @@ src/main/java/be/vives/pizzastore/
 
 ---
 
-## ✅ Best Practices
+## 💡 Best Practices
 
 ### 1. **Naming Conventions**
 
@@ -1520,7 +1582,14 @@ The trade-off: with `IGNORE`, a client can no longer *deliberately* clear a fiel
 
 ---
 
-## 📝 Summary
+## 🎓 Summary
+
+### What We Learned
+
+- **DTOs** (request and response records) form the API contract, separate from the entities
+- **MapStruct** generates the entity ↔ DTO mapping code at compile time
+- The **service layer** implements one use case per method, orchestrating repositories and mappers
+- **`@Transactional`** makes each service method one all-or-nothing unit of work, through a proxy
 
 ### Key Takeaways
 
@@ -1603,25 +1672,42 @@ The trade-off: with `IGNORE`, a client can no longer *deliberately* clear a fiel
 ### What's Next?
 
 In **[Lesson 8 (REST Principles)](../lesson-08-rest-principles/README.md)** we look at how a good REST API is designed:
+
 - Resource-based URLs, HTTP methods and status codes
 - REST best practices and API versioning
 
 In **[Lesson 9 (Complete REST API)](../lesson-09-complete-rest-api/README.md)** we build on this lesson's project:
+
 - Controllers that expose the services from this lesson as REST endpoints
 - Full CRUD, pagination and filtering
 - File upload for pizza images
 
 In **[Lesson 10 (Validation & Exception Handling)](../lesson-10-validation-exception-handling/README.md)** we:
+
 - Add Bean Validation to the request DTOs
 - Replace the `Optional`/`boolean`/`RuntimeException` "not found" handling with proper exceptions and a global exception handler
 
 ---
 
+## 📖 Additional Resources
+
+- [MapStruct Reference Guide](https://mapstruct.org/documentation/stable/reference/html/)
+- [Java Records (Java 25)](https://docs.oracle.com/en/java/javase/25/language/records.html)
+- [Spring Framework: Transaction Management](https://docs.spring.io/spring-framework/reference/data-access/transaction.html)
+- [Spring Boot Reference Documentation](https://docs.spring.io/spring-boot/)
+
+**Note on the book**: *Pro Spring Boot 4* has no dedicated chapter on DTOs or mapping, and doesn't mention MapStruct at all. The idea shows up in a few places instead: Chapter 2's *JSON Support* section (p. 50) shows `@JsonProperty`/`@JsonIgnore` to shape the JSON of a type (e.g. to hide a password) — the approach [Mapping Strategies](#%EF%B8%8F-mapping-strategies) warns against for entities; Chapter 3's validation best practices advise to "prefer applying validation on Data Transfer Objects (DTOs)" rather than on domain entities (Lesson 10 does exactly that); and the book's Management CRM (Chapter 1, and again in Chapters 5–8) uses a `CustomerDetailsDTO` record that its service layer assembles by hand from several domain objects — manual mapping, as in [option 2](#2-manual-mapping--fine-for-small-projects). For the service layer and transactions the book is much closer to this lesson: Chapter 1's *Creating the Service Layer* (p. 25) introduces its `ManagementService` as the orchestrator between several repositories, and Chapter 5's *Managing Transactions and Concurrency* (pp. 129–136: atomicity, declarative `@Transactional`, isolation levels, programmatic `TransactionTemplate`) is the basis for the [Transactions](#-transactions) section — translated to PizzaStore's JPA services instead of the book's `JdbcClient` repositories. The book's Chapter 2 (*Aspect-Oriented Programming*, p. 48) names transaction management as a classic example of a cross-cutting concern handled with AOP (the proxy explained above), and Chapter 8 uses `@Transactional(readOnly = true)` on read methods. This lesson adds dirty checking, rollback rules, propagation and the common proxy pitfalls, which the book doesn't cover explicitly.
+
+On DTOs, this lesson goes beyond the book by separating request and response DTOs and by generating the mapping code with MapStruct, which PizzaStore uses because it scales better to a larger domain model and catches forgotten fields at compile time.
+
+---
+
 ## 🚀 Runnable Project
 
-**`pizzastore-with-dtos/`** is Lesson 6a's `pizzastore-jpa` project plus the `dto`, `mapper` and `service` packages of this lesson. It's a step on the way to the final PizzaStore: the `domain`, `repository`, `dto` and `mapper` packages are the same as in the final project — except that validation (Lesson 10) and OpenAPI annotations (Lesson 14) have not been added to the DTOs yet.
+**`pizzastore-with-dtos/`** is Lesson 6a's `pizzastore-jpa` project plus the changes listed in [What This Lesson Adds](#-what-this-lesson-adds-to-pizzastore). It's a step on the way to the final PizzaStore: the `domain`, `repository`, `dto` and `mapper` packages are the same as in the final project — except that validation (Lesson 10) and OpenAPI annotations (Lesson 14) have not been added to the DTOs yet.
 
 The project includes:
+
 - ✅ **Spring Boot 4** on **Java 25** (`spring-boot-starter-webmvc`, `spring-boot-starter-data-jpa`, H2)
 - ✅ The complete domain model, repositories and seed data from Lesson 6a
 - ✅ **Request DTOs**: `CreatePizzaRequest`, `UpdatePizzaRequest`, `NutritionalInfoRequest`, `CreateCustomerRequest`, `UpdateCustomerRequest`, `CreateOrderRequest` (with nested `OrderLineRequest`), `UpdateOrderStatusRequest`
@@ -1631,19 +1717,23 @@ The project includes:
 - ✅ **No audit fields and no passwords** are ever exposed in responses
 - ❌ No controllers yet — those follow in Lesson 9
 
+### Running It
+
+There are no controllers yet, so there's no HTTP API to call. What you *can* do:
+
+```bash
+cd lesson-07-dtos-mappers/pizzastore-with-dtos
+
+# Compile: watch the MapStruct warnings, then read the generated code in
+# target/generated-sources/annotations/be/vives/pizzastore/mapper/
+mvn clean compile
+
+# Start the application: the services are created and data.sql is loaded
+mvn spring-boot:run
+```
+
+With the application running, the H2 console at http://localhost:8080/h2-console (JDBC URL `jdbc:h2:mem:pizzastore_dtos`, user `sa`, no password) shows the seeded data. To call a service yourself, add `logging.level.org.springframework.orm.jpa.JpaTransactionManager=DEBUG` and invoke it from a test or a `CommandLineRunner`, as in [See It Happen: Transaction Logging](#see-it-happen-transaction-logging).
+
 ---
 
-## 🎓 Further Reading
-
-- [MapStruct Reference Guide](https://mapstruct.org/documentation/stable/reference/html/)
-- [Java Records (Java 25)](https://docs.oracle.com/en/java/javase/25/language/records.html)
-- [Spring Framework: Transaction Management](https://docs.spring.io/spring-framework/reference/data-access/transaction.html)
-- [Spring Boot Reference Documentation](https://docs.spring.io/spring-boot/)
-
-**Note on the book**: *Pro Spring Boot 4* has no dedicated chapter on DTOs or mapping, and doesn't mention MapStruct at all. The idea shows up in a few places instead: Chapter 2's JSON section shows `@JsonProperty`/`@JsonIgnore` to shape the JSON of a type (e.g. to hide a password) — the approach [Mapping Strategies](#%EF%B8%8F-mapping-strategies) warns against for entities; Chapter 3's validation best practices advise to "prefer applying validation on Data Transfer Objects (DTOs)" rather than on domain entities (Lesson 10 does exactly that); and the book's Management CRM (Chapter 1, and again in Chapters 5–8) uses a `CustomerDetailsDTO` record that its service layer assembles by hand from several domain objects — manual mapping, as in [option 2](#2-manual-mapping--fine-for-small-projects). For the service layer and transactions the book is much closer to this lesson: Chapter 1's *Creating the Service Layer* introduces its `ManagementService` as the orchestrator between several repositories, and Chapter 5's *Managing Transactions and Concurrency* (atomicity, declarative `@Transactional`, isolation levels, programmatic `TransactionTemplate`) is the basis for the [Transactions](#-transactions) section — translated to PizzaStore's JPA services instead of the book's `JdbcClient` repositories. The book's Chapter 2 names transaction management as a classic example of a cross-cutting concern handled with AOP (the proxy explained above), and Chapter 8 uses `@Transactional(readOnly = true)` on read methods. This lesson adds dirty checking, rollback rules, propagation and the common proxy pitfalls, which the book doesn't cover explicitly.
-
-On DTOs, this lesson goes beyond the book by separating request and response DTOs and by generating the mapping code with MapStruct, which PizzaStore uses because it scales better to a larger domain model and catches forgotten fields at compile time.
-
----
-
-**Great work!** 🎉 PizzaStore now has a clean boundary between its database model and the outside world. Continue to [Lesson 8: REST Principles](../lesson-08-rest-principles/README.md).
+**Congratulations!** 🎉 PizzaStore now has a clean boundary between its database model and the outside world. Continue to [Lesson 8: REST Principles](../lesson-08-rest-principles/README.md) before Lesson 9 puts controllers on top of these services.

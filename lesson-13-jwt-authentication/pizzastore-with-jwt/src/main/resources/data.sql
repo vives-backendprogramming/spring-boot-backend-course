@@ -35,9 +35,9 @@ INSERT INTO customer_favorite_pizzas (customer_id, pizza_id) VALUES
 
 -- Orders
 INSERT INTO orders (order_number, order_date, total_amount, status, customer_id, created_at, updated_at) VALUES
-('ORD-20240115-00001', '2024-01-15 12:30:00', 20.98, 'DELIVERED', 1, '2024-01-15 12:30:00', '2024-01-15 14:15:00'),
-('ORD-20240115-00002', '2024-01-15 14:00:00', 22.98, 'DELIVERED', 2, '2024-01-15 14:00:00', '2024-01-15 15:45:00'),
-('ORD-20240118-00003', '2024-01-18 17:00:00', 25.48, 'CONFIRMED', 1, '2024-01-18 17:00:00', '2024-01-18 17:05:00');
+('ORD-20240115-00001', '2024-01-15 12:30:00', 29.97, 'DELIVERED', 1, '2024-01-15 12:30:00', '2024-01-15 14:15:00'),
+('ORD-20240115-00002', '2024-01-15 14:00:00', 23.98, 'DELIVERED', 2, '2024-01-15 14:00:00', '2024-01-15 15:45:00'),
+('ORD-20240118-00003', '2024-01-18 17:00:00', 21.48, 'CONFIRMED', 1, '2024-01-18 17:00:00', '2024-01-18 17:05:00');
 
 -- Order Lines
 INSERT INTO order_lines (order_id, pizza_id, quantity, unit_price, subtotal) VALUES

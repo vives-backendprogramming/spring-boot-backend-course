@@ -1,42 +1,50 @@
 # Lesson 8: REST Principles
 
-## 📚 Table of Contents
-
-- [📘 Overview](#-overview)
-- [🎯 Learning Objectives](#-learning-objectives)
-- [🏛️ What is REST?](#️-what-is-rest)
-- [🎯 REST Constraints](#-rest-constraints)
-- [🗂️ Resource Naming Conventions](#️-resource-naming-conventions)
-- [🔢 API Versioning](#-api-versioning)
-- [🎬 HTTP Methods and Their Semantics](#-http-methods-and-their-semantics)
-- [📖 GET - Read Resources](#-get---read-resources)
-- [✏️ POST - Create Resources](#️-post---create-resources)
-- [🔄 PUT - Update/Replace Resources](#-put---updatereplace-resources)
-- [🩹 PATCH - Partial Update](#-patch---partial-update)
-- [🗑️ DELETE - Remove Resources](#️-delete---remove-resources)
-- [🎨 HTTP Status Codes](#-http-status-codes)
-- [🌐 CORS (Cross-Origin Resource Sharing)](#-cors-cross-origin-resource-sharing)
-- [📋 REST Best Practices Summary](#-rest-best-practices-summary)
-- [🎓 Richardson Maturity Model](#-richardson-maturity-model)
-- [🎓 Summary](#-summary)
-- [📖 Additional Resources](#-additional-resources)
+**Design rules that make an HTTP API predictable: resources, methods, status codes, versioning and CORS**
 
 ---
 
-## 📘 Overview
+## 📋 Learning Objectives
 
-In this lesson, we step back from implementation details to understand the **principles and best practices of REST** (Representational State Transfer). While our PizzaStore API works, following REST principles will make it more consistent, predictable, and easier to consume by mobile applications and other clients.
+By the end of this lesson, you will be able to:
 
-## 🎯 Learning Objectives
+- Explain the **REST architectural style** and its constraints
+- Name resources with consistent **resource naming conventions**
+- Choose an **API versioning** strategy and evolve an API without breaking existing clients
+- Apply the **semantics of HTTP methods** (safe, idempotent)
+- Choose the right **HTTP status code** for a response
+- Explain **CORS** and when a browser client needs it
+- Place an API on the **Richardson Maturity Model**
 
-By the end of this lesson, you will:
-- Understand the **REST architectural style** and its constraints
-- Learn **resource naming conventions**
-- Apply **URL path API versioning** to evolve an API without breaking existing clients
-- Master **HTTP method semantics**
-- Know all important **HTTP status codes**
-- Configure **CORS** (essential for mobile apps!)
-- Apply REST best practices to API design
+---
+
+## 📚 Table of Contents
+
+1. [Recap: Where Lesson 7 Left Us](#-recap-where-lesson-7-left-us)
+2. [What is REST?](#️-what-is-rest)
+3. [REST Constraints](#-rest-constraints)
+4. [Resource Naming Conventions](#️-resource-naming-conventions)
+5. [API Versioning](#-api-versioning)
+6. [HTTP Methods and Their Semantics](#-http-methods-and-their-semantics)
+7. [GET - Read Resources](#-get---read-resources)
+8. [POST - Create Resources](#️-post---create-resources)
+9. [PUT - Update/Replace Resources](#-put---updatereplace-resources)
+10. [PATCH - Partial Update](#-patch---partial-update)
+11. [DELETE - Remove Resources](#️-delete---remove-resources)
+12. [HTTP Status Codes](#-http-status-codes)
+13. [CORS (Cross-Origin Resource Sharing)](#-cors-cross-origin-resource-sharing)
+14. [Richardson Maturity Model](#-richardson-maturity-model)
+15. [Best Practices](#-best-practices)
+16. [Summary](#-summary)
+17. [Additional Resources](#-additional-resources)
+
+---
+
+## 🔄 Recap: Where Lesson 7 Left Us
+
+After [Lesson 7](../lesson-07-dtos-mappers/README.md), PizzaStore has a domain model, repositories, DTOs, mappers and services — but no web layer yet. [Lesson 5](../lesson-05-spring-mvc/README.md) showed the Spring MVC mechanics for building one: `@RestController`, the mapping annotations, `ResponseEntity`.
+
+Before Lesson 9 puts controllers on top of the services, this lesson steps back to the **design** question: which URLs, methods and status codes should the API use? Following **REST** principles makes an API consistent, predictable and easy to consume by web and mobile clients. This is a theory lesson without a project; Lesson 9 applies everything here.
 
 ---
 
@@ -62,7 +70,7 @@ By the end of this lesson, you will:
 
 ## 🎯 REST Constraints
 
-Roy Fielding defined some **architectural constraints** for REST:
+Roy Fielding defined six **architectural constraints** for REST — the first five below, plus the optional *code on demand* (the server may send executable code, such as JavaScript, to the client):
 
 ### 1. Client-Server Architecture
 
@@ -106,12 +114,12 @@ public Cart getCart(@PathVariable Long userId, @RequestHeader("Authorization") S
 ```java
 @GetMapping("/{id}")
 public ResponseEntity<PizzaResponse> getPizza(@PathVariable Long id) {
-    PizzaResponse pizza = pizzaService.findById(id);
-    
-    return ResponseEntity.ok()
-        .cacheControl(CacheControl.maxAge(1, TimeUnit.HOURS))
-        .eTag(String.valueOf(pizza.hashCode()))
-        .body(pizza);
+    return pizzaService.findById(id)
+        .map(pizza -> ResponseEntity.ok()
+            .cacheControl(CacheControl.maxAge(1, TimeUnit.HOURS))
+            .eTag(String.valueOf(pizza.hashCode()))   // a record's hashCode changes when its data does
+            .body(pizza))
+        .orElse(ResponseEntity.notFound().build());
 }
 ```
 
@@ -159,7 +167,7 @@ Resources are the **nouns** of your API. Good naming is crucial for API usabilit
 GET    /api/pizzas                    # Get all pizzas
 GET    /api/pizzas/5                  # Get pizza with ID 5
 GET    /api/orders                    # Get all orders
-GET    /api/orders/123/items          # Get items in order 123
+GET    /api/orders/123/lines          # Get the lines of order 123
 GET    /api/customers/42/orders       # Get orders for customer 42
 
 ❌ BAD
@@ -172,15 +180,16 @@ GET    /api/pizza-management          # Too verbose
 ### Query Parameters for Filtering/Sorting
 
 Use query parameters for:
+
 - **Filtering**: `/pizzas?available=true`
-- **Sorting**: `/pizzas?sort=price&order=asc`
+- **Sorting**: `/pizzas?sort=price,asc` (Spring Data's `property,direction` format, Lesson 9)
 - **Pagination**: `/pizzas?page=2&size=20`
 - **Search**: `/pizzas?search=margherita`
 - **Fields**: `/pizzas?fields=name,price` (sparse fieldsets)
 
 ```
-GET /api/pizzas?available=true&maxPrice=10&sort=price&order=asc
-GET /api/orders?status=pending&customerId=42&page=1&size=20
+GET /api/pizzas?available=true&maxPrice=10&sort=price,asc
+GET /api/orders?status=PENDING&customerId=42&page=1&size=20
 GET /api/customers?search=john&city=Brussels
 ```
 
@@ -203,7 +212,9 @@ Spring Boot 4 and Spring Framework 7 support several ways to version an API:
 | **Media Type / Content Negotiation** | `Accept: application/vnd.pizzastore.v2+json` | Follows HTTP content-negotiation semantics most purely |
 | **Query Parameter** | `/api/pizzas?version=2` | Simple, but easy to omit by accident — generally discouraged |
 
-The book picks **URL Path Versioning** for its Customer CRM because it is *"the most explicit and easiest for clients to explore"* — you can paste the URL straight into a browser and immediately see which version you're hitting. We'll use the same approach for PizzaStore.
+The book picks **URL Path Versioning** for its Customer CRM because it is *"the most explicit and easiest for clients to explore"* — you can paste the URL straight into a browser and immediately see which version you're hitting.
+
+**PizzaStore itself is not versioned**: its endpoints are plain `/api/pizzas`, `/api/orders`, … A course project has no installed clients that a breaking change could hurt. The examples below show what you'd do the day a second version is needed.
 
 ### URL Path Versioning: One Controller per Version
 
@@ -258,6 +269,8 @@ public class PizzaControllerV2 {
 }
 ```
 
+This is exactly the book's approach (its controllers are mapped to `/api/v1_1/customers` and `/api/v2_0/customers`): a plain path prefix in `@RequestMapping`, nothing version-specific in Spring itself.
+
 If a client sends an invalid request (e.g. a blank `name`) to `/api/v1/pizzas`, it still succeeds — preserving backward compatibility for whatever still depends on the old, permissive behavior. The exact same payload sent to `/api/v2/pizzas` is rejected with a `400 Bad Request` `ProblemDetail`, because `@Valid` is active there. Both versions delegate to the same `PizzaService`, so business logic isn't duplicated — only the controller-level contract differs between versions.
 
 ### Verifying Both Versions Behave Differently
@@ -274,7 +287,8 @@ class PizzaVersioningTests {
 
     @Test
     void v1AcceptsInvalidData_v2RejectsIt() {
-        CreatePizzaRequest invalid = new CreatePizzaRequest("", null, null, false, null);
+        // blank name: invalid for v2, but still storable by v1 (the price is there, so no NOT NULL column is violated)
+        CreatePizzaRequest invalid = new CreatePizzaRequest("", new BigDecimal("9.99"), null, true, null);
 
         client.post().uri("/api/v1/pizzas")
             .body(invalid)
@@ -288,6 +302,38 @@ class PizzaVersioningTests {
     }
 }
 ```
+
+### Native API Versioning in Spring Framework 7
+
+Spring Framework 7 (Spring Boot 4) also has **built-in** API versioning: you put a `version` on the mapping, and Spring picks the method that matches the version in the request. With a request header as the version source, configured with Spring Boot properties:
+
+```properties
+spring.mvc.apiversion.use.header=X-API-Version
+spring.mvc.apiversion.default=1
+```
+
+```java
+@RestController
+@RequestMapping("/api/menu")
+public class MenuController {
+
+    @GetMapping(version = "1")
+    public String v1() { return "v1"; }
+
+    @GetMapping(version = "2")
+    public String v2() { return "v2"; }
+}
+```
+
+| Request | Result |
+|---|---|
+| `GET /api/menu` | `v1` (the default version) |
+| `GET /api/menu` with `X-API-Version: 2` | `v2` |
+| `GET /api/menu` with `X-API-Version: 3` | `400 Bad Request` (`InvalidApiVersionException`) |
+
+Other version sources are a path segment (`spring.mvc.apiversion.use.path-segment`), a query parameter or a media type parameter. Both styles work; the separate-controller approach above keeps each version's code completely apart, the native one avoids duplicating everything that didn't change.
+
+---
 
 ## 🎬 HTTP Methods and Their Semantics
 
@@ -316,6 +362,7 @@ class PizzaVersioningTests {
 **Purpose**: Retrieve resource(s)
 
 ### Characteristics
+
 - ✅ Idempotent
 - ✅ Safe (read-only)
 - ✅ Cacheable
@@ -325,16 +372,18 @@ class PizzaVersioningTests {
 ### Examples
 
 ```java
-// Get collection
+// Get collection (one page of it)
 @GetMapping("/api/pizzas")
-public List<PizzaResponse> getAllPizzas() {
-    return pizzaService.findAll();
+public Page<PizzaResponse> getAllPizzas(Pageable pageable) {
+    return pizzaService.findAll(pageable);
 }
 
-// Get single resource
+// Get single resource: 200 with the pizza, or 404
 @GetMapping("/api/pizzas/{id}")
-public PizzaResponse getPizzaById(@PathVariable Long id) {
-    return pizzaService.findById(id);
+public ResponseEntity<PizzaResponse> getPizzaById(@PathVariable Long id) {
+    return pizzaService.findById(id)
+        .map(ResponseEntity::ok)
+        .orElse(ResponseEntity.notFound().build());
 }
 
 // Get with filtering
@@ -354,6 +403,7 @@ public List<OrderLineResponse> getOrderLines(@PathVariable Long orderId) {
 ```
 
 ### Response Codes
+
 - **200 OK**: Success
 - **404 Not Found**: Resource doesn't exist
 - **400 Bad Request**: Invalid query parameters
@@ -365,6 +415,7 @@ public List<OrderLineResponse> getOrderLines(@PathVariable Long orderId) {
 **Purpose**: Create a new resource
 
 ### Characteristics
+
 - ❌ NOT Idempotent (creates new resource each time)
 - ❌ NOT Safe
 - ❌ NOT Cacheable
@@ -405,7 +456,7 @@ Content-Type: application/json
   "nutritionalInfo": {
     "calories": 850,
     "protein": 45.5,
-    "carbs": 78.2,
+    "carbohydrates": 78.2,
     "fat": 32.1
   }
 }
@@ -427,13 +478,14 @@ Content-Type: application/json
   "nutritionalInfo": {
     "calories": 850,
     "protein": 45.5,
-    "carbs": 78.2,
+    "carbohydrates": 78.2,
     "fat": 32.1
   }
 }
 ```
 
 ### Response Codes
+
 - **201 Created**: Resource created successfully (+ Location header)
 - **400 Bad Request**: Invalid request data
 - **409 Conflict**: Resource already exists (e.g., duplicate name)
@@ -445,6 +497,7 @@ Content-Type: application/json
 **Purpose**: Update or replace an **entire** resource
 
 ### Characteristics
+
 - ✅ Idempotent (same call multiple times = same result)
 - ❌ NOT Safe
 - ✅ Has a request body
@@ -476,7 +529,7 @@ PUT /api/pizzas/1
   "nutritionalInfo": {
     "calories": 720,
     "protein": 28.0,
-    "carbs": 85.0,
+    "carbohydrates": 85.0,
     "fat": 25.5
   }
 }
@@ -490,6 +543,7 @@ PATCH /api/pizzas/1
 ```
 
 ### Response Codes
+
 - **200 OK**: Update successful
 - **204 No Content**: Update successful, no response body
 - **404 Not Found**: Resource doesn't exist
@@ -502,12 +556,15 @@ PATCH /api/pizzas/1
 **Purpose**: Update **specific fields** of a resource
 
 ### Characteristics
+
 - ❌ NOT Idempotent (depends on implementation)
 - ❌ NOT Safe
 - ✅ Has a request body
 - ✅ Updates only specified fields
 
 ### Implementation
+
+Two common styles (PizzaStore uses the second, for one thing only: `PATCH /api/orders/{id}/status` in Lesson 9):
 
 ```java
 @PatchMapping("/api/pizzas/{id}")
@@ -537,6 +594,7 @@ public ResponseEntity<PizzaResponse> toggleAvailability(@PathVariable Long id) {
 ```
 
 ### Response Codes
+
 - **200 OK**: Update successful
 - **404 Not Found**: Resource doesn't exist
 - **400 Bad Request**: Invalid patch data
@@ -548,6 +606,7 @@ public ResponseEntity<PizzaResponse> toggleAvailability(@PathVariable Long id) {
 **Purpose**: Delete a resource
 
 ### Characteristics
+
 - ✅ Idempotent (deleting same resource multiple times)
 - ❌ NOT Safe
 - ❌ Usually no request body
@@ -561,15 +620,16 @@ public ResponseEntity<Void> deletePizza(@PathVariable Long id) {
     return ResponseEntity.noContent().build();
 }
 
-// Soft delete (recommended in many cases)
-@DeleteMapping("/api/pizzas/{id}")
-public ResponseEntity<Void> deletePizza(@PathVariable Long id) {
-    pizzaService.softDelete(id);  // Sets active=false instead of deleting
+// Soft delete: PizzaStore never removes orders, DELETE cancels them (Lesson 9)
+@DeleteMapping("/api/orders/{id}")
+public ResponseEntity<Void> cancelOrder(@PathVariable Long id) {
+    orderService.cancel(id);  // sets status CANCELLED instead of deleting the row
     return ResponseEntity.noContent().build();
 }
 ```
 
 ### Response Codes
+
 - **204 No Content**: Delete successful (preferred)
 - **200 OK**: Delete successful with response body
 - **404 Not Found**: Resource doesn't exist
@@ -596,7 +656,7 @@ public ResponseEntity<Void> deletePizza(@PathVariable Long id) {
 | **403** | Forbidden | Not authorized | Insufficient permissions |
 | **404** | Not Found | Resource not found | Resource doesn't exist |
 | **409** | Conflict | Resource conflict | Duplicate, constraint violation |
-| **422** | Unprocessable Entity | Semantic errors | Business rule validation |
+| **422** | Unprocessable Content | Well-formed, but can't be processed | Business rule violated, referenced resource doesn't exist |
 | **429** | Too Many Requests | Rate limit exceeded | API rate limiting |
 
 ### Server Errors (5xx)
@@ -606,61 +666,41 @@ public ResponseEntity<Void> deletePizza(@PathVariable Long id) {
 | **500** | Internal Server Error | Unexpected error | Unhandled exception |
 | **503** | Service Unavailable | Service down | Maintenance, overload |
 
-### Example: Comprehensive Error Responses
+### Example: Error Responses
 
-```json
-// 400 Bad Request
-{
-  "timestamp": "2025-01-15T10:30:00",
-  "status": 400,
-  "error": "Bad Request",
-  "message": "Validation failed",
-  "errors": [
-    {
-      "field": "name",
-      "message": "Pizza name is required"
-    },
-    {
-      "field": "price",
-      "message": "Price must be positive"
-    }
-  ],
-  "path": "/api/pizzas"
-}
+A status code says *what kind* of error happened; the body should say *what* went wrong. The standard format for that is **Problem Details for HTTP APIs** (RFC 9457, which replaced RFC 7807; Spring's `ProblemDetail`), which PizzaStore uses from [Lesson 10](../lesson-10-validation-exception-handling/README.md) on:
 
-// 404 Not Found
+```http
+HTTP/1.1 404
+Content-Type: application/problem+json
+
 {
-  "timestamp": "2025-01-15T10:30:00",
+  "type": "https://api.pizzastore.example.com/errors/not-found",
+  "title": "Not Found",
   "status": 404,
-  "error": "Not Found",
-  "message": "Pizza not found with id: 999",
-  "path": "/api/pizzas/999"
-}
-
-// 409 Conflict
-{
-  "timestamp": "2025-01-15T10:30:00",
-  "status": 409,
-  "error": "Conflict",
-  "message": "Pizza with name 'Margherita' already exists",
-  "path": "/api/pizzas"
+  "detail": "Pizza with id 999 not found",
+  "instance": "/api/pizzas/999"
 }
 ```
+
+A validation error adds the field errors as an extra property of the same object, so every client parses errors the same way. (Without such a handler, Spring Boot's default error body is `{ timestamp, status, error, path }` — Lesson 9 shows it.)
 
 ---
 
 ## 🌐 CORS (Cross-Origin Resource Sharing)
 
-**CRITICAL for mobile apps!** Your mobile app runs on a different origin than your API.
+**Essential as soon as a browser front-end talks to your API.** A single-page app (Angular, React, Vue) served from another origin than the API is blocked by the browser unless the API allows it.
 
 ### What is CORS?
 
-CORS is a security feature implemented by browsers to prevent malicious websites from accessing your API.
+Browsers apply the **same-origin policy**: JavaScript on a page from one origin (scheme + host + port) may not read responses from another origin. **CORS** lets a server say which other origins *are* allowed, through `Access-Control-Allow-*` response headers (for non-simple requests after a *preflight* `OPTIONS` request).
 
 ```
-Mobile App (localhost:4200)  →  API (localhost:8080)
-   Different Origin!            Must allow CORS
+Angular app (http://localhost:4200)  →  API (http://localhost:8080)
+         Different origin!                 Must allow CORS
 ```
+
+CORS is enforced by **browsers only**. A native mobile app, Postman or `curl` is not affected — and CORS is not an access control mechanism: it doesn't stop anyone from calling your API directly.
 
 ### Simple CORS Configuration
 
@@ -686,6 +726,7 @@ public class CorsConfig {
 ```
 
 #### Configuration Details:
+
 - **`addMapping("/api/**")`**: Applies CORS to all endpoints starting with `/api/`.
 - **`allowedOrigins("http://localhost:4200", "https://app.pizzastore.com")`**: Permits requests from these origins (e.g., local development and production app).
 - **`allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")`**: Allows these HTTP methods.
@@ -693,42 +734,9 @@ public class CorsConfig {
 - **`allowCredentials(true)`**: Enables sending credentials (cookies, authorization headers) with requests.
 - **`maxAge(3600)`**: Caches preflight responses for 1 hour to reduce server load.
 
-### Configuration in application.properties
+### Where PizzaStore Configures CORS
 
-```properties
-# CORS configuration
-spring.web.cors.allowed-origins=http://localhost:4200,https://app.pizzastore.com
-spring.web.cors.allowed-methods=GET,POST,PUT,PATCH,DELETE,OPTIONS
-spring.web.cors.allowed-headers=*
-spring.web.cors.allow-credentials=true
-spring.web.cors.max-age=3600
-```
-
----
-
-## 📋 REST Best Practices Summary
-
-### ✅ DO
-
-1. **Use nouns for resources** (`/pizzas`, not `/getPizzas`)
-2. **Use plural names** for collections
-3. **Use HTTP methods correctly** (GET for read, POST for create, etc.)
-4. **Return appropriate status codes** (201 for created, 404 for not found)
-5. **Version your API** (`/api/v1/pizzas`, see [API Versioning](#-api-versioning) above)
-6. **Use filtering via query parameters** (`?available=true`)
-7. **Include pagination** for large collections
-8. **Use consistent naming conventions** (camelCase or snake_case)
-9. **Document your API** (Swagger/OpenAPI - covered in Lesson 14)
-10. **Configure CORS** for mobile apps
-
-### ❌ DON'T
-
-1. **Don't use verbs in URIs** (`/createPizza` ❌)
-2. **Don't use GET for operations that modify state**
-3. **Don't ignore HTTP status codes** (don't return 200 for everything)
-4. **Don't expose database IDs if not necessary** (use UUIDs for public APIs)
-5. **Don't return entire entities** (use DTOs - covered in Lesson 7)
-6. **Don't forget to handle errors consistently**
+Spring Boot has **no** `application.properties` keys for the CORS rules of your own API — they are configured in code. With Spring Security on the classpath, the `WebMvcConfigurer` above isn't enough on its own either, because the security filter chain answers a preflight request before Spring MVC sees it. That's why PizzaStore configures CORS in its `SecurityConfig`, with a `CorsConfigurationSource` bean — see [Lesson 13](../lesson-13-jwt-authentication/README.md).
 
 ---
 
@@ -780,7 +788,7 @@ Resources include links to related resources
   "nutritionalInfo": {
     "calories": 720,
     "protein": 28.0,
-    "carbs": 85.0,
+    "carbohydrates": 85.0,
     "fat": 25.5
   },
   "_links": {
@@ -794,7 +802,40 @@ Resources include links to related resources
 
 ---
 
+## 💡 Best Practices
+
+### ✅ DO
+
+1. **Use nouns for resources** (`/pizzas`, not `/getPizzas`)
+2. **Use plural names** for collections
+3. **Use HTTP methods correctly** (GET for read, POST for create, etc.)
+4. **Return appropriate status codes** (201 for created, 404 for not found)
+5. **Plan for versioning** before the first breaking change (see [API Versioning](#-api-versioning) above)
+6. **Use filtering via query parameters** (`?available=true`)
+7. **Include pagination** for large collections
+8. **Use consistent naming conventions** (camelCase or snake_case)
+9. **Document your API** (Swagger/OpenAPI - covered in Lesson 14)
+10. **Configure CORS** for browser front-ends on another origin
+
+### ❌ DON'T
+
+1. **Don't use verbs in URIs** (`/createPizza` ❌)
+2. **Don't use GET for operations that modify state**
+3. **Don't ignore HTTP status codes** (don't return 200 for everything)
+4. **Don't expose database IDs if not necessary** (use UUIDs for public APIs)
+5. **Don't return entire entities** (use DTOs - covered in Lesson 7)
+6. **Don't forget to handle errors consistently**
+
+---
+
 ## 🎓 Summary
+
+### What We Learned
+
+- REST's constraints: client-server, stateless, cacheable, uniform interface, layered system (and optional code on demand)
+- Resource naming: plural nouns, sub-resources, query parameters for filtering, sorting and paging
+- Versioning strategies, as separate controllers or with Spring Framework 7's native `version` attribute
+- HTTP method semantics, status codes, Problem Details, CORS and the Richardson Maturity Model
 
 ### Key Takeaways
 
@@ -806,6 +847,10 @@ Resources include links to related resources
 6. **HATEOAS makes APIs discoverable** (optional but powerful)
 7. **Consistency is key** - follow conventions
 
+### What's Next?
+
+[Lesson 9](../lesson-09-complete-rest-api/README.md) applies these principles to PizzaStore: controllers on top of the Lesson 7 services, with full CRUD, `201 Created` + `Location`, `204 No Content`, `404`, PUT vs PATCH, soft delete, filtering and pagination.
+
 ---
 
 ## 📖 Additional Resources
@@ -816,10 +861,10 @@ Resources include links to related resources
 - [Richardson Maturity Model](https://martinfowler.com/articles/richardsonMaturityModel.html)
 - [CORS Explained](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS)
 
-**Note on the book**: This lesson corresponds to *Pro Spring Boot 4*, Chapter 3: *Web Development with Spring Boot* — specifically the *RESTful API Design and Native Versioning* section, covering both its *Core REST Principles* subsection (resources as nouns, standard HTTP methods, meaningful status codes) and its *API Versioning Strategy* subsection (URL path vs. header vs. media type versioning, and the book's own `CustomerControllerV1`/`CustomerControllerV2` example, mirrored above as `PizzaControllerV1`/`PizzaControllerV2`). 
+**Note on the book**: This lesson corresponds to *Pro Spring Boot 4*, Chapter 3: *Web Development with Spring Boot* — specifically the *RESTful API Design and Native Versioning* section: *Core REST Principles* (p. 63: resources as nouns, standard HTTP methods with their safety and idempotency, meaningful status codes) and *API Versioning Strategy* (p. 64: URL path vs. header vs. media type versioning), whose `CustomerControllerV1`/`CustomerControllerV2` pair (*Versioned Controllers*, p. 82, on `/api/v1_1/customers` and `/api/v2_0/customers`) is mirrored above as `PizzaControllerV1`/`PizzaControllerV2`. Despite the section title, the book's example uses plain path prefixes; the `version` attribute and `spring.mvc.apiversion.*` properties shown above are this course's addition. The REST constraints, CORS, Problem Details as a format and the Richardson Maturity Model are not in the book. 
 
-Chapter 3 goes on to cover Jakarta Bean Validation and `ProblemDetail`/`@RestControllerAdvice` exception handling ([Lesson 10](../lesson-10-validation-exception-handling/README.md)), declarative HTTP service clients ([Lesson 11](../lesson-11-external-api/README.md)) and the unified `RestTestClient` ([Lesson 12](../lesson-12-testing/README.md)) — the first and last referenced above, since the book itself demonstrates its versioning example together with `RestTestClient`.
+Chapter 3 goes on to cover Jakarta Bean Validation and `ProblemDetail`/`@RestControllerAdvice` exception handling ([Lesson 10](../lesson-10-validation-exception-handling/README.md)), declarative HTTP service clients ([Lesson 11](../lesson-11-external-api/README.md)) and the unified `RestTestClient` (pp. 77–78, [Lesson 12](../lesson-12-testing/README.md)) — the first and last referenced above, since the book itself demonstrates its versioning example together with `RestTestClient`.
 
 ---
 
-**Well done!** 🎉 You now understand the principles that make a truly RESTful API. These principles will guide all your API design decisions going forward.
+**Congratulations!** 🎉 You now understand the principles that make a truly RESTful API. Continue to [Lesson 9: Building a Complete REST API](../lesson-09-complete-rest-api/README.md) to apply them to PizzaStore.

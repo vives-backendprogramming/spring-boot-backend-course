@@ -1,18 +1,19 @@
 # Lesson 10: Validation & Exception Handling
 
-**Rejecting Bad Input Early and Answering Every Error with a Consistent RFC 7807 Problem Detail**
+**Rejecting Bad Input Early and Answering Every Error with a Consistent Problem Detail (RFC 9457)**
 
 ---
 
 ## 📋 Learning Objectives
 
 By the end of this lesson, you will be able to:
+
 - Validate incoming request bodies with Jakarta Bean Validation (`@NotBlank`, `@NotNull`, `@Size`, `@Email`, `@DecimalMin`, ...)
 - Trigger validation with `@Valid`, including nested objects and lists
 - Choose the right constraints for a create (`POST`) and a full-replacement update (`PUT`) DTO
 - Design a small exception hierarchy and let the service layer throw exceptions instead of returning `Optional`/`boolean`/`null`
 - Handle all exceptions in one place with `@RestControllerAdvice` and `@ExceptionHandler`
-- Return RFC 7807 `ProblemDetail` responses, also for the exceptions Spring MVC throws itself (`ResponseEntityExceptionHandler`)
+- Return `ProblemDetail` responses (RFC 9457), also for the exceptions Spring MVC throws itself (`ResponseEntityExceptionHandler`)
 - Pick the right status code: 400, 404, 409, 422 or 500
 - Avoid leaking internal details (SQL errors, stack traces) to API clients
 
@@ -29,7 +30,7 @@ By the end of this lesson, you will be able to:
 7. [Validating Path Variables, Parameters & Custom Constraints](#-validating-path-variables-parameters--custom-constraints)
 8. [Part 2: Exceptions Instead of Optional](#-part-2-exceptions-instead-of-optional)
 9. [Global Exception Handling with @RestControllerAdvice](#%EF%B8%8F-global-exception-handling-with-restcontrolleradvice)
-10. [Problem Details (RFC 7807)](#-problem-details-rfc-7807)
+10. [Problem Details (RFC 9457)](#-problem-details-rfc-9457)
 11. [Choosing the Right Status Code](#-choosing-the-right-status-code)
 12. [Before and After](#-before-and-after)
 13. [Best Practices](#-best-practices)
@@ -130,7 +131,7 @@ Validation is **not** part of `spring-boot-starter-webmvc`. Add its own starter:
 </dependency>
 ```
 
-It brings in Hibernate Validator and auto-configures a `Validator` bean that Spring MVC uses. Without it, `@Valid` and all constraint annotations compile (they're in `jakarta.validation-api`) but are **silently ignored**.
+It brings in the API (`jakarta.validation-api`, where `@Valid` and all constraint annotations live) and Hibernate Validator as its implementation, and auto-configures a `Validator` bean that Spring MVC uses. In PizzaStore nothing else brings in that API, so without the starter the annotations don't even compile. In a project where another library *does* bring in `jakarta.validation-api` but no implementation, it's worse: everything compiles and the constraints are **silently ignored**.
 
 ---
 
@@ -551,9 +552,9 @@ The handler logs **client errors** (4xx) at `WARN` — they're expected and not 
 
 ---
 
-## 📄 Problem Details (RFC 7807)
+## 📄 Problem Details (RFC 9457)
 
-Every error response now has the same, standardised shape: a **Problem Detail**, defined by RFC 7807 "Problem Details for HTTP APIs" (since 2023 updated as RFC 9457, same format). The book calls it "the recommended standard for error responses" in Spring Boot 4. Spring's `org.springframework.http.ProblemDetail` class represents it:
+Every error response now has the same, standardised shape: a **Problem Detail**, defined by RFC 9457 "Problem Details for HTTP APIs" (2023). It replaced RFC 7807 (2016) with the same format, so you'll still see "RFC 7807" in older documentation and in Spring's Javadoc. The book calls it "the recommended standard for error responses" in Spring Boot 4. Spring's `org.springframework.http.ProblemDetail` class represents it:
 
 ```json
 {
@@ -587,7 +588,7 @@ private ProblemDetail buildProblemDetail(HttpStatus status, String detail, Strin
 }
 ```
 
-Returning a `ProblemDetail` from an `@ExceptionHandler` is enough: Spring uses its `status` as the HTTP status of the response. The problem details produced by the `ResponseEntityExceptionHandler` base class (405, 415, ...) have no custom `type`; RFC 7807 then defaults it to `about:blank`, which is why it's left out of their JSON.
+Returning a `ProblemDetail` from an `@ExceptionHandler` is enough: Spring uses its `status` as the HTTP status of the response. The problem details produced by the `ResponseEntityExceptionHandler` base class (405, 415, ...) have no custom `type`; RFC 9457 then defaults it to `about:blank`, which is why it's left out of their JSON.
 
 ### Compared with the Book
 
@@ -703,7 +704,7 @@ Every error response is now an `application/problem+json` body.
    - `ResponseEntityExceptionHandler` for Spring MVC's own exceptions; override, don't redeclare
    - `DataIntegrityViolationException` → 409 without leaking SQL; a catch-all 500
 
-4. **Problem Details (RFC 7807)**
+4. **Problem Details (RFC 9457)**
    - `type`, `title`, `status`, `detail`, `instance` and extensions like `errors`
    - `application/problem+json`
 
@@ -731,9 +732,7 @@ PizzaStore now behaves correctly for valid *and* invalid requests. So far it onl
 - [Spring Framework Reference: Error Responses (`ProblemDetail`)](https://docs.spring.io/spring-framework/reference/web/webmvc/mvc-ann-rest-exceptions.html)
 - [RFC 9457: Problem Details for HTTP APIs](https://www.rfc-editor.org/rfc/rfc9457) (replaces RFC 7807)
 
----
-
-**Note on the book**: *Pro Spring Boot 4* covers this lesson in Chapter 3. The *Declarative HTTP Service Clients* section of the same chapter has a lesson of its own: [Lesson 11](../lesson-11-external-api/README.md). *Validating the Domain Model* (inside *Implementing Full CRUD*) adds `spring-boot-starter-validation`, puts `@NotBlank`, `@Email` and `@Pattern` on the `Customer` record, and gives the three best practices quoted above: fail fast, specific messages, and validation on DTOs rather than entities. *The Complete CustomerController* triggers it with `@Valid @RequestBody` and explains the resulting `MethodArgumentNotValidException`. *Global Exception Handling with @ControllerAdvice* (inside *Exception Handling and Content Negotiation*) is the counterpart of `GlobalExceptionHandler`: `@RestControllerAdvice`, `@ExceptionHandler`, `ProblemDetail` with a custom `type` and an `errors` extension, the Problem Detail flow of Figure 3-2, and the best practices "Standardize Errors", "Don't Leak Internals" and "Use Specific Exceptions". Chapter 3's versioning example returns to the same handler for its strict v2 API, Chapter 6 (Listing 6-4) uses `ResponseStatusException` for a 404, Chapter 9 shows the WebFlux variant (`WebExchangeBindException`), and Chapter 18 lists *First-Class Problem Details Support* among the Spring Boot 4 highlights, with the `ErrorResponse.builder` example. Where PizzaStore goes further than the book: a custom exception hierarchy thrown from the service layer, separate create/update DTOs with nested (`@Valid`) validation, and `ResponseEntityExceptionHandler` for Spring's own exceptions. The book's error status codes are limited to **400** (validation), **404** (a resource that doesn't exist, always identified by the URL) and **500** (unexpected errors); **409 Conflict and 422 Unprocessable Content don't appear anywhere in the book**, and its examples never reference another resource from a request body. The 409/422 distinction and the "404 only for IDs in the path" rule in [400, 404 or 422?](#400-404-or-422) are this course's addition, based on the HTTP specification (RFC 9110) rather than on the book. Note that, despite the book's wording, Spring Boot 4 does **not** return problem details by default: without your own handler (or `spring.mvc.problemdetails.enabled=true`) errors still get the `{ timestamp, status, error, path }` body.
+**Note on the book**: *Pro Spring Boot 4* covers this lesson in Chapter 3. The *Declarative HTTP Service Clients* section of the same chapter has a lesson of its own: [Lesson 11](../lesson-11-external-api/README.md). *Validating the Domain Model* (inside *Implementing Full CRUD*, p. 64) adds `spring-boot-starter-validation`, puts `@NotBlank`, `@Email` and `@Pattern` on the `Customer` record, and gives the three best practices quoted above: fail fast, specific messages, and validation on DTOs rather than entities. *The Complete CustomerController* (p. 66) triggers it with `@Valid @RequestBody` and explains the resulting `MethodArgumentNotValidException`. *Global Exception Handling with @ControllerAdvice* (inside *Exception Handling and Content Negotiation*, p. 69) is the counterpart of `GlobalExceptionHandler`: `@RestControllerAdvice`, `@ExceptionHandler`, `ProblemDetail` with a custom `type` and an `errors` extension, the Problem Detail flow of Figure 3-2, and the best practices "Standardize Errors", "Don't Leak Internals" and "Use Specific Exceptions". Chapter 3's versioning example returns to the same handler for its strict v2 API, Chapter 6 (Listing 6-4) uses `ResponseStatusException` for a 404, Chapter 9 shows the WebFlux variant (`WebExchangeBindException`), and Chapter 18 lists *First-Class Problem Details Support* (p. 499) among the Spring Boot 4 highlights, with the `ErrorResponse.builder` example. Where PizzaStore goes further than the book: a custom exception hierarchy thrown from the service layer, separate create/update DTOs with nested (`@Valid`) validation, and `ResponseEntityExceptionHandler` for Spring's own exceptions. The book's error status codes are limited to **400** (validation), **404** (a resource that doesn't exist, always identified by the URL) and **500** (unexpected errors); **409 Conflict and 422 Unprocessable Content don't appear anywhere in the book**, and its examples never reference another resource from a request body. The 409/422 distinction and the "404 only for IDs in the path" rule in [400, 404 or 422?](#400-404-or-422) are this course's addition, based on the HTTP specification (RFC 9110) rather than on the book. Note that, despite the book's wording, Spring Boot 4 does **not** return problem details by default: without your own handler (or `spring.mvc.problemdetails.enabled=true`) errors still get the `{ timestamp, status, error, path }` body.
 
 ---
 
@@ -742,11 +741,12 @@ PizzaStore now behaves correctly for valid *and* invalid requests. So far it onl
 **[`pizzastore-with-validation/`](pizzastore-with-validation)** is Lesson 9's [`pizzastore-complete-api`](../lesson-09-complete-rest-api/pizzastore-complete-api) plus the changes listed in [What This Lesson Adds to PizzaStore](#-what-this-lesson-adds-to-pizzastore). Its request DTOs, `exception` package, services and controllers are the same as in the final PizzaStore, minus the Open Food Facts import (Lesson 11), the security handler (Lesson 13) and the OpenAPI annotations (Lesson 14).
 
 The project includes:
+
 - ✅ **Spring Boot 4.0** on **Java 25** (`spring-boot-starter-webmvc`, `spring-boot-starter-data-jpa`, `spring-boot-starter-validation`, H2, MapStruct 1.6.3)
 - ✅ Everything from Lessons 6a, 7 and 9: domain model, repositories, DTOs, mappers, services, complete REST API
 - ✅ Jakarta Bean Validation on all request DTOs, including nested objects and lists
 - ✅ A custom exception hierarchy and business rules in the services
-- ✅ A global `@RestControllerAdvice` returning RFC 7807 `ProblemDetail` for every error
+- ✅ A global `@RestControllerAdvice` returning a `ProblemDetail` (RFC 9457) for every error
 - ❌ No calls to external APIs yet — Lesson 11
 - ❌ No automated tests yet — Lesson 12
 - ❌ No security — every endpoint is open until Lesson 13
@@ -754,7 +754,7 @@ The project includes:
 ### Running It
 
 ```bash
-cd pizzastore-with-validation
+cd lesson-10-validation-exception-handling/pizzastore-with-validation
 mvn spring-boot:run
 ```
 

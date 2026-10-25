@@ -4,29 +4,7 @@
 
 ---
 
-## 📋 Table of Contents
-
-1. [Learning Objectives](#-learning-objectives)
-2. [Recap: Where Lesson 13 Left Us](#-recap-where-lesson-13-left-us)
-3. [What This Lesson Adds to PizzaStore](#-what-this-lesson-adds-to-pizzastore)
-4. [Introduction to OpenAPI](#-introduction-to-openapi)
-5. [Integrating Springdoc OpenAPI](#-integrating-springdoc-openapi)
-6. [Configuring OpenAPI](#%EF%B8%8F-configuring-openapi)
-7. [Documenting Controllers](#-documenting-controllers)
-8. [Documenting DTOs](#%EF%B8%8F-documenting-dtos)
-9. [Security Configuration](#-security-configuration)
-10. [Handling Pageable Parameters](#-handling-pageable-parameters)
-11. [Accessing Swagger UI](#-accessing-swagger-ui)
-12. [Testing with Swagger UI](#-testing-with-swagger-ui)
-13. [Testing the Documentation](#-testing-the-documentation)
-14. [Best Practices](#-best-practices)
-15. [Beyond This Lesson](#-beyond-this-lesson)
-16. [Summary](#-summary)
-17. [Runnable Project](#-runnable-project)
-
----
-
-## 🎯 Learning Objectives
+## 📋 Learning Objectives
 
 By the end of this lesson, you will be able to:
 
@@ -40,6 +18,28 @@ By the end of this lesson, you will be able to:
 - ✅ Generate OpenAPI specifications in JSON/YAML format
 - ✅ Check the generated documentation in an automated test
 - ✅ Apply best practices for API documentation
+
+---
+
+## 📚 Table of Contents
+
+1. [Recap: Where Lesson 13 Left Us](#-recap-where-lesson-13-left-us)
+2. [What This Lesson Adds to PizzaStore](#-what-this-lesson-adds-to-pizzastore)
+3. [Introduction to OpenAPI](#-introduction-to-openapi)
+4. [Integrating Springdoc OpenAPI](#-integrating-springdoc-openapi)
+5. [Configuring OpenAPI](#️-configuring-openapi)
+6. [Documenting Controllers](#-documenting-controllers)
+7. [Documenting DTOs](#️-documenting-dtos)
+8. [Security Configuration](#-security-configuration)
+9. [Handling Pageable Parameters](#-handling-pageable-parameters)
+10. [Accessing Swagger UI](#-accessing-swagger-ui)
+11. [Testing with Swagger UI](#-testing-with-swagger-ui)
+12. [Testing the Documentation](#-testing-the-documentation)
+13. [Beyond This Lesson](#-beyond-this-lesson)
+14. [Best Practices](#-best-practices)
+15. [Summary](#-summary)
+16. [Additional Resources](#-additional-resources)
+17. [Runnable Project](#-runnable-project)
 
 ---
 
@@ -114,6 +114,7 @@ Add the `springdoc-openapi-starter-webmvc-ui` dependency to your `pom.xml`:
 springdoc's version line follows Spring Boot: **springdoc 3.x is for Spring Boot 4** (Spring Framework 7, Jackson 3), springdoc 2.x for Spring Boot 3. Within 3.x, look at the minor version too: **3.0.x is built against Spring Boot 4.0** (the version of this course), 3.1.x and 3.2.x against Spring Boot 4.1. Spring Boot does not manage springdoc's version, so it is set in `<properties>`, and you upgrade it together with Spring Boot.
 
 This single dependency includes:
+
 - OpenAPI specification generation
 - Swagger UI interface
 - Automatic endpoint discovery
@@ -312,6 +313,7 @@ public ResponseEntity<PizzaResponse> createPizza(@RequestBody CreatePizzaRequest
 The `@SecurityRequirement` annotation links an endpoint to a security scheme defined in your OpenAPI configuration. 
 
 **Where to put it:**
+
 - **On a controller class**: every operation of the controller gets the lock. PizzaStore does this on `OrderController`, `CustomerController` and `CurrentCustomerController`, whose endpoints all need a token
 - **On an operation**: `@Operation(security = @SecurityRequirement(name = "bearerAuth"))` or `@SecurityRequirement` on the method. `PizzaController` does this for `POST`, `PUT`, `DELETE`, the image upload and the import, because its `GET`s are public
 - **Nowhere**: the operation is public. `AuthController` and the `GET`s of `PizzaController` have no `@SecurityRequirement`, so Swagger UI shows them without a lock and sends them without a token
@@ -348,6 +350,7 @@ Our PizzaStore API uses JWT Bearer authentication:
 ```
 
 **How it works in Swagger UI:**
+
 1. Click the **"Authorize"** button (lock icon) in Swagger UI
 2. Paste **only the token** (`eyJhbGciOi...`): because the scheme is `type = HTTP, scheme = "bearer"`, Swagger UI adds the `Bearer ` prefix itself. Typing `Bearer <token>` would send `Bearer Bearer <token>`, which fails
 3. Click **"Authorize"**
@@ -384,6 +387,7 @@ For Identity Provider (IdP) based authentication (not used in PizzaStore; it is 
 ```
 
 **Key Difference between JWT and IdP:**
+
 - **JWT (Lesson 13)**: Your application manages users, passwords, and token generation
 - **IdP**: External identity provider (like Dex, Keycloak, Google, Azure AD) manages authentication
 - **Both** can use the same `@SecurityRequirement` annotations on endpoints
@@ -391,7 +395,7 @@ For Identity Provider (IdP) based authentication (not used in PizzaStore; it is 
 
 ### Error Responses: `ProblemDetail`
 
-An `@ApiResponse` without `content`, such as `@ApiResponse(responseCode = "404", description = "Pizza not found")`, is documented by springdoc with the **return type of the method**. Swagger UI would then claim that a `404` returns a `PizzaResponse`, which is wrong: since Lesson 10 every error is an RFC 7807 `ProblemDetail`. You could add `content = @Content(mediaType = "application/problem+json", schema = @Schema(implementation = ProblemDetail.class))` to every error response of every endpoint, but that is a lot of repetition. PizzaStore fixes it once, with an `OpenApiCustomizer` bean in `OpenApiConfig` that edits the generated document:
+An `@ApiResponse` without `content`, such as `@ApiResponse(responseCode = "404", description = "Pizza not found")`, is documented by springdoc with the **return type of the method**. Swagger UI would then claim that a `404` returns a `PizzaResponse`, which is wrong: since Lesson 10 every error is a `ProblemDetail` (RFC 9457). You could add `content = @Content(mediaType = "application/problem+json", schema = @Schema(implementation = ProblemDetail.class))` to every error response of every endpoint, but that is a lot of repetition. PizzaStore fixes it once, with an `OpenApiCustomizer` bean in `OpenApiConfig` that edits the generated document:
 
 ```java
 @Bean
@@ -616,6 +620,7 @@ public class SecurityConfig {
 ```
 
 **Important paths to allow:**
+
 - `/swagger-ui/**` - Swagger UI static resources (CSS, JS, etc.)
 - `/swagger-ui.html` - Swagger UI entry point
 - `/v3/api-docs`, `/v3/api-docs/**` - OpenAPI specification endpoints (JSON, and per group)
@@ -641,6 +646,7 @@ public ResponseEntity<Page<PizzaResponse>> getPizzas(Pageable pageable) {
 ```
 
 In Swagger UI, this might show:
+
 ```json
 {
   "page": 0,
@@ -650,6 +656,7 @@ In Swagger UI, this might show:
 ```
 
 When executing, this results in an error:
+
 ```
 No property '["id"]' found for type 'Pizza'
 ```
@@ -674,11 +681,13 @@ public ResponseEntity<?> getPizzas(
 ```
 
 **With `@ParameterObject`, Swagger UI correctly displays:**
+
 - `page` (integer, query parameter)
 - `size` (integer, query parameter)  
 - `sort` (array[string], query parameter)
 
 **Example usage in Swagger UI:**
+
 - `page=0`
 - `size=10`
 - `sort=name,asc`
@@ -761,6 +770,7 @@ For endpoints requiring authentication:
 
 1. Navigate to **Authentication** → `POST /api/auth/login` (no lock: logging in needs no token)
 2. Replace the example request body. Creating a pizza needs the ADMIN role, so log in as the admin of `data.sql` (registering through `/api/auth/register` always gives you the CUSTOMER role):
+
    ```json
    {
      "email": "admin@pizzastore.be",
@@ -769,6 +779,7 @@ For endpoints requiring authentication:
    ```
 3. Click **"Execute"**
 4. **Copy the JWT token** from the response:
+
    ```json
    {
      "token": "eyJhbGciOiJIUzM4NCJ9...",
@@ -794,6 +805,7 @@ Now you can test secured endpoints:
 
 1. Navigate to **Pizza Management** → `POST /api/pizzas`
 2. Fill in the request body:
+
    ```json
    {
      "name": "Quattro Formaggi",
@@ -862,11 +874,25 @@ Is the test worth it? Put `security = @SecurityRequirement(name = "bearerAuth")`
 
 ---
 
-## ✅ Best Practices
+## 🔭 Beyond This Lesson
+
+PizzaStore works **code-first**: the Java code is the source, the OpenAPI document is generated from it. Some topics that build on this lesson:
+
+- **API-first (contract-first)**: the team writes the OpenAPI document (YAML) *before* the code, agrees on it with the front-end team, and generates interfaces and DTOs from it with the [OpenAPI Generator](https://openapi-generator.tech/) Maven plugin. The document is then the contract, and the controllers implement the generated interfaces. Useful when several teams build against an API that does not exist yet.
+- **Generated clients**: the same OpenAPI Generator (or tools such as `openapi-typescript`) turns PizzaStore's `/v3/api-docs` into a TypeScript, Kotlin or Swift client. That is the most important reason to keep the document correct and tested.
+- **The document as a build artifact**: the `springdoc-openapi-maven-plugin`, together with the `start`/`stop` goals of the `spring-boot-maven-plugin`, runs the application during `mvn verify` and saves `/v3/api-docs` as a file, so it can be published, reviewed in a pull request or compared with the previous version to detect breaking changes.
+- **Groups**: a `GroupedOpenApi` bean splits the documentation, for instance a public group (`/api/pizzas/**`, `/api/auth/**`) and an admin group, each with its own document under `/v3/api-docs/{group}` and its own entry in Swagger UI's top bar.
+- **Production**: decide whether the documentation is public. Switch it off in a production profile with `springdoc.api-docs.enabled=false` and `springdoc.swagger-ui.enabled=false`, or keep it but remove the permit rule from `SecurityConfig`.
+- **Spring REST Docs**: a test-driven alternative from the Spring team: the documentation is generated from snippets that MockMvc, `WebTestClient` or REST Assured tests produce, so it can only document what a test has proven. More work than springdoc, but never out of sync.
+
+---
+
+## 💡 Best Practices
 
 ### 1. Comprehensive Descriptions
 
 Provide clear, detailed descriptions for:
+
 - API purpose and functionality
 - Each endpoint's behavior
 - Request/response structures
@@ -955,11 +981,13 @@ Clearly document security requirements:
 Don't document obvious things:
 
 ❌ **Bad**:
+
 ```java
 @Operation(summary = "Get pizza", description = "This endpoint gets a pizza")
 ```
 
 ✅ **Good**:
+
 ```java
 @Operation(
         summary = "Get pizza by ID",
@@ -979,22 +1007,9 @@ private String name;  // required, minLength 2, maxLength 100
 
 ---
 
-## 🔭 Beyond This Lesson
+## 🎓 Summary
 
-PizzaStore works **code-first**: the Java code is the source, the OpenAPI document is generated from it. Some topics that build on this lesson:
-
-- **API-first (contract-first)**: the team writes the OpenAPI document (YAML) *before* the code, agrees on it with the front-end team, and generates interfaces and DTOs from it with the [OpenAPI Generator](https://openapi-generator.tech/) Maven plugin. The document is then the contract, and the controllers implement the generated interfaces. Useful when several teams build against an API that does not exist yet.
-- **Generated clients**: the same OpenAPI Generator (or tools such as `openapi-typescript`) turns PizzaStore's `/v3/api-docs` into a TypeScript, Kotlin or Swift client. That is the most important reason to keep the document correct and tested.
-- **The document as a build artifact**: the `springdoc-openapi-maven-plugin`, together with the `start`/`stop` goals of the `spring-boot-maven-plugin`, runs the application during `mvn verify` and saves `/v3/api-docs` as a file, so it can be published, reviewed in a pull request or compared with the previous version to detect breaking changes.
-- **Groups**: a `GroupedOpenApi` bean splits the documentation, for instance a public group (`/api/pizzas/**`, `/api/auth/**`) and an admin group, each with its own document under `/v3/api-docs/{group}` and its own entry in Swagger UI's top bar.
-- **Production**: decide whether the documentation is public. Switch it off in a production profile with `springdoc.api-docs.enabled=false` and `springdoc.swagger-ui.enabled=false`, or keep it but remove the permit rule from `SecurityConfig`.
-- **Spring REST Docs**: a test-driven alternative from the Spring team: the documentation is generated from snippets that MockMvc, `WebTestClient` or REST Assured tests produce, so it can only document what a test has proven. More work than springdoc, but never out of sync.
-
----
-
-## 📚 Summary
-
-In this lesson, you learned:
+### What We Learned
 
 - ✅ How to integrate **Springdoc OpenAPI** into Spring Boot 4
 - ✅ How to configure **global API metadata** and **security schemes**, and why PizzaStore declares no global security requirement and no fixed servers
@@ -1007,7 +1022,25 @@ In this lesson, you learned:
 - ✅ How to **test the generated document** with `RestTestClient` and JSONPath
 - ✅ **Best practices** for API documentation
 
+### Key Takeaways
+
+- 📄 **The documentation is generated from the code**, so it can't drift from what the API does — as long as the annotations are correct
+- 🔒 **Document security per operation**: a lock only where a token is needed, and the role in the description
+- ❗ **Document the errors too**: every 4xx/5xx is a `ProblemDetail`, and a client needs to know that
+- 🧪 **Test the generated document** like any other contract
+
+### What's Next?
+
+This is the last lesson: PizzaStore is now built, validated, tested, secured and documented. [Beyond This Lesson](#-beyond-this-lesson) lists where to go from here: API-first design, generated clients, publishing the document from the build, and Spring REST Docs. The book continues with topics outside this course, such as messaging, observability with Actuator, native images with GraalVM and microservices with Spring Cloud.
+
 ---
+
+## 📖 Additional Resources
+
+- [springdoc-openapi documentation](https://springdoc.org/)
+- [OpenAPI Specification 3.1](https://spec.openapis.org/oas/v3.1.0.html)
+- [Swagger UI documentation](https://swagger.io/docs/open-source-tools/swagger-ui/usage/installation/)
+- [OpenAPI Generator](https://openapi-generator.tech/)
 
 **Note on the book**: *Pro Spring Boot 4* does not cover API documentation: the words OpenAPI, Swagger and springdoc do not occur in the book. This lesson is the course's own addition, based on the [springdoc-openapi documentation](https://springdoc.org/) and the [OpenAPI Specification](https://spec.openapis.org/oas/latest.html). Related material in the book:
 
@@ -1034,7 +1067,7 @@ The project includes:
 ### Running the Project
 
 ```bash
-cd pizzastore-with-swagger
+cd lesson-14-swagger-openapi/pizzastore-with-swagger
 mvn spring-boot:run
 ```
 
@@ -1056,4 +1089,4 @@ Both the application and the tests need JDK 25: if your default `mvn` picks anot
 
 ---
 
-🎉 Congratulations: you have built, tested, secured and documented a complete Spring Boot 4 REST API!
+**Congratulations!** 🎉 You have built, tested, secured and documented a complete Spring Boot 4 REST API — this was the last lesson of the course.

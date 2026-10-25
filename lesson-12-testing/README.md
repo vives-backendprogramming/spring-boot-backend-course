@@ -7,6 +7,7 @@
 ## 📋 Learning Objectives
 
 By the end of this lesson, you will be able to:
+
 - Explain the testing pyramid and choose the cheapest kind of test that can prove a given behavior
 - Set up the **modular Spring Boot 4 test starters** and find the (moved) Spring Boot 4 test annotations
 - Write fast **unit tests** with JUnit 6, Mockito and AssertJ, without a Spring context
@@ -51,9 +52,10 @@ By the end of this lesson, you will be able to:
 
 ## 🔄 Recap: Where Lesson 11 Left Us
 
-[Lesson 10](../lesson-10-validation-exception-handling/README.md) ended with an API that rejects bad input (`400`), explains missing resources (`404`), refuses broken business rules (`422`) and reports conflicts (`409`), always as an RFC 7807 `ProblemDetail`. [Lesson 11](../lesson-11-external-api/README.md) added PizzaStore's first call to somebody else's API, the Open Food Facts import, with a `502` when that service fails. Both lessons ended with tables of requests and answers, and every row was verified by hand with `curl`.
+[Lesson 10](../lesson-10-validation-exception-handling/README.md) ended with an API that rejects bad input (`400`), explains missing resources (`404`), refuses broken business rules (`422`) and reports conflicts (`409`), always as a `ProblemDetail` (RFC 9457). [Lesson 11](../lesson-11-external-api/README.md) added PizzaStore's first call to somebody else's API, the Open Food Facts import, with a `502` when that service fails. Both lessons ended with tables of requests and answers, and every row was verified by hand with `curl`.
 
 Doing that by hand has three problems:
+
 - It is **slow**: you repeat it after every change.
 - It is **incomplete**: nobody re-checks all rows before every commit.
 - It **proves nothing tomorrow**: the next refactoring can silently break last week's behavior.
@@ -171,13 +173,13 @@ You can see all of these in the project with `mvn dependency:list -DincludeScope
 
 | Library | Version in Spring Boot 4.0.8 |
 |---------|------------------------------|
-| JUnit | **6.0** (JUnit 4 support is gone) |
+| JUnit | **6.0** (the JUnit 4 integration is deprecated) |
 | Mockito | 5.20 |
 | AssertJ | 3.27 |
 | Spring Framework (`spring-test`) | 7.0 |
 | Jackson (the `JsonMapper` you inject in tests) | 3 (`tools.jackson.*`) |
 
-JUnit 6 keeps the JUnit 5 programming model (`@Test`, `@BeforeEach`, `@Nested`, `@ParameterizedTest`, ...), so everything you know from JUnit 5 still applies. The only things that changed are the version and that the old JUnit 4 `@RunWith` is no longer supported.
+JUnit 6 keeps the JUnit 5 programming model (`@Test`, `@BeforeEach`, `@Nested`, `@ParameterizedTest`, ...), so everything you know from JUnit 5 still applies. What's on its way out is **JUnit 4**: Spring Framework 7 deprecates its JUnit 4 support (`@RunWith(SpringRunner.class)`), and JUnit 6 deprecates the Vintage engine that runs JUnit 4 tests. Old tests still work for now, but new tests use JUnit Jupiter only.
 
 ### Where did the annotations go?
 
@@ -951,7 +953,7 @@ class PizzaRepositoryPostgresTest {
 }
 ```
 
-You would add `spring-boot-testcontainers`, `org.testcontainers:testcontainers-junit-jupiter` and `org.testcontainers:testcontainers-postgresql` as test dependencies (Spring Boot 4 manages the version). The final PizzaStore's `prod` profile runs on PostgreSQL, which is exactly the situation where this pays off.
+You would add `spring-boot-testcontainers`, `org.testcontainers:testcontainers-junit-jupiter` and `org.testcontainers:testcontainers-postgresql` as test dependencies (Spring Boot 4 manages the version). The final PizzaStore's `prod` profile (`application-prod.properties`) runs on PostgreSQL, which is exactly the situation where this pays off.
 
 > **This is deliberately not in the project.** It needs Docker, which a student's laptop or the build server may not have, and the example above has not been executed as part of this course. The book also warns that Docker Engine 29 has networking problems with Testcontainers 2.0. Start with H2, and add Testcontainers when the differences with production start to hurt.
 
@@ -1087,11 +1089,11 @@ The new test classes start with a Javadoc comment that says what they demonstrat
 5. **`RestTestClient`**: one fluent API for mock MVC, a single controller, or a real server, next to MockMvc (Hamcrest) and `MockMvcTester` (AssertJ).
 6. **`@SpringBootTest`**: `MOCK` + `@Transactional` rollback or `RANDOM_PORT` + unique data; smoke test; context caching.
 7. **Bean overrides**: `@MockitoBean` and `@MockitoSpyBean` replace `@MockBean` and `@SpyBean`.
-   **Properties**: test `application.properties` (replaces the main file), profiles, `properties`, `@TestPropertySource`, `@DynamicPropertySource`.
-   **Context cache**: every different configuration is a new context; slices, shared base classes and no `@DirtiesContext` keep the suite fast.
-8. **Testing Lesson 10's contract**: constraints, `@Valid` wiring and every `ProblemDetail` response, at three levels.
-9. **Testcontainers** for tests that need the real database.
-10. **Maven**: Surefire runs `*Test` in `mvn test`, Failsafe runs `*IT` in `mvn verify`.
+8. **Properties**: test `application.properties` (replaces the main file), profiles, `properties`, `@TestPropertySource`, `@DynamicPropertySource`.
+9. **Context cache**: every different configuration is a new context; slices, shared base classes and no `@DirtiesContext` keep the suite fast.
+10. **Testing Lesson 10's contract**: constraints, `@Valid` wiring and every `ProblemDetail` response, at three levels.
+11. **Testcontainers** for tests that need the real database.
+12. **Maven**: Surefire runs `*Test` in `mvn test`, Failsafe runs `*IT` in `mvn verify`.
 
 ### Key Takeaways
 
@@ -1102,6 +1104,10 @@ The new test classes start with a Javadoc comment that says what they demonstrat
 ✅ Create test data through the API with unique values, and never rely on an empty database
 ✅ Every different `@MockitoBean`, profile or property is a new context: count your contexts
 ✅ Test behavior, not implementation, and make sure a test can fail
+
+### What's Next?
+
+Every endpoint of PizzaStore is still open to everybody. [Lesson 13](../lesson-13-jwt-authentication/README.md) adds Spring Security with JWT authentication, roles and ownership rules — and this test suite will immediately show which requests the new rules block, so you can extend the tests with the `401`/`403` cases.
 
 ---
 
@@ -1130,8 +1136,6 @@ The new test classes start with a Javadoc comment that says what they demonstrat
 - [The Missing Spring Boot Testing Manual](https://rieckpil.de/free-spring-boot-testing-book/) (free book)
 - [Start here: all testing articles](https://rieckpil.de/start-here/)
 
----
-
 **Note on the book**: *Pro Spring Boot 4* devotes Chapter 10, *Advanced Testing with Spring Boot* (p. 259-278), to this lesson: *The Testing Pyramid and @SpringBootTest*, *Modularized Test Starters*, *Embracing the JUnit 6 Baseline* (with `@Nested`), *Mastering Test Slices* (`@WebMvcTest`, `@JsonTest`, `@RestClientTest`, plus the WebFlux and R2DBC slices), *Verification Strategies: Mockito and Hamcrest*, *RestTestClient*, *Advanced Assertions: Awaitility and JsonPath*, *Advanced Bean Overriding* (`@MockitoBean`, `@MockitoSpyBean`), `@RecordApplicationEvents`, and *Testcontainers 2.0* with `@ServiceConnection`. The unified `RestTestClient` was already introduced in Chapter 3 (*Unified Testing with RestTestClient*, p. 77-78: `bindToController` for unit tests and `bindToServer`/`@AutoConfigureRestTestClient` for integration tests), and Chapter 1 (Listing 1-7) uses it in the very first test of the quick start; Chapter 4 (*Integration Testing the Repository*, `@SpringBootTest` + `@Transactional`), Chapter 6 (`@DataJpaTest` and repository tests) and Chapter 7 (`@DataMongoTest` with Testcontainers) test the persistence layer. Where PizzaStore goes beyond the book: tests for the Lesson 10 error contract, `MockMvcTester`, parameterized Jakarta-validation tests, and an explicit comparison of MockMvc, `MockMvcTester` and `RestTestClient` for the same controller. Two things to watch when you read the book: its Listing 3-11 imports `AutoConfigureRestTestClient` from `org.springframework.boot.test.autoconfigure.web.servlet`, while in Spring Boot 4.0.8 the annotation lives in `org.springframework.boot.resttestclient.autoconfigure` (as in Listings 1-7 and 4-10, and as used in this project); and although Chapter 3 presents `RestTestClient` as replacing MockMvc and `WebTestClient`, MockMvc remains fully supported and is still used by the book itself in Listing 10-4. The book's `@RecordApplicationEvents` example has no counterpart here because PizzaStore publishes no application events, and its Testcontainers example is shown in this README but not executed in the project (no Docker requirement for students).
 
 ---
@@ -1141,6 +1145,7 @@ The new test classes start with a Javadoc comment that says what they demonstrat
 **[`pizzastore-with-tests/`](pizzastore-with-tests)** is Lesson 11's [`pizzastore-with-external-api`](../lesson-11-external-api/pizzastore-with-external-api) plus the test suite described above. **The production code is identical**: the project differs from the final PizzaStore only by what Lessons 13 (security) and 14 (OpenAPI) still have to add.
 
 The project includes:
+
 - ✅ **Spring Boot 4.0** on **Java 25** (`spring-boot-starter-webmvc`, `-data-jpa`, `-validation`, H2, MapStruct 1.6.3), JUnit 6, Mockito 5, AssertJ
 - ✅ Everything from Lessons 6a, 7, 9 and 10
 - ✅ 226 tests: unit tests, `@DataJpaTest`, `@WebMvcTest`, `@JsonTest`, `@RestClientTest`, `@SpringBootTest`
@@ -1152,7 +1157,7 @@ The project includes:
 ### Running the Tests
 
 ```bash
-cd pizzastore-with-tests
+cd lesson-12-testing/pizzastore-with-tests
 mvn test
 ```
 

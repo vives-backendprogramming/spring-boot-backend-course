@@ -4,34 +4,7 @@
 
 ---
 
-## 📋 Table of Contents
-- [Learning Objectives](#-learning-objectives)
-- [Recap: Where Lesson 12 Left Us](#-recap-where-lesson-12-left-us)
-- [What This Lesson Adds to PizzaStore](#-what-this-lesson-adds-to-pizzastore)
-- [Introduction to Spring Security](#-introduction-to-spring-security)
-- [What is JWT?](#-what-is-jwt)
-- [JWT Structure](#-jwt-structure)
-- [Adding Dependencies](#-adding-dependencies)
-- [Security Configuration](#%EF%B8%8F-security-configuration)
-- [JWT Utility Class](#-jwt-utility-class)
-- [JWT Authentication Filter](#-jwt-authentication-filter)
-- [UserDetailsService Implementation](#-userdetailsservice-implementation)
-- [Authentication Controller](#-authentication-controller)
-- [Password Encryption](#-password-encryption)
-- [Testing the Authentication](#-testing-the-authentication)
-- [Role-Based Access Control](#-role-based-access-control)
-- [Method Security: Whose Order Is This?](#-method-security-whose-order-is-this)
-- [CORS and CSRF](#-cors-and-csrf)
-- [Best Practices](#-best-practices)
-- [Testing Secured Controllers](#-testing-secured-controllers)
-- [Alternative: Spring Security's OAuth2 Resource Server](#-alternative-spring-securitys-oauth2-resource-server)
-- [Beyond This Lesson: More Security in the Book](#-beyond-this-lesson-more-security-in-the-book)
-- [Summary](#-summary)
-- [Runnable Project](#-runnable-project)
-
----
-
-## 🎯 Learning Objectives
+## 📋 Learning Objectives
 
 By the end of this lesson, you will be able to:
 
@@ -46,6 +19,34 @@ By the end of this lesson, you will be able to:
 - ✅ Configure stateless session management, CORS, and explain why CSRF protection is off
 - ✅ Test secured endpoints, with mock users in a slice and with real tokens end to end
 - ✅ Know the alternative: Spring Security's own OAuth2 resource server
+
+---
+
+## 📚 Table of Contents
+
+1. [Recap: Where Lesson 12 Left Us](#-recap-where-lesson-12-left-us)
+2. [What This Lesson Adds to PizzaStore](#-what-this-lesson-adds-to-pizzastore)
+3. [Introduction to Spring Security](#-introduction-to-spring-security)
+4. [What is JWT?](#-what-is-jwt)
+5. [JWT Structure](#-jwt-structure)
+6. [Adding Dependencies](#-adding-dependencies)
+7. [Security Configuration](#️-security-configuration)
+8. [JWT Utility Class](#-jwt-utility-class)
+9. [JWT Authentication Filter](#-jwt-authentication-filter)
+10. [UserDetailsService Implementation](#-userdetailsservice-implementation)
+11. [Authentication Controller](#-authentication-controller)
+12. [Password Encryption](#-password-encryption)
+13. [Testing the Authentication](#-testing-the-authentication)
+14. [Role-Based Access Control](#-role-based-access-control)
+15. [Method Security: Whose Order Is This?](#-method-security-whose-order-is-this)
+16. [CORS and CSRF](#-cors-and-csrf)
+17. [Testing Secured Controllers](#-testing-secured-controllers)
+18. [Alternative: Spring Security's OAuth2 Resource Server](#-alternative-spring-securitys-oauth2-resource-server)
+19. [Beyond This Lesson: More Security in the Book](#-beyond-this-lesson-more-security-in-the-book)
+20. [Best Practices](#-best-practices)
+21. [Summary](#-summary)
+22. [Additional Resources](#-additional-resources)
+23. [Runnable Project](#-runnable-project)
 
 ---
 
@@ -230,7 +231,7 @@ Traditional session-based authentication stores session data on the server. For 
 ✅ **Mobile-friendly**: Easy to store and send tokens  
 ✅ **Microservices-ready**: Tokens can be validated independently  
 ✅ **Filter-based security**: Integrates seamlessly with Spring Security's filter chain  
-✅ **Stateless**: Each request is self-contained with the JWT token  
+✅ **Stateless**: Each request is self-contained with the JWT token
 
 ---
 
@@ -284,6 +285,7 @@ Contains the claims (user data):
 ```
 
 **Standard Claims:**
+
 - `sub` (subject): User identifier
 - `iat` (issued at): Token creation timestamp
 - `exp` (expiration): Token expiration timestamp
@@ -368,7 +370,7 @@ Update your `pom.xml` to include Spring Security and JWT dependencies:
 </dependencies>
 ```
 
-The versions of `spring-boot-starter-security` (Spring Security 7) and of the test starter come from the Spring Boot 4 parent; JJWT is not managed by Spring Boot, so its version is set in `<properties>`. 
+The versions of `spring-boot-starter-security` (Spring Security 7) and of the test starter come from the Spring Boot 4 parent; JJWT is not managed by Spring Boot, so its version is set in `<properties>`.
 
 ---
 
@@ -470,6 +472,7 @@ public class SecurityConfig {
 The `@EnableWebSecurity` annotation is a crucial annotation that **activates Spring Security** for your application. Here's what it does:
 
 **Purpose:**
+
 - Enables Spring Security's web security support
 - Activates the `@Configuration` class for Spring Security
 - Allows you to define custom security configurations via `SecurityFilterChain` beans
@@ -1247,7 +1250,6 @@ The URL rule lets every customer through to `GET`/`DELETE /api/orders/{id}`; the
 
 ---
 
-
 ## 🎭 Role-Based Access Control
 
 ### Access Control Summary
@@ -1499,85 +1501,6 @@ PizzaStore **disables** it, deliberately:
 - There is no session cookie (`SessionCreationPolicy.STATELESS`), so there is nothing to abuse.
 
 The rule of thumb: **cookie-based authentication needs CSRF protection, header-based tokens do not.** If you ever put the JWT in a cookie (to keep it out of reach of JavaScript, as `httpOnly` cookies do), CSRF protection must come back on. The book's Listing 11-7 shows that variant for single-page apps with a session: `.csrf(csrf -> csrf.csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse()))`, a CSRF token in a cookie that the JavaScript copies into a header.
-
----
-
-## ✨ Best Practices
-
-### 1. Secure Secret Key Storage
-
-❌ **Don't:**
-```properties
-jwt.secret=mysecret
-```
-
-✅ **Do:**
-```bash
-export JWT_SECRET="your-very-long-secret-key"
-```
-
-```properties
-# the value after ':' is only a development default; in production JWT_SECRET is set and wins
-jwt.secret=${JWT_SECRET:MySecretKeyForJWTTokenGenerationThatShouldBeAtLeast256BitsLong}
-```
-
-That is exactly the line in PizzaStore's `application.properties`. Leave out the default (`${JWT_SECRET}`) and the application refuses to start without the variable, which is even safer for production.
-
-### 2. Token Expiration
-
-- **Short-lived tokens**: 15-30 minutes for high-security apps
-- **Refresh tokens**: Longer-lived (days/weeks) to get new access tokens
-- **Balance security and UX**: 24 hours is reasonable for mobile apps
-
-### 3. HTTPS in Production
-
-Always use HTTPS in production to prevent token interception.
-
-### 4. Token Storage (Client-Side)
-
-**Mobile Apps**: Secure storage (Keychain on iOS, KeyStore on Android)  
-**Web Apps**: `httpOnly` cookies or secure local storage
-
-### 5. Logout Implementation
-
-Since JWT is stateless, implement logout by:
-
-- Removing the token from client storage
-- Optional: Token blacklist for sensitive applications
-
-### 6. Password Requirements
-
-```java
-@NotBlank(message = "Password is required")
-@Size(min = 8, message = "Password must be at least 8 characters")
-@Pattern(regexp = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d).*$", 
-         message = "Password must contain uppercase, lowercase, and digit")
-private String password;
-```
-
-### 7. Role Rules Centrally, Ownership Rules on the Method
-
-Keep the **role** rules in one place, the `SecurityFilterChain`: one overview of who may call what, `anyRequest().authenticated()` as a safety net, and controllers like [`PizzaController`](pizzastore-with-jwt/src/main/java/be/vives/pizzastore/controller/PizzaController.java) that stay **byte-for-byte the same** as in Lesson 12.
-
-❌ **Don't** repeat what a URL rule already says on every method:
-
-```java
-@PreAuthorize("hasRole('ADMIN')")              // SecurityConfig already says: POST /api/pizzas/** is for ADMIN
-@PostMapping
-public ResponseEntity<PizzaResponse> createPizza(@Valid @RequestBody CreatePizzaRequest request) { ... }
-```
-
-Two places for one rule drift apart, and nobody knows which one is the real one.
-
-✅ **Do** use method security for what a URL rule *cannot* express, the rules that depend on the arguments or the data, and give the expression a name with a meta-annotation:
-
-```java
-@GetMapping("/{id}")
-@IsAdminOrOrderOwner                           // hasRole('ADMIN') or @orderSecurity.isOwner(#id, authentication)
-public ResponseEntity<OrderResponse> getOrder(@PathVariable Long id) { ... }
-```
-
-That is why PizzaStore has no `@IsAdmin` on admin-only methods, although the book shows one (Listing 11-4): every admin endpoint already has a URL rule that says `hasRole("ADMIN")`. And design the URLs so that ownership rules are rare: `/api/customers/me` instead of `/api/customers/{id}` with "only if it is yours" needs no rule at all.
 
 ---
 
@@ -1907,9 +1830,90 @@ Two points where the book does not match Spring Security 7.0 as used here (verif
 
 ---
 
-## 📝 Summary
+## 💡 Best Practices
 
-In this lesson, you learned:
+### 1. Secure Secret Key Storage
+
+❌ **Don't:**
+
+```properties
+jwt.secret=mysecret
+```
+
+✅ **Do:**
+
+```bash
+export JWT_SECRET="your-very-long-secret-key"
+```
+
+```properties
+# the value after ':' is only a development default; in production JWT_SECRET is set and wins
+jwt.secret=${JWT_SECRET:MySecretKeyForJWTTokenGenerationThatShouldBeAtLeast256BitsLong}
+```
+
+That is exactly the line in PizzaStore's `application.properties`. Leave out the default (`${JWT_SECRET}`) and the application refuses to start without the variable, which is even safer for production.
+
+### 2. Token Expiration
+
+- **Short-lived tokens**: 15-30 minutes for high-security apps
+- **Refresh tokens**: Longer-lived (days/weeks) to get new access tokens
+- **Balance security and UX**: 24 hours is reasonable for mobile apps
+
+### 3. HTTPS in Production
+
+Always use HTTPS in production to prevent token interception.
+
+### 4. Token Storage (Client-Side)
+
+**Mobile Apps**: Secure storage (Keychain on iOS, KeyStore on Android)  
+**Web Apps**: `httpOnly` cookies or secure local storage
+
+### 5. Logout Implementation
+
+Since JWT is stateless, implement logout by:
+
+- Removing the token from client storage
+- Optional: Token blacklist for sensitive applications
+
+### 6. Password Requirements
+
+```java
+@NotBlank(message = "Password is required")
+@Size(min = 8, message = "Password must be at least 8 characters")
+@Pattern(regexp = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d).*$", 
+         message = "Password must contain uppercase, lowercase, and digit")
+private String password;
+```
+
+### 7. Role Rules Centrally, Ownership Rules on the Method
+
+Keep the **role** rules in one place, the `SecurityFilterChain`: one overview of who may call what, `anyRequest().authenticated()` as a safety net, and controllers like [`PizzaController`](pizzastore-with-jwt/src/main/java/be/vives/pizzastore/controller/PizzaController.java) that stay **byte-for-byte the same** as in Lesson 12.
+
+❌ **Don't** repeat what a URL rule already says on every method:
+
+```java
+@PreAuthorize("hasRole('ADMIN')")              // SecurityConfig already says: POST /api/pizzas/** is for ADMIN
+@PostMapping
+public ResponseEntity<PizzaResponse> createPizza(@Valid @RequestBody CreatePizzaRequest request) { ... }
+```
+
+Two places for one rule drift apart, and nobody knows which one is the real one.
+
+✅ **Do** use method security for what a URL rule *cannot* express, the rules that depend on the arguments or the data, and give the expression a name with a meta-annotation:
+
+```java
+@GetMapping("/{id}")
+@IsAdminOrOrderOwner                           // hasRole('ADMIN') or @orderSecurity.isOwner(#id, authentication)
+public ResponseEntity<OrderResponse> getOrder(@PathVariable Long id) { ... }
+```
+
+That is why PizzaStore has no `@IsAdmin` on admin-only methods, although the book shows one (Listing 11-4): every admin endpoint already has a URL rule that says `hasRole("ADMIN")`. And design the URLs so that ownership rules are rare: `/api/customers/me` instead of `/api/customers/{id}` with "only if it is yours" needs no rule at all.
+
+---
+
+## 🎓 Summary
+
+### What We Learned
 
 ✅ **Spring Security fundamentals** - Authentication and authorization  
 ✅ **JWT structure** - Header, payload, and signature  
@@ -1934,7 +1938,20 @@ In this lesson, you learned:
 6. **Secure your secret**: Store JWT secret in environment variables
 7. **Test thoroughly**: Verify all access control rules work correctly, the allowed and the forbidden cases
 
+### What's Next?
+
+PizzaStore is now tested and secured. [Lesson 14](../lesson-14-swagger-openapi/README.md) generates an OpenAPI description of the secured API, with Swagger UI to browse it and to try the endpoints with a JWT token.
+
 ---
+
+## 📖 Additional Resources
+
+- [Spring Security Reference](https://docs.spring.io/spring-security/reference/index.html)
+- [Spring Security: Method Security](https://docs.spring.io/spring-security/reference/servlet/authorization/method-security.html)
+- [Spring Security: OAuth2 Resource Server with JWT](https://docs.spring.io/spring-security/reference/servlet/oauth2/resource-server/jwt.html)
+- [JJWT on GitHub](https://github.com/jwtk/jjwt)
+- [RFC 7519: JSON Web Token](https://www.rfc-editor.org/rfc/rfc7519)
+- [Introduction to JSON Web Tokens (jwt.io)](https://jwt.io/introduction)
 
 **Note on the book**: *Pro Spring Boot 4* covers security in Chapter 11, *Securing Spring Boot Applications* (p. 281-320). This lesson follows its first part closely:
 
@@ -1981,7 +1998,7 @@ All accounts in `data.sql` have the password `password123`.
 ### Running the Project
 
 ```bash
-cd pizzastore-with-jwt
+cd lesson-13-jwt-authentication/pizzastore-with-jwt
 mvn spring-boot:run
 ```
 
@@ -2014,4 +2031,4 @@ Port 8080 taken by another application? Start with `mvn spring-boot:run -Dspring
 
 ---
 
-🎉 You've successfully implemented JWT authentication in your Spring Boot application! Continue to [Lesson 14: Swagger/OpenAPI](../lesson-14-swagger-openapi/README.md) to document the secured API.
+**Congratulations!** 🎉 You've secured PizzaStore with JWT authentication, roles and ownership rules. Continue to [Lesson 14: Swagger/OpenAPI](../lesson-14-swagger-openapi/README.md) to document the secured API.

@@ -4,18 +4,18 @@
 
 ---
 
-> This lesson assumes you've read [Lesson 6: Spring Data with Spring Boot](../lesson-06-spring-data/README.md) — the repository proxy pattern, query-method naming conventions, and exception translation described there apply here too and aren't repeated.
-
 ## 📋 Learning Objectives
 
 By the end of this lesson, you will be able to:
+
 - Create JPA entities with proper annotations
 - Implement JPA Auditing for automatic tracking of entity changes
 - Implement entity relationships: `@OneToOne`, `@OneToMany`, `@ManyToOne`, `@ManyToMany`
 - Choose between `LAZY` and `EAGER` fetch types
 - Use cascade types effectively
-- Leverage the Spring Data JPA repository interface hierarchy
+- Use the Spring Data JPA repository interface hierarchy
 - Write custom queries using property expressions, `@Query`, and JPQL
+- Write DTO projections for aggregate queries
 - Implement pagination and sorting
 - Handle `Optional` results properly
 - Configure DDL generation strategies
@@ -24,23 +24,56 @@ By the end of this lesson, you will be able to:
 
 ## 📚 Table of Contents
 
-- [📋 Learning Objectives](#-learning-objectives)
-- [🗃️ From JPA to Spring Data JPA](#️-from-jpa-to-spring-data-jpa)
-- [📦 JPA Entities in Depth](#-jpa-entities-in-depth)
-- [🕐 JPA Auditing](#-jpa-auditing)
-- [🔗 Entity Relationships](#-entity-relationships)
-- [⏳ Fetch Types: LAZY vs EAGER](#-fetch-types-lazy-vs-eager)
-- [🌊 Cascade Types](#-cascade-types)
-- [🗄️ The JpaRepository Interface](#️-the-jparepository-interface)
-- [🔍 Custom Queries](#-custom-queries)
-- [🧮 DTO Projections](#-dto-projections)
-- [📄 Pagination and Sorting](#-pagination-and-sorting)
-- [🎁 Optional Handling](#-optional-handling)
-- [🧪 Testing](#-testing)
-- [🗂️ Database Configuration](#️-database-configuration)
-- [🚀 Runnable Project](#-runnable-project)
-- [🎓 Summary](#-summary)
-- [📖 Additional Resources](#-additional-resources)
+1. [Recap: Where Lesson 6 Left Us](#-recap-where-lesson-6-left-us)
+2. [What This Lesson Adds to PizzaStore](#-what-this-lesson-adds-to-pizzastore)
+3. [From JPA to Spring Data JPA](#️-from-jpa-to-spring-data-jpa)
+4. [JPA Entities in Depth](#-jpa-entities-in-depth)
+5. [JPA Auditing](#-jpa-auditing)
+6. [Entity Relationships](#-entity-relationships)
+7. [Fetch Types: LAZY vs EAGER](#-fetch-types-lazy-vs-eager)
+8. [Cascade Types](#-cascade-types)
+9. [The JpaRepository Interface](#️-the-jparepository-interface)
+10. [Custom Queries](#-custom-queries)
+11. [DTO Projections](#-dto-projections)
+12. [Pagination and Sorting](#-pagination-and-sorting)
+13. [Optional Handling](#-optional-handling)
+14. [Testing](#-testing)
+15. [Database Configuration](#️-database-configuration)
+16. [Best Practices](#-best-practices)
+17. [Summary](#-summary)
+18. [Additional Resources](#-additional-resources)
+19. [Runnable Project](#-runnable-project)
+
+---
+
+## 🔄 Recap: Where Lesson 6 Left Us
+
+[Lesson 6](../lesson-06-spring-data/README.md) introduced what every Spring Data module shares: repository interfaces that Spring implements with a proxy, query methods derived from method names, and exception translation. Those concepts apply here too and aren't repeated.
+
+Lesson 4's `pizzastore-intro` stored a single `Pizza` with three fields. A real pizza store needs customers, orders, order lines, nutritional information, and the relationships between them. This lesson builds that domain model with JPA and Spring Data JPA — the foundation that every later lesson builds on.
+
+---
+
+## 🧱 What This Lesson Adds to PizzaStore
+
+This is where the cumulative PizzaStore starts: Lessons 7, 9, 10 and beyond each add a layer on top of this project.
+
+```
+┌─────────────────┐
+│   Repository    │  ← NEW: PizzaRepository, CustomerRepository, OrderRepository (+ a DTO projection)
+├─────────────────┤
+│     Domain      │  ← NEW: Pizza, NutritionalInfo, Customer, Order, OrderLine, OrderStatus, Role
+└─────────────────┘
+```
+
+| Added | What it does |
+|---|---|
+| [`domain/`](pizzastore-jpa/src/main/java/be/vives/pizzastore/domain) | The JPA entities and enums, with all four relationship types and auditing fields |
+| [`repository/`](pizzastore-jpa/src/main/java/be/vives/pizzastore/repository) | Spring Data JPA repositories: derived queries, JPQL, `JOIN FETCH`, paging, a `PizzaSalesStatistics` projection |
+| [`config/JpaConfig.java`](pizzastore-jpa/src/main/java/be/vives/pizzastore/config/JpaConfig.java) | `@EnableJpaAuditing`, so `createdAt`/`updatedAt` are filled in |
+| [`data.sql`](pizzastore-jpa/src/main/resources/data.sql) | Seed data: 6 pizzas, 3 customers, 3 orders |
+
+The `domain` and `repository` packages are the final PizzaStore's, minus the one query Lesson 13 adds for its security checks (`OrderRepository.existsByIdAndCustomerEmail`).
 
 ---
 
@@ -100,10 +133,10 @@ public class Pizza {
 Marks a class as a JPA entity (persistent domain object).
 
 ```java
-@Entity  // Table name defaults to class name (lowercase)
+@Entity  // Entity name "Pizza"; Spring Boot's naming strategy makes the table "pizza"
 public class Pizza { }
 
-@Entity(name = "PizzaItem")  // Custom entity name
+@Entity(name = "PizzaItem")  // Custom entity name, used in JPQL ("SELECT p FROM PizzaItem p")
 public class Pizza { }
 ```
 
@@ -134,11 +167,11 @@ private Long id;
 private Long id;
 
 @Id
-@GeneratedValue(strategy = GenerationType.UUID)      // UUID (Java 25+)
+@GeneratedValue(strategy = GenerationType.UUID)      // UUID (since JPA 3.1)
 private UUID id;
 ```
 
-**Recommendation**: Use `IDENTITY` for H2, MySQL, PostgreSQL — this is what every PizzaStore entity uses.
+**PizzaStore uses `IDENTITY`** everywhere: simple, and it works on H2, MySQL and PostgreSQL. The trade-off: with `IDENTITY` the database only hands out the id during the `INSERT`, so Hibernate can't batch inserts. For write-heavy tables on a database with sequences (PostgreSQL, Oracle), `SEQUENCE` is the faster choice.
 
 #### @Column
 
@@ -316,15 +349,17 @@ Should related entities load immediately with their parent, or only when accesse
 
 **`FetchType.EAGER`** loads related entities immediately — simple, but risks fetching far more data than needed and can trigger the N+1 query problem.
 
-**`FetchType.LAZY`** (PizzaStore's `Order.customer` uses this explicitly) loads related entities only when accessed — better performance, but can throw `LazyInitializationException` if accessed after the persistence session has closed.
+**`FetchType.LAZY`** (PizzaStore sets it explicitly on `Order.customer`, `OrderLine.order` and `OrderLine.pizza`) loads related entities only when accessed — better performance, but can throw `LazyInitializationException` if accessed after the persistence session has closed.
 
-**Best practice**: default to `LAZY` for collections, and override with `JOIN FETCH` in a custom query when you know you'll need the association — exactly what PizzaStore's repositories do:
+**Best practice**: make associations `LAZY` — collections already are, and for `@ManyToOne` you set it yourself — and use `JOIN FETCH` in a custom query when you know you'll need the association. That's exactly what PizzaStore's repositories do:
 
 ```java
 // repository/CustomerRepository.java
 @Query("SELECT c FROM Customer c JOIN FETCH c.orders WHERE c.id = :id")
 Optional<Customer> findByIdWithOrders(@Param("id") Long id);
 ```
+
+Note that `JOIN FETCH` is an *inner* join: for a customer without any orders this query finds no row and returns `Optional.empty()`. Use `LEFT JOIN FETCH` (as `PizzaRepository.findByIdWithNutritionalInfo` does) when the association may be empty.
 
 ---
 
@@ -358,20 +393,23 @@ private List<Order> orders = new ArrayList<>();
 Spring Data JPA's interfaces form a hierarchy:
 
 ```
-Repository<T, ID>                    (marker interface - empty)
-    ↓
-CrudRepository<T, ID>                (save, findById, findAll, delete, …)
-    ↓
-PagingAndSortingRepository<T, ID>    (+ findAll(Sort), findAll(Pageable))
-    ↓
-JpaRepository<T, ID>                 (+ List instead of Iterable, batch ops, flush())
+                      Repository<T, ID>   (marker interface - empty)
+                     ↙                  ↘
+CrudRepository<T, ID>                     PagingAndSortingRepository<T, ID>
+(save, findById, delete, …)               (findAll(Sort), findAll(Pageable))
+        ↓                                         ↓
+ListCrudRepository<T, ID>                 ListPagingAndSortingRepository<T, ID>
+(List instead of Iterable)                (List instead of Iterable)
+                     ↘                  ↙
+                       JpaRepository<T, ID>   (+ flush(), batch deletes, getReferenceById, …)
 ```
+
+Since Spring Data 3, `PagingAndSortingRepository` no longer extends `CrudRepository`; `JpaRepository` combines both branches (plus `QueryByExampleExecutor`, not shown).
 
 PizzaStore extends `JpaRepository` everywhere — it's the most feature-rich option and the standard choice for building REST APIs:
 
 ```java
 // repository/PizzaRepository.java
-@Repository
 public interface PizzaRepository extends JpaRepository<Pizza, Long> {
     // findAll(), findById(), save(), deleteById(), count(), … already included
 }
@@ -400,7 +438,7 @@ List<Pizza> findByPriceBetween(BigDecimal minPrice, BigDecimal maxPrice);
 
 ### 2. @Query with JPQL
 
-For queries that don't fit the naming convention, `@Query` lets you write JPQL directly. JPQL operates on **entities and their properties**, not on tables and columns:
+For queries that don't fit the naming convention, `@Query` lets you write JPQL directly. JPQL operates on **entities and their properties**, not on tables and columns. (`LIKE %:keyword%` is a Spring Data shortcut: standard JPQL would need `LIKE CONCAT('%', :keyword, '%')`.)
 
 ```java
 // repository/PizzaRepository.java
@@ -413,7 +451,7 @@ Optional<Pizza> findByIdWithNutritionalInfo(@Param("id") Long id);
 
 ### 3. @Query with Native SQL
 
-For database-specific features (full-text search, window functions), `nativeQuery = true` lets you drop down to raw SQL — at the cost of portability across databases.
+For database-specific features (full-text search, window functions), `nativeQuery = true` lets you drop down to raw SQL — at the cost of portability across databases. (This and the next example are illustrations; they're not in PizzaStore.)
 
 ```java
 @Query(value = "SELECT * FROM pizzas WHERE price < :maxPrice", nativeQuery = true)
@@ -440,7 +478,7 @@ Every query so far returns entities (`Pizza`, `Order`, …) or collections of th
 
 There are two ways to write one:
 
-**1. Interface-based projection** — declare an interface with getter methods matching the columns you want; Spring Data generates a proxy at runtime:
+**1. Interface-based projection** — declare an interface with getter methods matching the columns you want; Spring Data generates a proxy at runtime (an illustration — PizzaStore itself uses the second style):
 
 ```java
 public interface PizzaNameOnly {
@@ -478,6 +516,7 @@ List<PizzaSalesStatistics> findPizzaSalesStatistics();
 `PizzaSalesStatistics` is a plain record, not an `@Entity` — Hibernate never loads full `Order`/`OrderLine` rows into memory to compute this; the `COUNT`/`SUM`/`GROUP BY` run in the database, and only the aggregated numbers cross the wire.
 
 **When to reach for a projection instead of the full entity:**
+
 - A statistic or aggregate (totals, counts, averages) that doesn't correspond to any single entity.
 - A list view that only needs a few columns — skips loading (and lazy-fetching) the rest of a large entity graph.
 - The consumer only needs read-only data and will never turn it back into a persisted entity.
@@ -514,17 +553,16 @@ With the `Pageable` variant the filtering, sorting and `LIMIT`/`OFFSET` all happ
 Spring Data JPA returns `Optional<T>` for single results that might not exist, so absence is explicit instead of a bare `null`:
 
 ```java
-// ❌ Old way - can return null
+// ❌ Doesn't compile: findById returns Optional<Pizza>, never a bare Pizza or null
 Pizza pizza = pizzaRepository.findById(1L);
 
 // ✅ Explicit Optional handling
 Optional<Pizza> pizzaOpt = pizzaRepository.findById(1L);
 
-pizzaOpt.orElseThrow(() -> new PizzaNotFoundException(id));   // throw if missing
+pizzaOpt.orElseThrow(() -> new IllegalArgumentException("No pizza " + id)); // throw if missing (Lesson 10: own exceptions)
 
-pizzaOpt.map(pizzaMapper::toResponse)                         // transform if present
-        .map(ResponseEntity::ok)
-        .orElse(ResponseEntity.notFound().build());
+pizzaOpt.map(Pizza::getName)                                  // transform if present
+        .orElse("unknown");
 
 pizzaOpt.ifPresent(p -> System.out.println("Found: " + p.getName())); // side effect if present
 ```
@@ -582,9 +620,60 @@ INSERT INTO pizzas (name, description, price, image_url, available, created_at, 
 
 ---
 
+## 💡 Best Practices
+
+1. **Use `EnumType.STRING`** for enums, never `ORDINAL`.
+2. **Make associations `LAZY`** and load what a use case needs with `JOIN FETCH` (or `LEFT JOIN FETCH` when it may be empty).
+3. **Keep both sides of a bidirectional relationship in sync** with helper methods (`addOrder`, `addFavoritePizza`).
+4. **Cascade only from parent to child** (`CascadeType.ALL` + `orphanRemoval`), never from the `@ManyToOne` side.
+5. **Use `Set` for `@ManyToMany`**, and model the join as its own entity when it needs extra columns.
+6. **Page in the database** with a `Pageable` parameter, never by filtering a full result in Java.
+7. **Use a projection** for aggregates and narrow read-only views instead of loading full entity graphs.
+8. **`ddl-auto=create-drop` is for development and tests** — use `validate` or `none` (with a migration tool) in production.
+
+---
+
+## 🎓 Summary
+
+### What We Learned
+
+1. **JPA** is the specification, **Hibernate** the implementation, **Spring Data JPA** the repository abstraction on top.
+2. **Entity annotations** (`@Entity`, `@Column`, `@Enumerated`) map Java classes to tables.
+3. **JPA Auditing** (`@CreatedDate`, `@CreatedBy`, …) needs `@EnableJpaAuditing`, and `@CreatedBy`/`@LastModifiedBy` additionally need an `AuditorAware` bean.
+4. **Relationships** (`@OneToOne`, `@OneToMany`/`@ManyToOne`, `@ManyToMany`) always have an owning side (`@JoinColumn`) and an inverse side (`mappedBy`).
+5. Default to **`LAZY`** fetching for collections; use `JOIN FETCH` when you know you need the association.
+6. **`CascadeType.ALL` + `orphanRemoval`** for true parent-child relationships; no cascade on the owning `@ManyToOne` side.
+7. **`JpaRepository`** is the recommended base interface; derived queries, `@Query`, pagination, and `Optional` cover almost every data-access need.
+8. Not every query result needs to be an entity — **DTO/record projections** (`SELECT new ...(...)`) let the database compute an aggregate or a narrow view directly, without loading full entity graphs first.
+
+### Key Takeaways
+
+- The domain model is the foundation every later PizzaStore layer is built on
+- Most JPA bugs come from relationships: owning side, fetch type, cascade and keeping both sides in sync
+- Spring Data JPA turns most data access into interface declarations
+
+### What's Next?
+
+[Lesson 6b](../lesson-06b-spring-data-mongodb/README.md) re-expresses this same domain model as MongoDB documents, to compare both paradigms. The PizzaStore itself continues on this JPA project: [Lesson 7](../lesson-07-dtos-mappers/README.md) adds DTOs, mappers and the service layer on top of it.
+
+---
+
+## 📖 Additional Resources
+
+- [Spring Data JPA Documentation](https://docs.spring.io/spring-data/jpa/reference/)
+- [Jakarta Persistence 3.2 Specification](https://jakarta.ee/specifications/persistence/3.2/)
+- [Hibernate Documentation](https://hibernate.org/orm/documentation/)
+- [Baeldung: Spring Data JPA](https://www.baeldung.com/the-persistence-layer-with-spring-data-jpa)
+
+**Note on the book**: This lesson corresponds to *Pro Spring Boot 4*, Chapter 6: *Spring Data with Spring Boot* — specifically the *Spring Data JPA with the Management CRM* section (pp. 150–163): *Annotating Entities with JPA* (p. 150), *The JPA Repository* (p. 153), *Simplifying Business Logic with JPA* (p. 155) and *Pagination and Sorting* (p. 158). Two things the book covers at this point are deliberately not repeated here: its repository-testing walkthrough (*Testing with @SpringBootTest*, p. 158; see [Testing](#-testing) above — covered instead by [Lesson 12](../lesson-12-testing/README.md)), and its brief closing note on AOT-optimized repositories for GraalVM native images (*Advanced AOT: Optimizing for Native Images*, pp. 164–165), which points forward to the book's own Chapter 14 on Ahead-of-Time compilation — out of scope for this course.
+
+The book itself never teaches DTO/record projections as their own topic — it shows exactly one `SELECT new ...CustomerSummary(...)` query (Listing 6-16), and only as a vehicle to introduce `@RegisterReflectionForBinding` (an AOT/native-image reflection hint, itself out of scope here per the previous paragraph). The dedicated [DTO Projections](#-dto-projections) section above goes beyond the book: it names both projection styles (interface-based and DTO/record), explains *why* you'd reach for one instead of loading full entities, and gives PizzaStore its own worked example (`OrderRepository.findPizzaSalesStatistics()`), because this is a genuinely useful, commonly-needed Spring Data JPA feature the book only gestures at in passing.
+
+---
+
 ## 🚀 Runnable Project
 
-**`pizzastore-jpa/`** is an exact copy of the final PizzaStore project's `domain` and `repository` packages — nothing more. No controllers, no services, no security, no DTOs — just the entities and the repositories that persist them, so you can focus entirely on the JPA/Spring Data layer.
+**`pizzastore-jpa/`** contains the final PizzaStore project's `domain` and `repository` packages (minus Lesson 13's security query) — nothing more. No controllers, no services, no security, no DTOs — just the entities and the repositories that persist them, so you can focus entirely on the JPA/Spring Data layer.
 
 ```
 pizzastore-jpa/
@@ -621,30 +710,4 @@ Then open the H2 console at <http://localhost:8080/h2-console> with JDBC URL `jd
 
 ---
 
-## 🎓 Summary
-
-1. **JPA** is the specification, **Hibernate** the implementation, **Spring Data JPA** the repository abstraction on top.
-2. **Entity annotations** (`@Entity`, `@Column`, `@Enumerated`) map Java classes to tables.
-3. **JPA Auditing** (`@CreatedDate`, `@CreatedBy`, …) needs `@EnableJpaAuditing`, and `@CreatedBy`/`@LastModifiedBy` additionally need an `AuditorAware` bean.
-4. **Relationships** (`@OneToOne`, `@OneToMany`/`@ManyToOne`, `@ManyToMany`) always have an owning side (`@JoinColumn`) and an inverse side (`mappedBy`).
-5. Default to **`LAZY`** fetching for collections; use `JOIN FETCH` when you know you need the association.
-6. **`CascadeType.ALL` + `orphanRemoval`** for true parent-child relationships; no cascade on the owning `@ManyToOne` side.
-7. **`JpaRepository`** is the recommended base interface; derived queries, `@Query`, pagination, and `Optional` cover almost every data-access need.
-8. Not every query result needs to be an entity — **DTO/record projections** (`SELECT new ...(...)`) let the database compute an aggregate or a narrow view directly, without loading full entity graphs first.
-
----
-
-## 📖 Additional Resources
-
-- [Spring Data JPA Documentation](https://docs.spring.io/spring-data/jpa/docs/current/reference/html/)
-- [JPA Specification (JSR 338)](https://jcp.org/en/jsr/detail?id=338)
-- [Hibernate Documentation](https://hibernate.org/orm/documentation/)
-- [Baeldung: Spring Data JPA](https://www.baeldung.com/the-persistence-layer-with-spring-data-jpa)
-
-**Note on the book**: This lesson corresponds to *Pro Spring Boot 4*, Chapter 6: *Spring Data with Spring Boot* — specifically the *Spring Data JPA with the Management CRM* section (entity annotations, relationships, the `JpaRepository` hierarchy, custom queries, and pagination). Two things the book covers at this point are deliberately not repeated here: its repository-testing walkthrough (see [Testing](#-testing) above — covered instead by [Lesson 12](../lesson-12-testing/README.md)), and its brief closing note on AOT-optimized repositories for GraalVM native images (*Advanced AOT: Optimizing for Native Images*), which points forward to the book's own Chapter 14 on Ahead-of-Time compilation — out of scope for this course.
-
-The book itself never teaches DTO/record projections as their own topic — it shows exactly one `SELECT new ...CustomerSummary(...)` query (Listing 6-16), and only as a vehicle to introduce `@RegisterReflectionForBinding` (an AOT/native-image reflection hint, itself out of scope here per the previous paragraph). The dedicated [DTO Projections](#-dto-projections) section above goes beyond the book: it names both projection styles (interface-based and DTO/record), explains *why* you'd reach for one instead of loading full entities, and gives PizzaStore its own worked example (`OrderRepository.findPizzaSalesStatistics()`), because this is a genuinely useful, commonly-needed Spring Data JPA feature the book only gestures at in passing.
-
----
-
-**Great work!** 🎉 You've built PizzaStore's relational data layer. Continue to [Lesson 6b: Spring Data MongoDB](../lesson-06b-spring-data-mongodb/README.md) to see the exact same domain model re-expressed as documents.
+**Congratulations!** 🎉 You've built PizzaStore's relational data layer. Continue to [Lesson 6b: Spring Data MongoDB](../lesson-06b-spring-data-mongodb/README.md) to see the same domain model re-expressed as documents, or go straight on to [Lesson 7: DTOs, Mappers & the Service Layer](../lesson-07-dtos-mappers/README.md).
