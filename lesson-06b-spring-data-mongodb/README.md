@@ -233,7 +233,7 @@ class PizzaRepositoryTest {
 }
 ```
 
-`@ServiceConnection` (Spring Boot 3.1+) is what makes this "zero configuration": it detects the running container and wires `spring.data.mongodb.uri` automatically — no manual `@DynamicPropertySource` needed. The imports reflect Spring Boot 4 and Testcontainers 2:
+`@ServiceConnection` (Spring Boot 3.1+) is what makes this "zero configuration": it detects the running container and wires the connection (`spring.mongodb.uri`) automatically — no manual `@DynamicPropertySource` needed. The imports reflect Spring Boot 4 and Testcontainers 2:
 
 ```java
 import org.springframework.boot.data.mongodb.test.autoconfigure.DataMongoTest;   // Boot 4 test module
@@ -369,13 +369,24 @@ cd lesson-06b-spring-data-mongodb/pizzastore-mongodb
 mvn spring-boot:run
 ```
 
-`application.properties` points at `mongodb://localhost:27017/pizzastore_dev` by default. Once it's running, inspect the seeded data with `mongosh` or MongoDB Compass:
+`application.properties` points at `mongodb://localhost:27017/pizzastore_dev` by default:
+
+```properties
+spring.mongodb.uri=mongodb://localhost:27017/pizzastore_dev
+spring.data.mongodb.representation.big-decimal=decimal128
+```
+
+⚠️ **Spring Boot 4 renamed the connection property** to `spring.mongodb.uri`. Most examples online (and Spring Boot 3) use `spring.data.mongodb.uri`; in Spring Boot 4 that name is ignored and the application silently connects to the default `mongodb://localhost/test`. Only the Spring Data settings, such as `spring.data.mongodb.auto-index-creation`, keep the `spring.data.mongodb` prefix.
+
+The second line stores `BigDecimal` prices as BSON `Decimal128`, a real decimal number, so `findByPriceLessThan` compares numbers. Spring Boot 4 already does that by default; Spring Boot 3 stored a `BigDecimal` as a string, where `"10.99" < "8.99"`. Setting it explicitly documents the choice.
+
+Once it's running, inspect the seeded data with `mongosh` or MongoDB Compass:
 
 ```bash
 mongosh mongodb://localhost:27017/pizzastore_dev --eval "db.pizzas.find().pretty()"
 ```
 
-> This project was compiled and its test setup type-checked against Spring Boot 4.0.8; a live run against MongoDB still has to be done on a machine with Docker.
+> Verified with Spring Boot 4.0.8 against MongoDB in Docker: the application starts, seeds the data, creates the unique `email` index and stores prices as `Decimal128`.
 
 ---
 
