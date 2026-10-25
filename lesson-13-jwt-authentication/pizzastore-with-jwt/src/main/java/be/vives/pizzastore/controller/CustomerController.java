@@ -5,6 +5,9 @@ import be.vives.pizzastore.dto.request.UpdateCustomerRequest;
 import be.vives.pizzastore.dto.response.CustomerResponse;
 import be.vives.pizzastore.dto.response.OrderResponse;
 import be.vives.pizzastore.dto.response.PizzaResponse;
+import be.vives.pizzastore.security.CurrentUser;
+import be.vives.pizzastore.security.IsAdmin;
+import be.vives.pizzastore.security.IsAdminOrOwner;
 import be.vives.pizzastore.service.CustomerService;
 import be.vives.pizzastore.service.OrderService;
 import jakarta.validation.Valid;
@@ -36,13 +39,22 @@ public class CustomerController {
     }
 
     @GetMapping
+    @IsAdmin
     public ResponseEntity<Page<CustomerResponse>> getAllCustomers(Pageable pageable) {
         log.debug("GET /api/customers");
         Page<CustomerResponse> customers = customerService.findAll(pageable);
         return ResponseEntity.ok(customers);
     }
 
+    // the account of the logged-in user: how a customer finds out their own id after logging in
+    @GetMapping("/me")
+    public ResponseEntity<CustomerResponse> getCurrentCustomer(@CurrentUser String email) {
+        log.debug("GET /api/customers/me - {}", email);
+        return ResponseEntity.ok(customerService.findByEmail(email));
+    }
+
     @GetMapping("/{id}")
+    @IsAdminOrOwner
     public ResponseEntity<CustomerResponse> getCustomer(@PathVariable Long id) {
         log.debug("GET /api/customers/{}", id);
         CustomerResponse customer = customerService.findById(id);
@@ -50,6 +62,7 @@ public class CustomerController {
     }
 
     @GetMapping("/{id}/orders")
+    @IsAdminOrOwner
     public ResponseEntity<Page<OrderResponse>> getCustomerOrders(
             @PathVariable Long id,
             @RequestParam(defaultValue = "0") int page,
@@ -62,13 +75,16 @@ public class CustomerController {
     }
 
     @GetMapping("/{id}/favorites")
+    @IsAdminOrOwner
     public ResponseEntity<List<PizzaResponse>> getFavoritePizzas(@PathVariable Long id) {
         log.debug("GET /api/customers/{}/favorites", id);
         List<PizzaResponse> favorites = customerService.findFavoritePizzas(id);
         return ResponseEntity.ok(favorites);
     }
 
+    // customers create their own account with POST /api/auth/register
     @PostMapping
+    @IsAdmin
     public ResponseEntity<CustomerResponse> createCustomer(@Valid @RequestBody CreateCustomerRequest request) {
         log.debug("POST /api/customers - {}", request);
 
@@ -84,6 +100,7 @@ public class CustomerController {
     }
 
     @PutMapping("/{id}")
+    @IsAdminOrOwner
     public ResponseEntity<CustomerResponse> updateCustomer(
             @PathVariable Long id,
             @Valid @RequestBody UpdateCustomerRequest request) {
@@ -95,6 +112,7 @@ public class CustomerController {
     }
 
     @DeleteMapping("/{id}")
+    @IsAdminOrOwner
     public ResponseEntity<Void> deleteCustomer(@PathVariable Long id) {
         log.debug("DELETE /api/customers/{}", id);
 
@@ -102,25 +120,27 @@ public class CustomerController {
         return ResponseEntity.noContent().build();
     }
 
-    @PostMapping("/{customerId}/favorites/{pizzaId}")
+    @PostMapping("/{id}/favorites/{pizzaId}")
+    @IsAdminOrOwner
     public ResponseEntity<Void> addFavoritePizza(
-            @PathVariable Long customerId,
+            @PathVariable Long id,
             @PathVariable Long pizzaId) {
 
-        log.debug("POST /api/customers/{}/favorites/{}", customerId, pizzaId);
+        log.debug("POST /api/customers/{}/favorites/{}", id, pizzaId);
 
-        customerService.addFavoritePizza(customerId, pizzaId);
+        customerService.addFavoritePizza(id, pizzaId);
         return ResponseEntity.ok().build();
     }
 
-    @DeleteMapping("/{customerId}/favorites/{pizzaId}")
+    @DeleteMapping("/{id}/favorites/{pizzaId}")
+    @IsAdminOrOwner
     public ResponseEntity<Void> removeFavoritePizza(
-            @PathVariable Long customerId,
+            @PathVariable Long id,
             @PathVariable Long pizzaId) {
 
-        log.debug("DELETE /api/customers/{}/favorites/{}", customerId, pizzaId);
+        log.debug("DELETE /api/customers/{}/favorites/{}", id, pizzaId);
 
-        customerService.removeFavoritePizza(customerId, pizzaId);
+        customerService.removeFavoritePizza(id, pizzaId);
         return ResponseEntity.noContent().build();
     }
 }

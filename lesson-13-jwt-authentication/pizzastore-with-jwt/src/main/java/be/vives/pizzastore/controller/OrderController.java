@@ -11,6 +11,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
@@ -57,7 +58,9 @@ public class OrderController {
         return ResponseEntity.ok(order);
     }
 
+    // SecurityConfig: only a CUSTOMER may POST here; this rule adds: only for their own account
     @PostMapping
+    @PreAuthorize("@customerSecurity.isOwner(#request.customerId(), authentication)")
     public ResponseEntity<OrderResponse> createOrder(@Valid @RequestBody CreateOrderRequest request) {
         log.debug("POST /api/orders - {}", request);
 

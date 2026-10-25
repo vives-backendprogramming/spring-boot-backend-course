@@ -85,7 +85,7 @@ Before diving into Spring MVC specifics, let's understand the MVC pattern:
 - Responsible for **presenting data** to the user
 - In traditional web apps: HTML templates (Thymeleaf, JSP, FreeMarker)
 - In REST APIs: JSON or XML representations
-- The view **displays** the model but doesn't modify it
+- The view **displays** the model
 
 **Controller (C)**
 - Acts as the **intermediary** between Model and View
@@ -141,7 +141,6 @@ Spring Boot **autoconfigures** all of this for you!
 - Handler mappings determine which controller method should handle an incoming request.
 - Mapping is commonly done via annotations (`@RequestMapping`, `@GetMapping`, `@PostMapping`, etc.).
 - Multiple strategies exist (URL path patterns, HTTP method, headers, content types). Spring evaluates the best match.
-- **Spring Boot 4**: URL matching now always uses `PathPattern` — the old `AntPathMatcher` strategy is gone. `PathPattern` parses and caches patterns at startup, which makes request routing faster at runtime (some legacy `AntPathMatcher` syntax, like certain uses of `**`, behaves slightly differently under `PathPattern`).
 
 #### Handler Adapter
 
@@ -209,7 +208,7 @@ public class PizzaController {
     // ... helper methods ...
 }
 ```
-One small Thymeleaf example (use this exactly once in the course as a minimal example to render a table):
+One small Thymeleaf example (the only one in the entire course as a minimal example to render a table):
 
 Thymeleaf file: `src/main/resources/templates/pizzaview.html`:
 

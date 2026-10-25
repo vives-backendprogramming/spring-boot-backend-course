@@ -16,6 +16,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,15 +32,18 @@ public class CustomerService {
     private final PizzaRepository pizzaRepository;
     private final CustomerMapper customerMapper;
     private final PizzaMapper pizzaMapper;
+    private final PasswordEncoder passwordEncoder;
 
     public CustomerService(CustomerRepository customerRepository,
                            PizzaRepository pizzaRepository,
                            CustomerMapper customerMapper,
-                           PizzaMapper pizzaMapper) {
+                           PizzaMapper pizzaMapper,
+                           PasswordEncoder passwordEncoder) {
         this.customerRepository = customerRepository;
         this.pizzaRepository = pizzaRepository;
         this.customerMapper = customerMapper;
         this.pizzaMapper = pizzaMapper;
+        this.passwordEncoder = passwordEncoder;
     }
 
     public Page<CustomerResponse> findAll(Pageable pageable) {
@@ -52,6 +56,13 @@ public class CustomerService {
         log.debug("Finding customer with id: {}", id);
         Customer customer = customerRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Customer", id));
+        return customerMapper.toResponse(customer);
+    }
+
+    public CustomerResponse findByEmail(String email) {
+        log.debug("Finding customer with email: {}", email);
+        Customer customer = customerRepository.findByEmail(email)
+                .orElseThrow(() -> new ResourceNotFoundException("Customer with email " + email + " not found"));
         return customerMapper.toResponse(customer);
     }
 
@@ -70,6 +81,8 @@ public class CustomerService {
             throw new DuplicateResourceException("Customer with email " + request.email() + " already exists");
         }
         Customer customer = customerMapper.toEntity(request);
+        // the mapper copies the password as typed: hash it, so that the customer can log in (and nobody can read it)
+        customer.setPassword(passwordEncoder.encode(request.password()));
         Customer savedCustomer = customerRepository.save(customer);
         log.info("Created customer with id: {}", savedCustomer.getId());
         return customerMapper.toResponse(savedCustomer);

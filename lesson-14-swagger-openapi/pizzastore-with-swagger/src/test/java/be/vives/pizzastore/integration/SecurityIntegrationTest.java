@@ -1,6 +1,8 @@
 package be.vives.pizzastore.integration;
 
 import be.vives.pizzastore.dto.LoginRequest;
+import be.vives.pizzastore.dto.request.CreateCustomerRequest;
+import be.vives.pizzastore.dto.request.CreateOrderRequest;
 import be.vives.pizzastore.dto.request.CreatePizzaRequest;
 import be.vives.pizzastore.repository.CustomerRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -14,6 +16,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.client.RestTestClient;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 
 /**
@@ -124,5 +127,89 @@ class SecurityIntegrationTest {
                 .expectStatus().isOk()
                 .expectBody()
                 .jsonPath("$.email").isEqualTo(customer.email());
+    }
+
+    // ---------- method security: the owner of an account ----------
+
+    @Test
+    void me_ReturnsTheAccountOfTheToken() {
+        client.get().uri("/api/customers/me")
+                .header(HttpHeaders.AUTHORIZATION, customer.bearer())
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath("$.id").isEqualTo(customer.id().intValue())
+                .jsonPath("$.email").isEqualTo(customer.email());
+    }
+
+    @Test
+    void customer_CannotReadAnotherCustomer_ButAdminCan() {
+        TestAccounts.Account other = new TestAccounts(client, customerRepository, passwordEncoder).registerCustomer();
+
+        client.get().uri("/api/customers/{id}", other.id())
+                .header(HttpHeaders.AUTHORIZATION, customer.bearer())
+                .exchange()
+                .expectStatus().isForbidden()
+                .expectBody()
+                .jsonPath("$.detail").isEqualTo("Access denied. You do not have permission to access this resource.");
+
+        client.get().uri("/api/customers/{id}", other.id())
+                .header(HttpHeaders.AUTHORIZATION, admin.bearer())
+                .exchange()
+                .expectStatus().isOk();
+    }
+
+    @Test
+    void customer_CannotOrderForAnotherCustomer() {
+        TestAccounts.Account other = new TestAccounts(client, customerRepository, passwordEncoder).registerCustomer();
+
+        client.post().uri("/api/orders")
+                .header(HttpHeaders.AUTHORIZATION, customer.bearer())
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(new CreateOrderRequest(other.id(), List.of(new CreateOrderRequest.OrderLineRequest(1L, 1))))
+                .exchange()
+                .expectStatus().isForbidden();
+    }
+
+    @Test
+    void customerCreatedByAdmin_CanLogIn() {
+        // POST /api/customers hashes the password, exactly like /api/auth/register
+        String email = TestAccounts.uniqueEmail();
+        client.post().uri("/api/customers")
+                .header(HttpHeaders.AUTHORIZATION, admin.bearer())
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(new CreateCustomerRequest("Created By Admin", email, TestAccounts.PASSWORD, null, null))
+                .exchange()
+                .expectStatus().isCreated();
+
+        client.post().uri("/api/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(new LoginRequest(email, TestAccounts.PASSWORD))
+                .exchange()
+                .expectStatus().isOk();
+    }
+
+    // ---------- CORS ----------
+
+    @Test
+    void corsPreflight_FromAllowedOrigin_IsAccepted() {
+        // what a browser sends before a cross-origin POST with an Authorization header
+        client.options().uri("/api/orders")
+                .header(HttpHeaders.ORIGIN, "http://localhost:3000")
+                .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "POST")
+                .header(HttpHeaders.ACCESS_CONTROL_REQUEST_HEADERS, "Authorization, Content-Type")
+                .exchange()
+                .expectStatus().isOk()
+                .expectHeader().valueEquals(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, "http://localhost:3000");
+    }
+
+    @Test
+    void corsPreflight_FromUnknownOrigin_IsRejected() {
+        client.options().uri("/api/orders")
+                .header(HttpHeaders.ORIGIN, "https://evil.example.com")
+                .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "POST")
+                .exchange()
+                .expectStatus().isForbidden()
+                .expectHeader().doesNotExist(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN);
     }
 }

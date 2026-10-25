@@ -20,6 +20,7 @@ import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
@@ -103,10 +104,12 @@ public class OrderController {
         return ResponseEntity.ok(order);
     }
 
+    // SecurityConfig: only a CUSTOMER may POST here; this rule adds: only for their own account
     @PostMapping
+    @PreAuthorize("@customerSecurity.isOwner(#request.customerId(), authentication)")
     @Operation(
             summary = "Create a new order",
-            description = "Creates a new order. Requires CUSTOMER role. Order is created with status PENDING."
+            description = "Creates a new order for your own account (customerId must be the logged-in customer). Requires CUSTOMER role. Order is created with status PENDING."
     )
     @ApiResponses(value = {
             @ApiResponse(
@@ -114,10 +117,10 @@ public class OrderController {
                     description = "Order created successfully",
                     content = @Content(schema = @Schema(implementation = OrderResponse.class))
             ),
-            @ApiResponse(responseCode = "400", description = "Invalid request data or business rule violation"),
+            @ApiResponse(responseCode = "400", description = "Invalid request data (validation failed or malformed JSON)"),
             @ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid"),
-            @ApiResponse(responseCode = "403", description = "Forbidden - CUSTOMER role required"),
-            @ApiResponse(responseCode = "404", description = "Customer or pizza not found")
+            @ApiResponse(responseCode = "403", description = "Forbidden - CUSTOMER role required, and only for your own account"),
+            @ApiResponse(responseCode = "422", description = "Business rule violation - unknown customer, unknown pizza or pizza not available")
     })
     public ResponseEntity<OrderResponse> createOrder(@Valid @RequestBody CreateOrderRequest request) {
         log.debug("POST /api/orders - {}", request);
@@ -144,7 +147,7 @@ public class OrderController {
                     description = "Order status updated successfully",
                     content = @Content(schema = @Schema(implementation = OrderResponse.class))
             ),
-            @ApiResponse(responseCode = "400", description = "Invalid status or business rule violation"),
+            @ApiResponse(responseCode = "400", description = "Invalid status value"),
             @ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid"),
             @ApiResponse(responseCode = "403", description = "Forbidden - ADMIN role required"),
             @ApiResponse(responseCode = "404", description = "Order not found")
@@ -168,7 +171,8 @@ public class OrderController {
             @ApiResponse(responseCode = "204", description = "Order cancelled successfully"),
             @ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid"),
             @ApiResponse(responseCode = "403", description = "Forbidden - ADMIN role required"),
-            @ApiResponse(responseCode = "404", description = "Order not found")
+            @ApiResponse(responseCode = "404", description = "Order not found"),
+            @ApiResponse(responseCode = "422", description = "Business rule violation - the order is already delivered or cancelled")
     })
     public ResponseEntity<Void> cancelOrder(
             @Parameter(description = "Order ID", required = true) @PathVariable Long id) {

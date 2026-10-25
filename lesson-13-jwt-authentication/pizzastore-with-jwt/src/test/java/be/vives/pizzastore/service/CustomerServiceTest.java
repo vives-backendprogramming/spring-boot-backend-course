@@ -21,6 +21,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.math.BigDecimal;
 import java.util.Arrays;
@@ -46,6 +47,9 @@ class CustomerServiceTest {
 
     @Mock
     private PizzaMapper pizzaMapper;
+
+    @Mock
+    private PasswordEncoder passwordEncoder;
 
     @InjectMocks
     private CustomerService customerService;
@@ -147,6 +151,7 @@ class CustomerServiceTest {
         CustomerResponse response = new CustomerResponse(1L, "John Doe", "john@example.com", "1234567890", "123 Main St", "CUSTOMER");
 
         when(customerMapper.toEntity(request)).thenReturn(customer);
+        when(passwordEncoder.encode("password123")).thenReturn("{bcrypt}hashed");
         when(customerRepository.save(customer)).thenReturn(savedCustomer);
         when(customerMapper.toResponse(savedCustomer)).thenReturn(response);
 
@@ -157,7 +162,28 @@ class CustomerServiceTest {
         assertThat(result).isNotNull();
         assertThat(result.name()).isEqualTo("John Doe");
         assertThat(result.email()).isEqualTo("john@example.com");
+        // never store the password as typed
+        assertThat(customer.getPassword()).isEqualTo("{bcrypt}hashed");
         verify(customerRepository).save(customer);
+    }
+
+    @Test
+    void findByEmail_whenExists_shouldReturnCustomer() {
+        Customer customer = new Customer("John Doe", "john@example.com");
+        CustomerResponse response = new CustomerResponse(1L, "John Doe", "john@example.com", null, null, "CUSTOMER");
+        when(customerRepository.findByEmail("john@example.com")).thenReturn(Optional.of(customer));
+        when(customerMapper.toResponse(customer)).thenReturn(response);
+
+        assertThat(customerService.findByEmail("john@example.com").id()).isEqualTo(1L);
+    }
+
+    @Test
+    void findByEmail_whenNotExists_shouldThrowException() {
+        when(customerRepository.findByEmail("nobody@example.com")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> customerService.findByEmail("nobody@example.com"))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessageContaining("nobody@example.com");
     }
 
     @Test

@@ -42,7 +42,7 @@ The finished reference solution lives in a separate repository, [**PizzaStore**]
 **Testing, Security & Documentation**
 
 12. **Testing Spring Boot Applications** - Unit tests, test slices (`@DataJpaTest`, `@WebMvcTest`, `@JsonTest`, `@RestClientTest`), `RestTestClient`, integration tests
-13. **JWT Authentication** - Token-based authentication with roles
+13. **JWT Authentication** - Token-based authentication with roles, method security (`@PreAuthorize`, ownership checks), CORS/CSRF
 14. **Swagger/OpenAPI** - API documentation and Swagger UI
 
 ---

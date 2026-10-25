@@ -8,6 +8,7 @@ import be.vives.pizzastore.dto.response.OrderResponse;
 import be.vives.pizzastore.exception.BusinessException;
 import be.vives.pizzastore.exception.GlobalExceptionHandler;
 import be.vives.pizzastore.exception.ResourceNotFoundException;
+import be.vives.pizzastore.security.CustomerSecurity;
 import be.vives.pizzastore.security.JwtUtil;
 import be.vives.pizzastore.security.SecurityConfig;
 import be.vives.pizzastore.service.OrderService;
@@ -38,7 +39,8 @@ import static org.mockito.Mockito.when;
 
 /**
  * Web-layer slice for OrderController with RestTestClient and the real SecurityConfig:
- * only a CUSTOMER can place an order, every other order endpoint is for ADMIN.
+ * only a CUSTOMER can place an order, and only for their own account (@PreAuthorize on createOrder);
+ * every other order endpoint is for ADMIN.
  */
 @WebMvcTest(controllers = OrderController.class)
 @AutoConfigureRestTestClient
@@ -56,6 +58,10 @@ class OrderControllerTest {
 
     @MockitoBean
     private JwtUtil jwtUtil;
+
+    // called by name from @PreAuthorize("@customerSecurity.isOwner(#request.customerId(), authentication)")
+    @MockitoBean(name = "customerSecurity")
+    private CustomerSecurity customerSecurity;
 
     private static OrderResponse order(long id, long customerId, String customerName, OrderStatus status, double total) {
         return new OrderResponse(id, "ORD-2024-%06d".formatted(id), customerId, customerName,
@@ -174,6 +180,7 @@ class OrderControllerTest {
     @Test
     @WithMockUser(roles = "CUSTOMER")
     void createOrder_shouldReturnCreatedOrder() {
+        when(customerSecurity.isOwner(eq(1L), any())).thenReturn(true);
         when(orderService.create(any(CreateOrderRequest.class))).thenReturn(orderWithLines());
 
         client.post().uri("/api/orders")
@@ -195,6 +202,8 @@ class OrderControllerTest {
     @WithMockUser(roles = "CUSTOMER")
     void createOrder_whenCustomerNotFound_shouldReturnProblemDetail() {
         CreateOrderRequest request = new CreateOrderRequest(999L, List.of(new CreateOrderRequest.OrderLineRequest(1L, 2)));
+        // the security rule passes (as if the account was deleted in the meantime); the service then rejects the order
+        when(customerSecurity.isOwner(eq(999L), any())).thenReturn(true);
         when(orderService.create(any(CreateOrderRequest.class)))
                 .thenThrow(new BusinessException("Customer with id 999 not found"));
 
@@ -319,6 +328,20 @@ class OrderControllerTest {
                 .body(validOrderRequest())
                 .exchange()
                 .expectStatus().isForbidden();
+
+        verify(orderService, never()).create(any());
+    }
+
+    @Test
+    @WithMockUser(roles = "CUSTOMER")
+    void createOrder_forAnotherCustomer_returnsForbidden() {
+        // customerSecurity.isOwner(...) is not stubbed, so the mock answers false: customer 1 is somebody else
+        client.post().uri("/api/orders")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(validOrderRequest())
+                .exchange()
+                .expectStatus().isForbidden()
+                .expectHeader().contentType(MediaType.APPLICATION_PROBLEM_JSON);
 
         verify(orderService, never()).create(any());
     }

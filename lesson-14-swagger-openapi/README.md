@@ -59,7 +59,7 @@ The project of this lesson, [`pizzastore-with-swagger`](pizzastore-with-swagger)
 | [`security/SecurityConfig.java`](pizzastore-with-swagger/src/main/java/be/vives/pizzastore/security/SecurityConfig.java) | One extra rule: the documentation endpoints are public |
 | [`application.properties`](pizzastore-with-swagger/src/main/resources/application.properties) | `springdoc.*` settings |
 
-Services, repositories, entities, mappers, the Open Food Facts client, `data.sql` and the 236 tests are unchanged. Documentation is metadata *about* the code.
+Services, repositories, entities, mappers, the Open Food Facts client, `data.sql` and the 252 tests are unchanged. Documentation is metadata *about* the code.
 
 ---
 
@@ -997,7 +997,7 @@ The project includes:
 ✅ **DTOs documented** with `@Schema`  
 ✅ **JWT Bearer authentication in Swagger UI**  
 ✅ **Swagger UI** at `/swagger-ui.html`, **OpenAPI spec** at `/v3/api-docs` and `/v3/api-docs.yaml`  
-✅ **236 tests** (`mvn test`)
+✅ **252 tests** (`mvn test`)
 
 ### Running the Project
 

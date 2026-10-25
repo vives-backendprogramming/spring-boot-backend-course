@@ -255,6 +255,7 @@ class PizzaStoreApiIntegrationTest {
 
     // ---------- orders: a business scenario over several endpoints ----------
 
+    // a customer can only order for their own account, so every order is placed by and for customerAccount
     @Nested
     class Orders {
 
@@ -262,13 +263,12 @@ class PizzaStoreApiIntegrationTest {
         void orderLifecycle_CreateUpdateStatusAndCancel() {
             PizzaResponse margherita = createPizza("8.50");
             PizzaResponse diavola = createPizza("12.00");
-            CustomerResponse customer = createCustomer(uniqueEmail());
 
             // 1. place an order: 2 x 8.50 + 1 x 12.00 = 29.00
             OrderResponse order = client.post().uri("/api/orders")
                     .header(HttpHeaders.AUTHORIZATION, customerAccount.bearer())
                     .contentType(MediaType.APPLICATION_JSON)
-                    .body(new CreateOrderRequest(customer.id(), List.of(
+                    .body(new CreateOrderRequest(customerAccount.id(), List.of(
                             new CreateOrderRequest.OrderLineRequest(margherita.id(), 2),
                             new CreateOrderRequest.OrderLineRequest(diavola.id(), 1))))
                     .exchange()
@@ -279,10 +279,10 @@ class PizzaStoreApiIntegrationTest {
             assertThat(order.status()).isEqualTo(OrderStatus.PENDING);
             assertThat(order.totalAmount()).isEqualByComparingTo("29.00");
             assertThat(order.orderLines()).hasSize(2);
-            assertThat(order.customerId()).isEqualTo(customer.id());
+            assertThat(order.customerId()).isEqualTo(customerAccount.id());
 
             // 2. the order is visible under the customer
-            client.get().uri("/api/customers/{id}/orders", customer.id())
+            client.get().uri("/api/customers/{id}/orders", customerAccount.id())
                     .header(HttpHeaders.AUTHORIZATION, admin.bearer())
                     .exchange()
                     .expectStatus().isOk()
@@ -316,17 +316,16 @@ class PizzaStoreApiIntegrationTest {
 
         @Test
         void orderForUnknownPizza_Returns422AndCreatesNothing() {
-            CustomerResponse customer = createCustomer(uniqueEmail());
 
             client.post().uri("/api/orders")
                     .header(HttpHeaders.AUTHORIZATION, customerAccount.bearer())
                     .contentType(MediaType.APPLICATION_JSON)
-                    .body(new CreateOrderRequest(customer.id(),
+                    .body(new CreateOrderRequest(customerAccount.id(),
                             List.of(new CreateOrderRequest.OrderLineRequest(987_654L, 1))))
                     .exchange()
                     .expectStatus().isEqualTo(422);
 
-            client.get().uri("/api/customers/{id}/orders", customer.id())
+            client.get().uri("/api/customers/{id}/orders", customerAccount.id())
                     .header(HttpHeaders.AUTHORIZATION, admin.bearer())
                     .exchange()
                     .expectStatus().isOk()
@@ -337,11 +336,10 @@ class PizzaStoreApiIntegrationTest {
         @Test
         void invalidStatusValue_Returns400() {
             PizzaResponse pizza = createPizza("8.50");
-            CustomerResponse customer = createCustomer(uniqueEmail());
             OrderResponse order = client.post().uri("/api/orders")
                     .header(HttpHeaders.AUTHORIZATION, customerAccount.bearer())
                     .contentType(MediaType.APPLICATION_JSON)
-                    .body(new CreateOrderRequest(customer.id(),
+                    .body(new CreateOrderRequest(customerAccount.id(),
                             List.of(new CreateOrderRequest.OrderLineRequest(pizza.id(), 1))))
                     .exchange()
                     .expectStatus().isCreated()

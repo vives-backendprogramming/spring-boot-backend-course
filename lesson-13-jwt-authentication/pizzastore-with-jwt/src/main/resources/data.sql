@@ -21,11 +21,12 @@ INSERT INTO nutritional_info (calories, protein, carbohydrates, fat, pizza_id) V
 (310, 14.0, 36.0, 13.0, 5),  -- Diavola
 (275, 12.0, 39.0, 9.5, 6);   -- Hawaii
 
--- Customers (password column is part of the copied Customer entity; BCrypt hash for "password123")
+-- Customers: the password of every account is "password123", stored as a BCrypt hash. The {bcrypt} prefix tells
+-- Spring Security's DelegatingPasswordEncoder which algorithm made the hash (see SecurityConfig.passwordEncoder)
 INSERT INTO customers (name, email, password, phone, address, role, created_at, updated_at) VALUES
-('Emma Johnson', 'emma.johnson@example.com', '$2a$10$wvw30spxLOR1gV/NYh86ruw8J1rPa8MvkZwG0ru7VuRECMfARo0ri', '+32 470 12 34 56', 'Rue de la Loi 123, 1000 Brussels', 'CUSTOMER', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-('Liam Smith', 'liam.smith@example.com', '$2a$10$wvw30spxLOR1gV/NYh86ruw8J1rPa8MvkZwG0ru7VuRECMfARo0ri', '+32 471 23 45 67', 'Meir 45, 2000 Antwerp', 'CUSTOMER', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-('Admin User', 'admin@pizzastore.be', '$2a$10$wvw30spxLOR1gV/NYh86ruw8J1rPa8MvkZwG0ru7VuRECMfARo0ri', '+32 475 67 89 01', 'Headquarters, 1000 Brussels', 'ADMIN', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+('Emma Johnson', 'emma.johnson@example.com', '{bcrypt}$2a$10$wvw30spxLOR1gV/NYh86ruw8J1rPa8MvkZwG0ru7VuRECMfARo0ri', '+32 470 12 34 56', 'Rue de la Loi 123, 1000 Brussels', 'CUSTOMER', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('Liam Smith', 'liam.smith@example.com', '{bcrypt}$2a$10$wvw30spxLOR1gV/NYh86ruw8J1rPa8MvkZwG0ru7VuRECMfARo0ri', '+32 471 23 45 67', 'Meir 45, 2000 Antwerp', 'CUSTOMER', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('Admin User', 'admin@pizzastore.be', '{bcrypt}$2a$10$wvw30spxLOR1gV/NYh86ruw8J1rPa8MvkZwG0ru7VuRECMfARo0ri', '+32 475 67 89 01', 'Headquarters, 1000 Brussels', 'ADMIN', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
 
 -- Favorite Pizzas (@ManyToMany join table)
 INSERT INTO customer_favorite_pizzas (customer_id, pizza_id) VALUES
