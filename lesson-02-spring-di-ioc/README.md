@@ -1,41 +1,50 @@
 # Lesson 2: Spring Framework - Dependency Injection & IoC
 
-## 📚 Table of Contents
-
-- [📘 Overview](#-overview)
-- [🎯 Learning Objectives](#-learning-objectives)
-- [🌱 What is Spring Framework?](#-what-is-spring-framework)
-- [🧩 Spring Framework Modules](#-spring-framework-modules)
-- [🫘 What is a Bean?](#-what-is-a-bean)
-- [🔄 IoC Container](#-ioc-container)
-- [💉 Dependency Injection (DI)](#-dependency-injection-di)
-- [🗂️ Spring Application Context & Configuration Metadata](#️-spring-application-context--configuration-metadata)
-- [📦 Spring Stereotype Annotations](#-spring-stereotype-annotations)
-- [⚙️ @Configuration and @Bean](#️-configuration-and-bean)
-- [🔍 Component Scanning](#-component-scanning)
-- [🚀 Getting Beans from Application Context](#-getting-beans-from-application-context)
-- [📊 Spring IoC Container - The Big Picture](#-spring-ioc-container---the-big-picture)
-- [📚 Best Practices Summary](#-best-practices-summary)
-- [🎓 Summary](#-summary)
-- [📖 Additional Resources](#-additional-resources)
+**Let a container create and wire your objects, so your classes only declare what they need**
 
 ---
 
-## 📘 Overview
+## 📋 Learning Objectives
 
-The **Spring Framework** is one of the most widely used Java frameworks for building enterprise applications. At its core, Spring provides an **IoC (Inversion of Control) container** that manages your application's components and their dependencies through **Dependency Injection**.
+By the end of this lesson, you will be able to:
 
-In this lesson, we'll explore the fundamental concepts that make Spring powerful: how it manages objects (beans), how it wires them together, and why this approach leads to more maintainable and testable code.
+- Explain what the **Spring Framework** is and why it's used
+- Explain the **IoC (Inversion of Control)** principle and how **Dependency Injection** (DI) implements it
+- Compare constructor, setter and field injection, and choose constructor injection by default
+- Use the stereotype annotations `@Component`, `@Service`, `@Repository`, `@Controller`
+- Explain when `@Autowired` is needed and when it is not
+- Create beans with `@Configuration` and `@Bean`, and find them with `@ComponentScan`
+- Start an `ApplicationContext` and retrieve beans from it
 
-## 🎯 Learning Objectives
+---
 
-By the end of this lesson, you will:
-- Understand what the **Spring Framework** is and why it's used
-- Grasp the **IoC (Inversion of Control)** principle
-- Master **Dependency Injection** (DI) concepts
-- Use Spring annotations: `@Component`, `@Service`, `@Repository`, `@Controller`
-- Understand `@Autowired` and how Spring resolves dependencies
-- Create beans with `@Configuration` and `@Bean`
+## 📚 Table of Contents
+
+1. [Recap: Where Lesson 1 Left Us](#-recap-where-lesson-1-left-us)
+2. [What is Spring Framework?](#-what-is-spring-framework)
+3. [Spring Framework Modules](#-spring-framework-modules)
+4. [What is a Bean?](#-what-is-a-bean)
+5. [IoC Container](#-ioc-container)
+6. [Dependency Injection (DI)](#-dependency-injection-di)
+7. [Spring Application Context & Configuration Metadata](#️-spring-application-context--configuration-metadata)
+8. [Spring Stereotype Annotations](#-spring-stereotype-annotations)
+9. [@Configuration and @Bean](#️-configuration-and-bean)
+10. [Component Scanning](#-component-scanning)
+11. [Getting Beans from Application Context](#-getting-beans-from-application-context)
+12. [Spring IoC Container - The Big Picture](#-spring-ioc-container---the-big-picture)
+13. [Best Practices](#-best-practices)
+14. [Summary](#-summary)
+15. [Additional Resources](#-additional-resources)
+
+---
+
+## 🔄 Recap: Where Lesson 1 Left Us
+
+Lesson 1 ended with a list of servlet limitations. One of them was **"no built-in dependency injection"**: every class creates its own collaborators with `new`, which couples classes tightly and makes them hard to test.
+
+The **Spring Framework** solves exactly that. At its core, Spring provides an **IoC (Inversion of Control) container** that manages your application's components and their dependencies through **Dependency Injection**.
+
+In this lesson, we'll explore the fundamental concepts that make Spring powerful: how it manages objects (beans), how it wires them together, and why this approach leads to more maintainable and testable code. We use plain Spring here, without Spring Boot, so you can see what the container does before Boot (Lesson 4) automates it.
 
 ---
 
@@ -56,6 +65,7 @@ By the end of this lesson, you will:
 ### Spring Projects
 
 Spring is not just one framework—it's an ecosystem of projects:
+
 - **Spring Framework** - Core DI/IoC, MVC, Data Access
 - **Spring Boot** - Rapid application development (Lesson 4!)
 - **Spring Data** - Simplified data access (JPA, MongoDB, etc.)
@@ -74,6 +84,7 @@ The Spring Framework is divided into modules. Applications can choose which modu
 ### Core Container (The Heart of Spring)
 
 At the heart are the modules of the **core container**, including:
+
 - **Spring Core** - IoC container
 - **Spring Beans** - Bean factory & dependency injection
 - **Spring Context** - Application context
@@ -105,6 +116,7 @@ At the heart are the modules of the **core container**, including:
 A **bean** is simply a Java object that Spring creates and manages for you.
 
 **Without Spring:**
+
 ```java
 // You create objects yourself
 PizzaRepository repository = new PizzaRepository();
@@ -113,9 +125,10 @@ PizzaController controller = new PizzaController(service);
 ```
 
 **With Spring:**
+
 ```java
 // Spring creates and manages these objects for you
-@Component
+@Repository
 public class PizzaRepository { ... }
 
 @Service
@@ -136,6 +149,7 @@ public class PizzaController { ... }
 **Inversion of Control** is a design principle where the control of object creation and management is **inverted** from the application code to a framework or container.
 
 #### Traditional Approach (No IoC)
+
 ```java
 public class OrderService {
     private PaymentService paymentService;
@@ -155,12 +169,14 @@ public class OrderService {
 ```
 
 **Problems:**
+
 - Tight coupling
 - Hard to test (can't mock dependencies)
 - Difficult to change implementations
 - We control everything ourselves
 
 #### With IoC (Spring)
+
 ```java
 @Service
 public class OrderService {
@@ -181,6 +197,7 @@ public class OrderService {
 ```
 
 **Benefits:**
+
 - Loose coupling
 - Increased cohesion (each class focuses on its own responsibility, not on building its dependencies)
 - Easy to test (inject mocks)
@@ -190,7 +207,7 @@ public class OrderService {
 
 ### The IoC Principle
 
-> **IoC = Dependency Injection (DI)**
+> **Dependency Injection (DI) is the form of IoC that Spring uses.** (IoC is the broader principle; DI is one way to implement it.)
 
 > **Objects define their dependencies (= other objects they work with). The IoC container injects those dependencies when it creates the bean.**
 
@@ -207,6 +224,7 @@ public class OrderService {
 #### Three Types of Dependency Injection
 
 ##### 1. Constructor Injection (Recommended ✅)
+
 ```java
 @Service
 public class UserService {
@@ -222,12 +240,14 @@ public class UserService {
 ```
 
 **Advantages:**
+
 - Immutable dependencies (final fields)
 - Required dependencies are explicit
 - Easy to test
 - No need for `@Autowired` annotation (since Spring 4.3)
 
 ##### 2. Setter Injection
+
 ```java
 @Service
 public class EmailService {
@@ -242,10 +262,12 @@ public class EmailService {
 ```
 
 **Use cases:**
+
 - Optional dependencies
 - Dependencies that can change during object lifecycle
 
 ##### 3. Field Injection (❌ Avoid in production code)
+
 ```java
 @Service
 public class NotificationService {
@@ -258,6 +280,7 @@ public class NotificationService {
 ```
 
 **Why avoid?**
+
 - Cannot make fields final
 - Harder to test (need Spring context)
 - Hidden dependencies
@@ -266,6 +289,7 @@ public class NotificationService {
 ### 🤔 When to Use What?
 
 **Rule of Thumb**:
+
 - ✅ **Constructor injection for mandatory dependencies**
 - ⚠️ **Setter injection for optional dependencies**
 
@@ -399,6 +423,7 @@ public class PizzaService {
 ```
 
 **Purpose**: 
+
 - Contains business logic
 - Transaction management
 - Orchestrates multiple repositories
@@ -430,6 +455,7 @@ public class PizzaRepository {
 ```
 
 **Purpose**:
+
 - Database operations (CRUD)
 - Data retrieval and persistence
 - Exception translation (SQLException → DataAccessException)
@@ -453,6 +479,7 @@ public class PizzaController {
 ```
 
 **Purpose**:
+
 - Handle HTTP requests
 - Return views or data
 - User interaction
@@ -531,9 +558,12 @@ public class AppConfig {
 }
 ```
 
+**Wait — doesn't the first `AppConfig` create two `PizzaRepository` objects?** No. `pizzaService()` calls `pizzaRepository()`, but Spring subclasses every `@Configuration` class at runtime (a CGLIB proxy) and intercepts that call: it returns the one `PizzaRepository` bean already in the container instead of running the method again. The second style — a method parameter — makes the dependency explicit and is the one to prefer.
+
 ### When to Use @Bean?
 
 Use `@Bean` when:
+
 - Configuring **third-party classes** (you can't add `@Component`)
 - **Complex initialization** logic needed
 - **Multiple instances** of same type with different configs
@@ -556,6 +586,7 @@ public class AppConfig {
 ```
 
 **What happens:**
+
 1. Spring scans the specified package (`com.example.pizzastore`)
 2. Spring scans **all sub-packages** recursively
 3. All classes with `@Component`, `@Service`, `@Repository`, `@Controller` are registered as beans
@@ -607,6 +638,7 @@ PizzaService service = (PizzaService) context.getBean("pizzaService");
 ```
 
 **Note**: Bean names default to the class name with lowercase first letter:
+
 - `PizzaService` → bean name = `"pizzaService"`
 - `PizzaRepository` → bean name = `"pizzaRepository"`
 
@@ -636,7 +668,7 @@ PizzaService service = (PizzaService) context.getBean("myPizzaService");
 │                                                             │
 │  2. CREATE bean instances                                   │
 │                                                             │
-│  3. WIRE dependencies using @Autowired                      │
+│  3. WIRE dependencies (constructor injection)               │
 │                                                             │
 │  4. MANAGE lifecycle (initialization, destruction)          │
 │                                                             │
@@ -665,7 +697,7 @@ PizzaService service = (PizzaService) context.getBean("myPizzaService");
 
 ---
 
-## 📚 Best Practices Summary
+## 💡 Best Practices
 
 ### ✅ DO
 
@@ -695,18 +727,22 @@ PizzaService service = (PizzaService) context.getBean("myPizzaService");
 3. **Dependency Injection** - Objects receive dependencies, don't create them
 4. **Bean** - Spring-managed object
 5. **Stereotype Annotations** - `@Component`, `@Service`, `@Repository`, `@Controller`
-6. **@Autowired** - Automatic dependency injection
+6. **@Autowired** - Marks an injection point; optional on a single constructor (since Spring 4.3)
 7. **@Configuration & @Bean** - Java-based configuration
 8. **@ComponentScan** - Auto-discovery of beans
 9. **Constructor Injection** - Best practice for DI
 
-### Why This Matters
+### Key Takeaways
 
 - **Loose Coupling** - Easy to change implementations
 - **Testability** - Easy to mock dependencies
 - **Maintainability** - Clear separation of concerns
 - **Reusability** - Components can be reused
 - **Spring Ecosystem** - Foundation for Spring Boot, Spring Data, Spring Security
+
+### What's Next?
+
+Our beans still contain hardcoded values (database URLs, usernames, passwords). Lesson 3 moves those out of the code into properties files and uses **profiles** to switch configuration per environment.
 
 ---
 
@@ -721,5 +757,5 @@ PizzaService service = (PizzaService) context.getBean("myPizzaService");
 
 ---
 
-**Congratulations!** 🎉 You've mastered the fundamentals of Spring's IoC Container and Dependency Injection. These concepts are the foundation for everything we'll build with Spring and Spring Boot!
+**Congratulations!** 🎉 You've mastered the fundamentals of Spring's IoC Container and Dependency Injection. These concepts are the foundation for everything we'll build with Spring and Spring Boot! Continue to [Lesson 3: Properties & Profiles in Spring](../lesson-03-properties-profiles/README.md) to make your beans configurable.
 

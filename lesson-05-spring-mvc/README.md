@@ -1,33 +1,41 @@
 # Lesson 5: Spring MVC & Building a REST API
 
-## 📚 Table of Contents
-
-- [📘 Overview](#-overview)
-- [🎯 Learning Objectives](#-learning-objectives)
-- [🌐 Introduction to Spring Web MVC](#-introduction-to-spring-web-mvc)
-- [🗺️ Request Mapping](#️-request-mapping)
-- [📥 Request Parameters](#-request-parameters)
-- [📤 Response Handling](#-response-handling)
-- [📦 Jackson - JSON Serialization](#-jackson---json-serialization)
-- [🎓 Summary](#-summary)
-- [📖 Additional Resources](#-additional-resources)
+**What happens between an HTTP request and your controller method — and back**
 
 ---
 
-## 📘 Overview
+## 📋 Learning Objectives
 
-Now that we understand Spring Boot basics, it's time to build a proper **REST API** using **Spring MVC**. In this lesson, we'll explore the Spring MVC architecture, learn how to build REST endpoints, and implement proper request/response handling in our PizzaStore application.
+By the end of this lesson, you will be able to:
 
-## 🎯 Learning Objectives
+- Explain the **Spring MVC architecture** and the role of the **`DispatcherServlet`**
+- Explain the difference between **`@Controller`** and **`@RestController`**
+- Map requests with `@RequestMapping`, `@GetMapping`, `@PostMapping`, `@PutMapping`, `@PatchMapping`, `@DeleteMapping`
+- Read **path variables**, **query parameters**, **headers** and **request bodies**
+- Control the response with **`ResponseEntity`** and **`@ResponseStatus`**
+- Explain the role of **Jackson** in JSON serialization
 
-By the end of this lesson, you will:
-- Understand **Spring MVC architecture** and the **DispatcherServlet**
-- Know the difference between **@Controller** and **@RestController**
-- Build RESTful endpoints using **@RestController**
-- Master request mapping annotations (`@GetMapping`, `@PostMapping`, etc.)
-- Handle **path variables** and **request parameters**
-- Work with **request and response bodies**
-- Understand the role of **Jackson** in JSON serialization
+---
+
+## 📚 Table of Contents
+
+1. [Recap: Where Lesson 4 Left Us](#-recap-where-lesson-4-left-us)
+2. [Introduction to Spring Web MVC](#-introduction-to-spring-web-mvc)
+3. [Request Mapping](#️-request-mapping)
+4. [Request Parameters](#-request-parameters)
+5. [Response Handling](#-response-handling)
+6. [Jackson - JSON Serialization](#-jackson---json-serialization)
+7. [Best Practices](#-best-practices)
+8. [Summary](#-summary)
+9. [Additional Resources](#-additional-resources)
+
+---
+
+## 🔄 Recap: Where Lesson 4 Left Us
+
+Lesson 4's `pizzastore-intro` already answers HTTP requests: a `@RestController` with `@GetMapping`, `@PostMapping`, `@PathVariable` and `@RequestBody`, returning objects that somehow became JSON. Spring Boot set all of that up for us — but *what* did it set up?
+
+This lesson opens the web layer: the **Spring MVC** architecture behind those annotations, the full set of mapping and parameter annotations, and the ways to control the response. It is a theory lesson without a project of its own; the PizzaStore controllers that use all of this are built in Lesson 9, on top of the data layer (Lesson 6a) and services (Lesson 7).
 
 ---
 
@@ -38,6 +46,7 @@ By the end of this lesson, you will:
 Spring Web MVC is Spring's **web framework** built on the Servlet API. It provides a powerful, flexible way to build web applications and REST APIs using the **Model-View-Controller** design pattern.
 
 The name "Spring MVC" comes from the architectural pattern it implements:
+
 - **Model**: The data and business logic
 - **View**: The presentation layer (HTML, JSON, XML)
 - **Controller**: The request handler that connects model and view
@@ -47,26 +56,31 @@ The name "Spring MVC" comes from the architectural pattern it implements:
 Spring MVC has become the de facto standard for building web applications in the Java ecosystem. Here's why:
 
 **🎯 Built on Proven Patterns**
+
 - Based on the battle-tested MVC design pattern
 - Clear separation of concerns (business logic, presentation, routing)
 - Promotes maintainable and testable code
 
 **🔌 Integration with Spring Ecosystem**
+
 - Controllers are regular Spring beans → full IoC/DI support
 - Seamless integration with Spring Boot, Spring Data, Spring Security
 - Consistent programming model across your entire application
 
 **⚡ Convention over Configuration**
+
 - Annotation-based configuration (`@Controller`, `@GetMapping`, etc.)
 - Sensible defaults that "just work"
 - Override only what you need to customize
 
 **🌍 Versatile**
+
 - Traditional server-side rendered web apps (Thymeleaf, JSP)
 - Modern REST APIs (JSON, XML)
 - WebSockets for real-time communication
 
 **🚀 Production Ready**
+
 - Used by thousands of enterprises worldwide
 - High performance and scalability
 - Excellent tooling and IDE support
@@ -76,18 +90,21 @@ Spring MVC has become the de facto standard for building web applications in the
 Before diving into Spring MVC specifics, let's understand the MVC pattern:
 
 **Model (M)**
+
 - Represents the **application data** and **business rules**
 - In Spring: typically POJOs (Plain Old Java Objects) or DTOs (Data Transfer Objects)
 - Examples: `Pizza`, `Order`, `Customer` classes
 - The model is **independent** of the user interface
 
 **View (V)**
+
 - Responsible for **presenting data** to the user
 - In traditional web apps: HTML templates (Thymeleaf, JSP, FreeMarker)
 - In REST APIs: JSON or XML representations
 - The view **displays** the model
 
 **Controller (C)**
+
 - Acts as the **intermediary** between Model and View
 - Receives **HTTP requests** from clients
 - Processes the request (possibly calling services)
@@ -176,39 +193,45 @@ When you add this dependency, you get:
 | **Jackson** | JSON serialization/deserialization |
 
 **What This Means for You:**
+
 - ✅ No need to configure a separate web server
 - ✅ No XML configuration files
 - ✅ No manual servlet registration
 - ✅ JSON support out of the box
 - ✅ Just write code and run!
 
-###  Spring MVC: Two Flavors: Traditional Web App vs REST API
+### Spring MVC in Two Flavors: Traditional Web App vs REST API
 
 Understanding the difference is crucial:
 
 **Traditional Web Application**
+
 ```
 Browser → Request → Spring MVC → Thymeleaf → HTML → Browser
 ```
 
-Use `@Controller` when you want to return HTML views (server-side rendering). Below is a compact example showing how to build a simple page that displays a list of pizzas.
+Use `@Controller` when you want to return HTML views (server-side rendering). Below is a compact example showing how to build a simple page that displays a list of pizzas. It needs a template engine on the classpath, e.g. `spring-boot-starter-thymeleaf`.
 
 ```java
 @Controller
 @RequestMapping("/pizzas")
-public class PizzaController {
+public class PizzaViewController {
+
+    private final PizzaService pizzaService;
+
+    public PizzaViewController(PizzaService pizzaService) {
+        this.pizzaService = pizzaService;
+    }
 
     @GetMapping
     public String showList(Model model) {
-        List<Pizza> pizzas = getAllPizzas();
-        model.addAttribute("pizzas", pizzas);
-        return "pizzaview"; // Resolves to pizzaview.html via a ViewResolver (e.g. Thymeleaf)
+        model.addAttribute("pizzas", pizzaService.getAllPizzas());
+        return "pizzaview"; // Resolves to templates/pizzaview.html via Thymeleaf's ViewResolver
     }
-
-    // ... helper methods ...
 }
 ```
-One small Thymeleaf example (the only one in the entire course as a minimal example to render a table):
+
+The matching template — the only Thymeleaf example in the entire course, a minimal page that renders a table:
 
 Thymeleaf file: `src/main/resources/templates/pizzaview.html`:
 
@@ -247,8 +270,6 @@ Thymeleaf file: `src/main/resources/templates/pizzaview.html`:
 </html>
 ```
 
-Include this one simple template in the course for demonstration purposes only.
-
 - Controller returns a **view name** (String)
 - View resolver finds the template file (e.g. `pizzaview.html`)
 - Template engine renders HTML
@@ -257,6 +278,7 @@ Include this one simple template in the course for demonstration purposes only.
 - Examples: Admin panels, content websites
 
 **REST API Application (Modern Approach)**
+
 ```
 Client → Request → Spring MVC → JSON → Client (renders with JS)
 ```
@@ -284,7 +306,7 @@ public class PizzaController {
 
 **@RestController = @Controller + @ResponseBody**
 
-Every method in `@RestController` automatically serializes return values to JSON/XML.
+Every method in `@RestController` automatically serializes its return value to the response body — as JSON by default (XML only if you add `jackson-dataformat-xml`).
 
 - Controller returns **data objects**
 - Jackson serializes to JSON automatically
@@ -295,6 +317,7 @@ Every method in `@RestController` automatically serializes return values to JSON
 
 **In This Course:**
 We focus primarily on **REST APIs** because:
+
 - Modern development is trending towards REST
 - Enables mobile app development
 - Better separation of concerns
@@ -305,12 +328,14 @@ We focus primarily on **REST APIs** because:
 
 ### HTTP Methods and Annotations
 
+The examples in this lesson send and return the `Pizza` entity to keep them short. The real PizzaStore uses request and response DTOs instead (Lesson 7) — never expose entities in an API.
+
 | HTTP Method | Annotation | Purpose | Idempotent |
 |-------------|-----------|---------|------------|
 | **GET** | `@GetMapping` | Retrieve resource(s) | ✅ Yes |
 | **POST** | `@PostMapping` | Create new resource | ❌ No |
 | **PUT** | `@PutMapping` | Update/Replace entire resource | ✅ Yes |
-| **PATCH** | `@PatchMapping` | Partial update | ❌ No |
+| **PATCH** | `@PatchMapping` | Partial update | ❌ Not guaranteed |
 | **DELETE** | `@DeleteMapping` | Delete resource | ✅ Yes |
 
 ### Basic Request Mapping
@@ -385,7 +410,7 @@ public User getUser(@PathVariable("userId") Long id) {
 
 ### 2. Query Parameters (@RequestParam)
 
-Extract values from query string:
+Extract values from query string. The three methods below are **alternatives** for the same URL — put two of them in one controller and Spring fails at startup with an *ambiguous mapping* error.
 
 ```java
 // GET /api/pizzas?name=Margherita
@@ -406,8 +431,8 @@ public List<Pizza> searchPizzas(
 // Optional parameters with default values
 @GetMapping
 public List<Pizza> getPizzas(
-    @RequestParam(required = false, defaultValue = "0") int page,
-    @RequestParam(required = false, defaultValue = "10") int size
+    @RequestParam(defaultValue = "0") int page,     // a defaultValue makes the parameter optional
+    @RequestParam(defaultValue = "10") int size
 ) {
     return pizzaService.findAll(page, size);
 }
@@ -458,13 +483,12 @@ public Pizza getPizza(@PathVariable Long id) {
 ```
 
 **Response:**
+
 ```json
 {
   "id": 1,
-  "name": "Margherita",
-  "description": "Classic tomato and mozzarella",
-  "price": 8.99,
-  "available": true
+  "name": "Classic tomato and mozzarella",
+  "price": 8.99
 }
 ```
 
@@ -518,9 +542,10 @@ public void deletePizza(@PathVariable Long id) {
 - Jackson is the library Spring Boot uses (via `spring-boot-starter-webmvc`) to convert Java objects to JSON and back.
 - It performs **serialization** (Java → JSON) and **deserialization** (JSON → Java) automatically for controller methods that return objects or use `@RequestBody`.
 - You can customize JSON mapping using Jackson annotations (`@JsonProperty`, `@JsonIgnore`, `@JsonFormat`, etc.) when needed.
-- **Spring Boot 4** ships **Jackson 3** by default: it has native support for Java records (no extra configuration needed to serialize them) and defaults date/time serialization to the ISO-8601 standard. We'll lean on the record support once we introduce DTOs as `record`s in a later lesson.
+- **Spring Boot 4** ships **Jackson 3** (package `tools.jackson` instead of Jackson 2's `com.fasterxml.jackson`; the annotations keep their `com.fasterxml.jackson.annotation` package). Java records serialize and deserialize without extra configuration (as they already did since Jackson 2.12), and `java.time` values are written as ISO-8601 strings by default. We'll lean on the record support once we introduce DTOs as `record`s in Lesson 7.
 
 Example:
+
 ```java
 public class Pizza {
     @JsonProperty("pizza_id")
@@ -533,47 +558,71 @@ public class Pizza {
 }
 ```
 
+---
+
+## 💡 Best Practices
+
+1. **Use `@RestController` for APIs** and keep `@Controller` for server-rendered HTML.
+2. **Use the specific mapping annotations** (`@GetMapping`, ...) instead of `@RequestMapping(method = ...)` on methods; put the shared base path on the class.
+3. **Keep controllers thin** — read the request, call a service, build the response.
+4. **Return `ResponseEntity`** when the status or headers depend on the outcome (`201` + `Location`, `404`); return the object directly otherwise.
+5. **Give optional query parameters a `defaultValue`** instead of handling `null`.
+6. **Don't expose entities** — accept and return DTOs (Lesson 7).
+
+---
+
 ## 🎓 Summary
 
-### Key Takeaways
+### What We Learned
 
 1. **Spring MVC Architecture**
-   - DispatcherServlet is the front controller
-   - Handler mapping routes requests to controllers
-   - View Resolver resolves view names to templates (for traditional MVC)
+   - `DispatcherServlet` is the front controller
+   - `HandlerMapping` finds the controller method, `HandlerAdapter` calls it and resolves its arguments
+   - A `ViewResolver` turns view names into templates (traditional MVC); Jackson writes the body (REST)
 
 2. **@Controller vs @RestController**
-   - @Controller returns view names (HTML pages)
-   - @RestController returns data (JSON/XML)
+   - `@Controller` returns view names (HTML pages)
+   - `@RestController` returns data (JSON)
 
 3. **Request Mapping**
-   - Use specific annotations: @GetMapping, @PostMapping, etc.
-   - @PathVariable for URL path segments
-   - @RequestParam for query parameters
-   - @RequestBody for request payload
+   - Use specific annotations: `@GetMapping`, `@PostMapping`, etc.
+   - `@PathVariable` for URL path segments
+   - `@RequestParam` for query parameters
+   - `@RequestHeader` for headers
+   - `@RequestBody` for request payload
 
 4. **Response Handling**
    - Return objects directly for simple cases
-   - Use ResponseEntity for full control
-   - Set appropriate HTTP status codes
+   - Use `ResponseEntity` for full control
+   - Use `@ResponseStatus` for a fixed status code
 
 5. **Jackson**
-   - Automatic JSON serialization/deserialization
+   - Automatic JSON serialization/deserialization, Jackson 3 in Spring Boot 4
+
+### Key Takeaways
+
+- Every Spring MVC request passes **one servlet**, the `DispatcherServlet` — the servlet from Lesson 1, now managed for you
+- Annotations describe **what** a method handles; Spring MVC does the parsing, converting and serializing
+- A REST controller returns **data**, and the HTTP status code is part of that answer
+
+### What's Next?
+
+Controllers need data to return. Lesson 6 introduces **Spring Data**, the abstraction PizzaStore uses to store and query its domain, before Lesson 6a builds the PizzaStore domain model with Spring Data JPA.
 
 ---
 
 ## 📖 Additional Resources
 
 - [Spring MVC Documentation](https://docs.spring.io/spring-framework/reference/web/webmvc.html)
-- [Spring REST Documentation](https://spring.io/guides/tutorials/rest/)
+- [Spring Boot — Servlet Web Applications](https://docs.spring.io/spring-boot/reference/web/servlet.html)
+- [Building REST services with Spring](https://spring.io/guides/tutorials/rest/)
 - [Jackson Documentation](https://github.com/FasterXML/jackson)
 - [HTTP Status Codes](https://developer.mozilla.org/en-US/docs/Web/HTTP/Status)
 
-**Note on the book**: This lesson corresponds to *Pro Spring Boot 4*, Chapter 3: *Web Development with Spring Boot* — specifically the *Spring MVC Architecture Deep Dive* section (the request lifecycle through `DispatcherServlet`, `HandlerMapping`, `HandlerAdapter`, and `HttpMessageConverter`, plus the `@RestController`/`@RequestMapping`/`@RequestBody`/`@PathVariable` annotations covered under *Annotations Uncovered*). 
+**Note on the book**: This lesson corresponds to *Pro Spring Boot 4*, Chapter 3: *Web Development with Spring Boot* — the *Spring MVC Architecture Deep Dive* section (p. 61: the request lifecycle through `DispatcherServlet`, `HandlerMapping`, `HandlerAdapter` and `HttpMessageConverter`) and *Annotations Uncovered* (p. 62: `@RestController`, `@RequestMapping`, `@RequestBody`, `@PathVariable`), plus the Jackson 3 part of *Infrastructure and Serialization Improvements* (p. 60). The book has no server-side rendered (`@Controller` + Thymeleaf) example; this lesson adds one so the difference with `@RestController` is visible.
 
-Chapter 3 goes on to cover several topics this course spreads across later, dedicated lessons instead of repeating them here: native API versioning and core REST principles ([Lesson 8](../lesson-08-rest-principles/README.md)), Jakarta Bean Validation and `ProblemDetail`/`@RestControllerAdvice` exception handling ([Lesson 10](../lesson-10-validation-exception-handling/README.md)), declarative HTTP service clients for calling external APIs (`@HttpExchange`, [Lesson 11](../lesson-11-external-api/README.md)), and the unified `RestTestClient` ([Lesson 12](../lesson-12-testing/README.md)). 
+Chapter 3 goes on to cover several topics this course spreads across later, dedicated lessons instead of repeating them here: core REST principles and native API versioning (pp. 63–64, [Lesson 8](../lesson-08-rest-principles/README.md)), full CRUD with `ResponseEntity` and `Location` headers (*Implementing Full CRUD*, p. 64, [Lesson 9](../lesson-09-complete-rest-api/README.md)), Jakarta Bean Validation and `ProblemDetail`/`@RestControllerAdvice` exception handling (pp. 64–72, [Lesson 10](../lesson-10-validation-exception-handling/README.md)), declarative HTTP service clients for calling external APIs (`@HttpExchange`, pp. 74–76, [Lesson 11](../lesson-11-external-api/README.md)), and the unified `RestTestClient` (pp. 77–78, [Lesson 12](../lesson-12-testing/README.md)). *Content Negotiation* (p. 72) is not covered: PizzaStore only speaks JSON.
 
 ---
 
-**Great job!** 🎉 You now understand Spring MVC fundamentals and can build both traditional web applications and REST APIs. In the next lesson, we'll dive deeper into REST principles.
-
+**Congratulations!** 🎉 You now understand Spring MVC fundamentals and can tell a traditional web application from a REST API. Continue to [Lesson 6: Spring Data with Spring Boot](../lesson-06-spring-data/README.md) to give the controllers something to return.

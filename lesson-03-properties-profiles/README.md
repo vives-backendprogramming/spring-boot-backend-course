@@ -1,50 +1,55 @@
 # Lesson 3: Properties & Profiles in Spring
 
-## 📚 Table of Contents
-
-- [📘 Overview](#-overview)
-- [🎯 Learning Objectives](#-learning-objectives)
-- [🔧 Why Externalize Configuration?](#-why-externalize-configuration)
-- [💉 @Value Annotation](#-value-annotation)
-- [📍 Where Properties Come From (Property Sources & Priority)](#-where-properties-come-from-property-sources--priority)
-- [📄 Property Files](#-property-files)
-- [📃 YAML Files](#-yaml-files)
-- [🔌 @PropertySource](#-propertysource)
-- [🌍 Spring Profiles](#-spring-profiles)
-- [🎭 What are Spring Profiles?](#-what-are-spring-profiles)
-- [🏷️ @Profile Annotation](#️-profile-annotation)
-- [📁 Profile-Specific Property Files](#-profile-specific-property-files)
-- [🚀 Activating Profiles](#-activating-profiles)
-- [📊 Logging in Spring Applications](#-logging-in-spring-applications)
-- [📝 Log Levels](#-log-levels)
-- [🔧 Using Logging in Code](#-using-logging-in-code)
-- [⚙️ Configuring Logging](#️-configuring-logging)
-- [🎯 Logging Best Practices](#-logging-best-practices)
-- [🎓 Summary](#-summary)
-- [📖 Additional Resources](#-additional-resources)
+**Make the same code run in every environment: external configuration, profiles and logging**
 
 ---
 
-## 📘 Overview
+## 📋 Learning Objectives
 
-In real-world applications, configuration often differs between environments (development, testing, production). Hardcoding these values makes applications inflexible and difficult to maintain.
+By the end of this lesson, you will be able to:
 
-Spring provides powerful mechanisms to **externalize configuration** through **properties files** and manage different environments using **profiles**. Additionally, proper **logging** is essential for monitoring and debugging applications.
-
-In this lesson, we'll learn how to make our applications configurable and environment-aware.
-
-## 🎯 Learning Objectives
-
-By the end of this lesson, you will:
-- Understand why we need to externalize configuration
-- Use **`@Value`** to inject property values
-- Use **`@PropertySource`** to load property files
-- Work with **`application.properties`** files
-- Create **environment-specific configurations** with profiles
-- Use **`@Profile`** annotation for conditional bean loading
-- Configure **profile-specific property files**
+- Explain why configuration should be externalized
+- Use **`@Value`** to inject property values, with and without defaults
+- Use **`@PropertySource`** to load a properties file in plain Spring
+- Explain which property sources exist and which one wins
+- Create **environment-specific configuration** with profiles and **`@Profile`**
 - Activate profiles in different ways
-- Implement **basic logging** in Spring applications
+- Log with **SLF4J + Logback** at the right level
+
+---
+
+## 📚 Table of Contents
+
+1. [Recap: Where Lesson 2 Left Us](#-recap-where-lesson-2-left-us)
+2. [Why Externalize Configuration?](#-why-externalize-configuration)
+3. [@Value Annotation](#-value-annotation)
+4. [Where Properties Come From (Property Sources & Priority)](#-where-properties-come-from-property-sources--priority)
+5. [Property Files](#-property-files)
+6. [YAML Files](#-yaml-files)
+7. [@PropertySource](#-propertysource)
+8. [Spring Profiles](#-spring-profiles)
+9. [What are Spring Profiles?](#-what-are-spring-profiles)
+10. [@Profile Annotation](#️-profile-annotation)
+11. [Profile-Specific Property Files](#-profile-specific-property-files)
+12. [Activating Profiles](#-activating-profiles)
+13. [Logging in Spring Applications](#-logging-in-spring-applications)
+14. [Log Levels](#-log-levels)
+15. [Using Logging in Code](#-using-logging-in-code)
+16. [Configuring Logging](#️-configuring-logging)
+17. [Logging Best Practices](#-logging-best-practices)
+18. [Best Practices](#-best-practices)
+19. [Summary](#-summary)
+20. [Additional Resources](#-additional-resources)
+
+---
+
+## 🔄 Recap: Where Lesson 2 Left Us
+
+In Lesson 2, the Spring container took over creating and wiring our objects. But the beans themselves still contain **hardcoded values**: a database URL, a username, a password — written straight into Java code.
+
+In real-world applications, configuration differs between environments (development, testing, production). Hardcoding these values makes applications inflexible and difficult to maintain.
+
+Spring provides mechanisms to **externalize configuration** through **properties files** and to manage different environments using **profiles**. Additionally, proper **logging** is essential for monitoring and debugging applications. Like Lesson 2, this lesson uses plain Spring; where Spring Boot (Lesson 4) behaves differently, the text says so.
 
 ---
 
@@ -69,6 +74,7 @@ public class DataSourceConfig {
 ```
 
 **Problems**:
+
 - ❌ Cannot change without recompiling
 - ❌ Different values for dev/test/prod
 - ❌ Credentials in source code (security risk!)
@@ -79,6 +85,7 @@ public class DataSourceConfig {
 > **"Spring lets you externalize your configuration so that you can work with the same application code in different environments."**
 
 **You can use**:
+
 - Properties files
 - YAML files  — not used in this course, but good to recognize
 - Environment variables
@@ -161,24 +168,48 @@ private String appName;  // Uses "MyApp" if property not found
 
 **Syntax**: `@Value("${property.name:defaultValue}")`
 
+### @Value on Constructor Parameters
+
+The examples above use field injection to keep them short. Lesson 2 recommended constructor injection, and `@Value` works there too:
+
+```java
+@Service
+public class PizzaStoreInfoService {
+
+    private final String storeName;
+
+    public PizzaStoreInfoService(@Value("${pizzastore.name:PizzaStore}") String storeName) {
+        this.storeName = storeName;
+    }
+}
+```
+
+The field can now be `final`, and a unit test can pass any value straight into the constructor.
+
 ---
 
 ## 📍 Where Properties Come From (Property Sources & Priority)
 
 `@Value("${...}")` doesn't read a single file — it reads from the **Spring `Environment`**. The `Environment` pulls properties from several different **property sources** (JVM system properties, OS environment variables, property files, ...) and exposes them to your beans as one unified set of values, so a bean never has to know *where* a property actually came from.
 
-A property can be configured in several different places at once:
+**In plain Spring** (this lesson), a fresh `AnnotationConfigApplicationContext` knows only three kinds of source, in this order of priority:
+
+1. **JVM system properties** (e.g. `-Dpizzastore.name=Mario`)
+2. **OS environment variables**
+3. **Files you register yourself with `@PropertySource`**
+
+**In Spring Boot** (from Lesson 4), the list grows, and Boot loads `application.properties` for you:
 
 1. **Command-line arguments** (e.g. `--server.port=8080`)
 2. **JVM system properties** (e.g. `-Dserver.port=8080`)
 3. **OS environment variables**
-4. **`application.properties` file outside the application** (e.g. on the application server)
+4. **`application.properties` file outside the application** (e.g. next to the `.jar`)
 5. **`application.properties` file inside the application** (on the classpath, `src/main/resources`)
 6. **Property sources supplied via `@PropertySource`/`@PropertySources`**
 
-This list is in **order of priority**: a property source higher in the list overrides the same property defined in a source lower in the list. So if you set `server.port` both in `application.properties` *and* as a JVM system property (`-Dserver.port=...`), the JVM system property wins because it's higher up.
+Both lists are in **order of priority**: a property source higher in the list overrides the same property defined in a source lower in the list. So if you set a property both in a properties file *and* as a JVM system property (`-D...`), the JVM system property wins because it's higher up.
 
-This is exactly why the [Configuration Hierarchy](#configuration-hierarchy) at the end of this lesson puts command-line arguments and environment variables above property files — it's the same priority order, just applied to the subset of sources you'll use most often in this course.
+This is exactly why the [Configuration Hierarchy](#configuration-hierarchy) at the end of this lesson puts command-line arguments and environment variables above property files.
 
 ---
 
@@ -216,6 +247,7 @@ db.port=5432
 ```
 
 **Best Practices**:
+
 - Use meaningful, hierarchical names
 - Group related properties with common prefix
 - Document properties with comments
@@ -228,6 +260,7 @@ db.port=5432
 Besides `.properties`, Spring also supports **YAML** (`.yml`) as a property file format. The same data, just written hierarchically instead of as flat `key=value` pairs:
 
 **`application.properties`**:
+
 ```properties
 server.port=9090
 spring.application.name=demoservice
@@ -235,6 +268,7 @@ datasource.url=jdbc:mysql://localhost:3601/db
 ```
 
 **`application.yml`** (equivalent):
+
 ```yaml
 spring:
   application:
@@ -249,7 +283,7 @@ Both resolve to the exact same properties (`server.port`, `spring.application.na
 
 **⚠️ Does this work in plain Spring?** Not out of the box. Unlike `.properties`, plain Spring **cannot** parse a `.yml` file without an extra dependency: `org.yaml.snakeyaml` must be added to the classpath yourself. **Spring Boot**, starting in [Lesson 4](../lesson-04-spring-boot-intro/README.md), ships this dependency automatically via `spring-boot-starter`, which is why YAML "just works" there with zero extra setup.
 
-This course use `.properties` throughout, so YAML itself is not covered in depth — but recognize it when you see it, since it's the format Spring Boot projects (including the book) tend to default to.
+This course uses `.properties` throughout, so YAML itself is not covered in depth — but recognize it when you see it, since it's the format Spring Boot projects (including the book) tend to default to.
 
 ---
 
@@ -273,7 +307,7 @@ public class AppConfig {
 
 **`classpath:`** refers to `src/main/resources/`
 
-**⚠️ Don't skip the `PropertySourcesPlaceholderConfigurer` bean.** Without it, `@Value("${...}")` placeholders won't resolve in plain Spring — this is the single most common mistake with `@PropertySource`. The bean must be `static` so Spring can process it very early, before other `@Configuration` classes that use `@Value` are processed.
+**⚠️ Why the `PropertySourcesPlaceholderConfigurer` bean?** Since Spring 4.3, `@Value("${...}")` resolves against the `Environment` even without it — but *leniently*: a property that doesn't exist (a typo, a missing file) is not an error. The field silently receives the literal text `${vives.jdbc.oracle.url}`, and you only find out when the connection fails much later. With this bean registered, an unresolvable placeholder **fails at startup** with `Could not resolve placeholder 'vives.jdbc.oracle.url'`. The bean must be `static` so Spring can create it very early, before the beans that use `@Value`. (Spring Boot registers it for you.)
 
 ### Multiple Property Sources
 
@@ -304,6 +338,7 @@ public class AppConfig {
 ### Why Profiles?
 
 Applications are deployed to different environments:
+
 - **Development** - Local machine, H2 database, detailed logging
 - **Test** - QA environment, test database, moderate logging
 - **Production** - Live environment, production database, minimal logging
@@ -311,6 +346,7 @@ Applications are deployed to different environments:
 **Each environment needs different configuration!**
 
 **Problems without profiles**:
+
 - Managing multiple property files manually
 - Not tracked in source control
 - Difficult to rollback changes
@@ -326,6 +362,7 @@ Applications are deployed to different environments:
 > **Spring Profiles are a type of conditional configuration where different beans, configuration classes, and configuration properties are applied or ignored based on what profiles are active at runtime.**
 
 **Two main approaches**:
+
 1. **`@Profile`** annotation - Conditional bean loading
 2. **Profile-specific property files** - Environment-specific values
 
@@ -418,16 +455,18 @@ public class DataSourceConfig {
     
     @Bean
     @Profile("production")
-    public DataSource prodDataSource() {
+    public DataSource prodDataSource(@Value("${DB_PASSWORD}") String password) {
         DriverManagerDataSource ds = new DriverManagerDataSource();
         ds.setDriverClassName("org.postgresql.Driver");
         ds.setUrl("jdbc:postgresql://prod-server:5432/pizzastore");
         ds.setUsername("prod_user");
-        ds.setPassword("${DB_PASSWORD}");
+        ds.setPassword(password);   // read from the DB_PASSWORD environment variable
         return ds;
     }
 }
 ```
+
+Note that `"${DB_PASSWORD}"` only means something inside `@Value` (or a properties file): passed as a normal Java string to `setPassword(...)`, it would literally become the password.
 
 ---
 
@@ -442,6 +481,7 @@ application-{profile}.properties
 ```
 
 **Examples**:
+
 - `application-dev.properties`
 - `application-test.properties`
 - `application-prod.properties`
@@ -502,11 +542,13 @@ So what you're learning here isn't dead knowledge that Boot throws away — it's
 ### ❌ Option 1: In Property File (Not Recommended)
 
 **application.properties**:
+
 ```properties
 spring.profiles.active=production
 ```
 
 **Why avoid this?**
+
 - Defeats the purpose of externalized configuration
 - Would need to change file for each environment
 - Configuration should be external to the application
@@ -527,16 +569,20 @@ java -Dspring.profiles.active=dev -jar your-app.jar
 #### 2. Environment Variable
 
 **Linux/Mac**:
+
 ```bash
-export spring_profiles_active=dev
+export SPRING_PROFILES_ACTIVE=dev
 java -jar your-app.jar
 ```
 
 **Windows**:
+
 ```cmd
-set spring_profiles_active=dev
+set SPRING_PROFILES_ACTIVE=dev
 java -jar your-app.jar
 ```
+
+Environment variables can't contain dots, so Spring maps `SPRING_PROFILES_ACTIVE` to `spring.profiles.active` (upper case and underscores is the convention).
 
 #### 3. Command Line Argument
 
@@ -569,6 +615,7 @@ Properties are loaded in order, with later profiles overriding earlier ones.
 ### Why Logging?
 
 Logging is essential for:
+
 - **Debugging** - Understanding what's happening in your code
 - **Monitoring** - Tracking application behavior in production
 - **Troubleshooting** - Diagnosing issues when they occur
@@ -676,11 +723,13 @@ public class PizzaService {
 ### Parameterized Logging
 
 ✅ **Good - Use placeholders**:
+
 ```java
 log.info("User {} ordered {} pizzas", username, count);
 ```
 
 ❌ **Bad - String concatenation**:
+
 ```java
 log.info("User " + username + " ordered " + count + " pizzas");  // Slow!
 ```
@@ -706,7 +755,30 @@ This logs the full stack trace!
 
 ## ⚙️ Configuring Logging
 
-### In application.properties
+### In Plain Spring: logback.xml
+
+In plain Spring, log levels are configured in Logback's own file, `src/main/resources/logback.xml`. Without that file, Logback logs everything at `DEBUG` to the console:
+
+```xml
+<configuration>
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{HH:mm:ss.SSS} %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <logger name="com.example.pizzastore" level="DEBUG"/>
+    <logger name="org.springframework" level="WARN"/>
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+    </root>
+</configuration>
+```
+
+### In application.properties (Spring Boot)
+
+Spring Boot (Lesson 4) lets you set the same levels as ordinary properties. These `logging.level.*` keys do **nothing** in plain Spring — only Boot reads them:
 
 ```properties
 # Root level (applies to all packages)
@@ -725,9 +797,10 @@ logging.level.org.hibernate=INFO
 logging.level.org.hibernate.SQL=DEBUG
 ```
 
-### Environment-Specific Logging
+### Environment-Specific Logging (Spring Boot)
 
 **application-dev.properties**:
+
 ```properties
 # Detailed logging for development
 logging.level.root=INFO
@@ -737,6 +810,7 @@ logging.level.org.hibernate.SQL=DEBUG
 ```
 
 **application-test.properties**:
+
 ```properties
 # Moderate logging for testing
 logging.level.root=INFO
@@ -744,6 +818,7 @@ logging.level.com.example.pizzastore=INFO
 ```
 
 **application-prod.properties**:
+
 ```properties
 # Minimal logging for production
 logging.level.root=WARN
@@ -758,6 +833,7 @@ logging.level.org.springframework=ERROR
 ### ✅ DO
 
 1. **Use appropriate log levels**
+
    ```java
    log.trace("Method entry/exit");
    log.debug("Detailed debugging info");
@@ -767,21 +843,25 @@ logging.level.org.springframework=ERROR
    ```
 
 2. **Use parameterized messages**
+
    ```java
    log.info("User {} logged in at {}", username, timestamp);
    ```
 
 3. **Log important business operations**
+
    ```java
    log.info("Order {} placed by user {}", orderId, userId);
    ```
 
 4. **Always include exception in error logs**
+
    ```java
    log.error("Failed to process payment", exception);
    ```
 
 5. **Use meaningful messages**
+
    ```java
    log.info("Pizza {} added to cart by user {}", pizzaId, userId);
    ```
@@ -789,17 +869,20 @@ logging.level.org.springframework=ERROR
 ### ❌ DON'T
 
 1. **Don't log sensitive information**
+
    ```java
    log.info("Password: {}", password);  // ❌ Never!
    log.info("Credit card: {}", card);   // ❌ Never!
    ```
 
 2. **Don't use System.out.println()**
+
    ```java
    System.out.println("User logged in");  // ❌ Use logging!
    ```
 
 3. **Don't concatenate strings**
+
    ```java
    log.info("User " + name + " age " + age);  // ❌ Slow!
    log.info("User {} age {}", name, age);     // ✅ Fast!
@@ -810,6 +893,7 @@ logging.level.org.springframework=ERROR
    - Avoid TRACE/DEBUG in production
 
 5. **Don't swallow exceptions silently**
+
    ```java
    try {
        doSomething();
@@ -827,9 +911,32 @@ logging.level.org.springframework=ERROR
 
 ---
 
+## 💡 Best Practices
+
+✅ **DO**:
+
+- Externalize all environment-specific configuration
+- Use profiles for different environments (dev, test, prod)
+- Register a `PropertySourcesPlaceholderConfigurer` in plain Spring, so a missing property fails at startup
+- Prefer `@Value` on constructor parameters over fields
+- Use environment variables for sensitive data in production
+- Use meaningful, hierarchical property names
+- Log at appropriate levels, with parameterized messages
+
+❌ **DON'T**:
+
+- Hardcode configuration values
+- Commit passwords to source control or put them in property files
+- Activate profiles in `application.properties`
+- Log sensitive information
+- Use `System.out.println()` instead of logging
+- Over-log in production
+
+---
+
 ## 🎓 Summary
 
-### Key Concepts Learned
+### What We Learned
 
 1. **Externalized Configuration**
    - Keep configuration out of code
@@ -842,6 +949,7 @@ logging.level.org.springframework=ERROR
 
 3. **@PropertySource**
    - Load property files: `@PropertySource("classpath:/application.properties")`
+   - Add a static `PropertySourcesPlaceholderConfigurer` bean for strict placeholder resolution
 
 4. **Spring Profiles**
    - Environment-specific configuration
@@ -853,11 +961,11 @@ logging.level.org.springframework=ERROR
    - Five log levels: TRACE, DEBUG, INFO, WARN, ERROR
    - Logger per class: `LoggerFactory.getLogger(MyClass.class)`
    - Parameterized messages for performance
-   - Environment-specific log levels
+   - Levels in `logback.xml` (plain Spring) or `logging.level.*` (Spring Boot)
 
 ### Configuration Hierarchy
 
-The full property-source priority order, as covered in [Where Properties Come From](#-where-properties-come-from-property-sources--priority):
+The full Spring Boot property-source priority order, as covered in [Where Properties Come From](#-where-properties-come-from-property-sources--priority) (plain Spring has only the JVM system properties, environment variables and `@PropertySource` rows):
 
 ```
 Command-Line Arguments               ← Highest Priority
@@ -870,24 +978,16 @@ application.properties (on the classpath)
 
 Within that "property files" tier, once profiles enter the picture (Spring Boot, [Lesson 4](../lesson-04-spring-boot-intro/README.md)): `application-{profile}.properties` overrides `application.properties` for any key they both define.
 
-### Best Practices Recap
+### Key Takeaways
 
-✅ **DO**:
-- Externalize all environment-specific configuration
-- Use profiles for different environments (dev, test, prod)
-- Never commit passwords to source control
-- Use environment variables for sensitive data in production
-- Use meaningful, hierarchical property names
-- Log at appropriate levels
-- Use parameterized log messages
+- The **same build** should run in every environment; only its configuration changes
+- Spring reads every property through one **`Environment`**, so a bean never cares where a value came from
+- **Profiles** switch both values (property files) and implementations (`@Profile` beans)
+- Good **logging** is configuration too: the level is set per environment, not in code
 
-❌ **DON'T**:
-- Hardcode configuration values
-- Put passwords in property files
-- Activate profiles in application.properties
-- Log sensitive information
-- Use System.out.println() instead of logging
-- Over-log in production
+### What's Next?
+
+Everything in Lessons 2 and 3 needed hand-written wiring: a configuration class, `@ComponentScan`, `@PropertySource`, a placeholder configurer, Logback setup. Lesson 4 introduces **Spring Boot**, which does all of that by convention, and builds the first PizzaStore.
 
 ---
 
@@ -896,12 +996,12 @@ Within that "property files" tier, once profiles enter the picture (Spring Boot,
 - 🧪 **[Hands-On Exercise](EXERCISE.md)** — externalize config and swap implementations with `@Profile` on `SchoolAdministration`
 - [Spring Environment Abstraction](https://docs.spring.io/spring-framework/reference/core/beans/environment.html)
 - [Spring Profiles Documentation](https://docs.spring.io/spring-framework/reference/core/beans/environment.html#beans-definition-profiles)
-- [SLF4J Documentation](http://www.slf4j.org/)
+- [Using @Value](https://docs.spring.io/spring-framework/reference/core/beans/annotation-config/value-annotations.html)
+- [SLF4J Documentation](https://www.slf4j.org/)
 - [Logback Documentation](https://logback.qos.ch/)
 
-**Note on the book**: *Pro Spring Boot 4* skips this "plain Spring" stage entirely — it starts directly from Spring Boot's `@ConfigurationProperties` / `@ConfigurationPropertiesScan` (Chapter 2: *Externalized Configuration*, *Profiles*). Once you've finished [Lesson 4](../lesson-04-spring-boot-intro/README.md), it's worth reading that chapter to see the type-safe, auto-configured version of everything you just did by hand here.
+**Note on the book**: *Pro Spring Boot 4* skips this "plain Spring" stage entirely and starts from Spring Boot, in Chapter 2: *Spring Boot Internals and Features* — *Externalized Configuration* (p. 38) and *Type-Safe Configuration Properties* with `@ConfigurationProperties` / `@ConfigurationPropertiesScan` (p. 39), *Profiles* with profile-specific properties and beans (p. 42), and *Logging* with log levels and log groups (pp. 43–45). Once you've finished [Lesson 4](../lesson-04-spring-boot-intro/README.md), it's worth reading those sections to see the auto-configured version of everything you just did by hand here. `@ConfigurationProperties` itself is not used in this course; PizzaStore sticks to `@Value`.
 
 ---
 
-**Congratulations!** 🎉 You now know how to create flexible, configurable, environment-aware Spring applications with proper logging. These skills are essential for professional Java development!
-
+**Congratulations!** 🎉 You now know how to create flexible, configurable, environment-aware Spring applications with proper logging. Continue to [Lesson 4: Getting Started with Spring Boot](../lesson-04-spring-boot-intro/README.md) to see Spring Boot automate this configuration.

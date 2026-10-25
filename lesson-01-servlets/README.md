@@ -1,22 +1,38 @@
 # Lesson 1: Introduction to Java Servlets
 
+**The foundation underneath every Spring web application — and why we don't write servlets by hand anymore**
+
+---
+
+## 📋 Learning Objectives
+
+By the end of this lesson, you will be able to:
+
+- Explain what Java Servlets are and their role in Java web development
+- Describe how a servlet container dispatches an HTTP request to a servlet
+- Use `HttpServletRequest` and `HttpServletResponse` to read a request and write a response
+- Identify the limitations and complexities of servlet-based development
+- Explain why frameworks like Spring and Spring Boot were created
+
+---
+
 ## 📚 Table of Contents
 
-- [📘 Overview](#-overview)
-- [🎯 Learning Objectives](#-learning-objectives)
-- [🌐 Jakarta EE Platform](#-jakarta-ee-platform)
-- [📚 What are Java Servlets?](#-what-are-java-servlets)
-- [🔄 The Servlet Container](#-the-servlet-container)
-- [📖 HttpServlet in Detail](#-httpservlet-in-detail)
-- [📥 HttpServletRequest](#-httpservletrequest)
-- [📤 HttpServletResponse](#-httpservletresponse)
-- [💻 Complete Servlet Examples](#-complete-servlet-examples)
-- [❌ Limitations of Servlets](#-limitations-of-servlets)
-- [🚀 The Path to Spring Boot](#-the-path-to-spring-boot)
-- [📊 Comparison: Servlet vs Spring Boot](#-comparison-servlet-vs-spring-boot)
-- [🔍 Real-World Example: REST Endpoint](#-real-world-example-rest-endpoint)
-- [🎓 Key Takeaways](#-key-takeaways)
-- [📖 Additional Resources](#-additional-resources)
+1. [Overview](#-overview)
+2. [Jakarta EE Platform](#-jakarta-ee-platform)
+3. [What are Java Servlets?](#-what-are-java-servlets)
+4. [The Servlet Container](#-the-servlet-container)
+5. [HttpServlet in Detail](#-httpservlet-in-detail)
+6. [HttpServletRequest](#-httpservletrequest)
+7. [HttpServletResponse](#-httpservletresponse)
+8. [Complete Servlet Examples](#-complete-servlet-examples)
+9. [Limitations of Servlets](#-limitations-of-servlets)
+10. [The Path to Spring Boot](#-the-path-to-spring-boot)
+11. [Comparison: Servlet vs Spring Boot](#-comparison-servlet-vs-spring-boot)
+12. [Real-World Example: REST Endpoint](#-real-world-example-rest-endpoint)
+13. [Best Practices](#-best-practices)
+14. [Summary](#-summary)
+15. [Additional Resources](#-additional-resources)
 
 ---
 
@@ -26,13 +42,7 @@ This lesson provides a **concise introduction to Java Servlets** to understand t
 
 > **Note**: This lesson is intentionally brief. The goal is to provide context for why Spring Boot exists, not to become servlet experts.
 
-## 🎯 Learning Objectives
-
-By the end of this lesson, you will:
-- Understand what Java Servlets are and their role in web development
-- Recognize the problems that servlets solve
-- Identify the limitations and complexities of servlet-based development
-- Appreciate why frameworks like Spring Boot were created
+---
 
 ## 🌐 Jakarta EE Platform
 
@@ -63,6 +73,7 @@ Before diving into servlets, let's understand the platform they're part of.
 **Jakarta EE is a set of specifications and APIs** that form the foundation for building complex and distributed software applications, such as web applications, middleware, and services for large enterprises. These specifications form the backbone of Jakarta EE and provide developers with a consistent and standardized way to implement various aspects of enterprise applications.
 
 📚 **Resources:**
+
 - [Jakarta EE Specifications](https://jakarta.ee/specifications/)
 - [Jakarta EE Compatible Products](https://jakarta.ee/compatibility/)
 
@@ -74,7 +85,7 @@ Before diving into servlets, let's understand the platform they're part of.
 
 A **Java Servlet** is a Java class that extends the capabilities of servers hosting applications accessed via a request-response programming model. Servlets are the foundation of Java web applications and are part of the **Jakarta EE Servlet specification**.
 
-**We focus on**: [Jakarta Servlet 6.0 API](https://jakarta.ee/specifications/servlet/6.0/jakarta-servlet-spec-6.0)
+**We focus on**: [Jakarta Servlet 6.1](https://jakarta.ee/specifications/servlet/6.1/jakarta-servlet-spec-6.1.html), the version in Jakarta EE 11 — the Servlet baseline of Spring Framework 7 and Spring Boot 4, which this course uses.
 
 > **Servlets will generate an HTTP response based on an HTTP request to send back to the client.**
 
@@ -162,15 +173,13 @@ Every request to a servlet goes through these steps:
 
 The `HttpServlet` class is the foundation for creating HTTP servlets. 
 
-📚 **JavaDoc**: [HttpServlet Documentation](https://jakarta.ee/specifications/servlet/6.0/apidocs/jakarta.servlet/jakarta/servlet/http/httpservlet)
+📚 **JavaDoc**: [HttpServlet Documentation](https://jakarta.ee/specifications/servlet/6.1/apidocs/jakarta.servlet/jakarta/servlet/http/HttpServlet.html)
 
-**From the official documentation:**
-
-> Provides an abstract class to be subclassed to create an HTTP servlet suitable for a Web site. A subclass of HttpServlet must override at least one method, usually one of these:
+**From the official documentation:** `HttpServlet` is an abstract class to be subclassed to create an HTTP servlet suitable for a website. A subclass must override at least one method — usually one of the `doXxx()` service methods below, or the lifecycle methods `init()`/`destroy()`.
 
 ### Service Methods
 
-Each service method handles a specific HTTP method:
+The container calls `service()` for every request, which dispatches to the `doXxx()` method matching the HTTP verb:
 
 | Method | HTTP Verb | Purpose | Example Use Case |
 |--------|-----------|---------|------------------|
@@ -178,13 +187,22 @@ Each service method handles a specific HTTP method:
 | **`doPost()`** | POST | Submit data | Submit form, create resource |
 | **`doPut()`** | PUT | Update data | Update existing resource |
 | **`doDelete()`** | DELETE | Delete data | Remove resource |
-| **`init()`** | - | Initialize servlet | Setup connections, load config |
-| **`destroy()`** | - | Cleanup | Close connections, release resources |
-| **`getServletInfo()`** | - | Provide info | Return servlet description |
+
+### Lifecycle Methods
+
+Not tied to an HTTP verb — the container calls these to manage the servlet itself:
+
+| Method | When | Purpose |
+|--------|------|---------|
+| **`init()`** | Once, before the first request | Set up connections, load configuration |
+| **`destroy()`** | Once, when the servlet is taken out of service | Close connections, release resources |
+| **`getServletInfo()`** | On request | Return a description of the servlet |
+
+The container creates **one instance** of each servlet and calls its service methods from many threads at once, so a servlet must not keep per-request state in fields.
 
 ### Method Signatures
 
-All service methods have the same signature:
+All `doXxx()` service methods have the same signature:
 
 ```java
 protected void doGet(HttpServletRequest req, HttpServletResponse resp) 
@@ -199,6 +217,7 @@ protected void doPost(HttpServletRequest req, HttpServletResponse resp)
 ```
 
 **Two parameters:**
+
 1. **`HttpServletRequest req`** - The incoming request
 2. **`HttpServletResponse resp`** - The response to send back
 
@@ -211,6 +230,7 @@ protected void doPost(HttpServletRequest req, HttpServletResponse resp)
 The **servlet container creates an `HttpServletRequest` object** and passes it as a parameter to the servlet's service methods (`doGet()`, `doPost()`, etc.).
 
 The `req` parameter represents the original HTTP request and contains all request information, such as:
+
 - The URL used for the request
 - Query parameters
 - Request headers
@@ -266,6 +286,7 @@ String password = req.getParameter("password");
 ### What is HttpServletResponse?
 
 The **`HttpServletResponse` represents the HTTP response** that the server will send back to the client. The `HttpServletResponse` consists of:
+
 - Response body (HTML, JSON, XML, etc.)
 - Cookies
 - Response headers
@@ -331,7 +352,7 @@ protected void doGet(HttpServletRequest req, HttpServletResponse resp)
 | `getWriter()` | Get writer for text | `resp.getWriter().println("Hello")` |
 | `getOutputStream()` | Get stream for binary | `resp.getOutputStream().write(bytes)` |
 | `sendRedirect(String)` | Redirect to URL | `resp.sendRedirect("/home")` |
-| `sendError(int)` | Send error page | `resp.sendError(404, "Not Found")` |
+| `sendError(int, String)` | Send error page | `resp.sendError(404, "Not Found")` |
 
 ---
 
@@ -423,11 +444,14 @@ public class HelloServlet extends HttpServlet {
 
 > **Note**: Before Jakarta EE 9 (2020), this same API lived under the `javax.servlet.*` package instead of `jakarta.servlet.*`. If you find older Servlet 3.0 tutorials online, that's why their imports look different — the API itself is otherwise the same.
 
+---
+
 ## ❌ Limitations of Servlets
 
 Despite their advantages, servlets have significant drawbacks:
 
 ### 1. **Boilerplate Code**
+
 ```java
 // Too much code for simple tasks
 response.setContentType("text/html");
@@ -438,6 +462,7 @@ out.println("<body>");
 ```
 
 ### 2. **HTML Mixed with Java**
+
 - Hard to maintain
 - Difficult for designers to work with
 - No clear separation of concerns
@@ -449,6 +474,7 @@ out.println("</table>");
 ```
 
 ### 3. **Manual Request Parameter Handling**
+
 ```java
 String name = request.getParameter("name");
 String ageStr = request.getParameter("age");
@@ -456,50 +482,62 @@ int age = Integer.parseInt(ageStr); // Manual conversion, no validation
 ```
 
 ### 4. **No Built-in Dependency Injection**
+
 - Manual object creation
 - Tight coupling between components
 - Hard to test
 
 ### 5. **Configuration Complexity**
+
 - Verbose XML configuration (pre-Servlet 3.0)
 - Manual URL mapping
 - No convention-over-configuration
 
 ### 6. **Limited Abstraction**
+
 - Low-level HTTP handling
 - No MVC pattern built-in
 - No automatic JSON/XML conversion
 
 ### 7. **Testing Challenges**
+
 - Requires servlet container to test
 - Hard to mock HttpServletRequest/Response
 - Integration tests are slow
+
+---
 
 ## 🚀 The Path to Spring Boot
 
 The limitations of servlets led to the creation of:
 
 ### 1. **JSP (JavaServer Pages)**
+
 - Separated HTML from Java (somewhat)
 - Still messy for complex logic
 
 ### 2. **MVC Frameworks**
+
 - Struts, JSF, Spring MVC
 - Better separation of concerns
 - More structure and conventions
 
 ### 3. **Spring Framework**
+
 - Dependency Injection
 - Aspect-Oriented Programming
 - Transaction management
 - But still complex to configure
 
 ### 4. **Spring Boot** 🎉
+
 - **Convention over configuration**
 - **Auto-configuration** (no XML!)
 - **Embedded servers** (no deployment needed)
 - **Production-ready features** (metrics, health checks)
 - **Opinionated defaults** (but customizable)
+
+---
 
 ## 📊 Comparison: Servlet vs Spring Boot
 
@@ -514,6 +552,8 @@ The limitations of servlets led to the creation of:
 | **Deployment** | WAR to external server | Embedded server, JAR |
 | **URL Mapping** | Manual configuration | Annotation-based |
 | **Learning Curve** | Moderate | Easier (but more to learn) |
+
+---
 
 ## 🔍 Real-World Example: REST Endpoint
 
@@ -531,35 +571,37 @@ public class UserServlet extends HttpServlet {
         resp.setContentType("application/json");
         resp.setCharacterEncoding("UTF-8");
         
-        // Manual database connection
-        Connection conn = null;
-        try {
-            conn = DriverManager.getConnection(DB_URL, USER, PASS);
-            Statement stmt = conn.createStatement();
-            ResultSet rs = stmt.executeQuery("SELECT * FROM users");
+        // Manual database connection (try-with-resources closes all three)
+        try (Connection conn = DriverManager.getConnection(DB_URL, USER, PASS);
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery("SELECT * FROM users")) {
             
             // Manual JSON building
             StringBuilder json = new StringBuilder("[");
+            boolean first = true;
             while (rs.next()) {
+                if (!first) {
+                    json.append(",");   // forget this and the JSON is invalid
+                }
+                first = false;
                 json.append("{");
                 json.append("\"id\":").append(rs.getInt("id")).append(",");
-                json.append("\"name\":\"").append(rs.getString("name")).append("\"");
-                json.append("},");
+                json.append("\"name\":\"").append(rs.getString("name")).append("\"");  // a quote in a name breaks it
+                json.append("}");
             }
             json.append("]");
             
-            PrintWriter out = resp.getWriter();
-            out.print(json.toString());
+            resp.getWriter().print(json);
             
         } catch (SQLException e) {
             resp.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
             resp.getWriter().print("{\"error\":\"" + e.getMessage() + "\"}");
-        } finally {
-            if (conn != null) conn.close();
         }
     }
 }
 ```
+
+Every detail — connection handling, commas between objects, escaping quotes — is your problem.
 
 ### With Spring Boot
 
@@ -568,8 +610,11 @@ public class UserServlet extends HttpServlet {
 @RequestMapping("/api/users")
 public class UserController {
     
-    @Autowired
-    private UserRepository userRepository;
+    private final UserRepository userRepository;
+    
+    public UserController(UserRepository userRepository) {  // injected by Spring (Lesson 2)
+        this.userRepository = userRepository;
+    }
     
     @GetMapping
     public List<User> getAllUsers() {
@@ -579,25 +624,54 @@ public class UserController {
 ```
 
 **Notice the difference?**
+
 - ✅ No manual JSON handling
 - ✅ No manual database connection
 - ✅ No boilerplate code
 - ✅ Clean, readable, maintainable
 
-## 🎓 Key Takeaways
+---
 
-1. **Servlets are the foundation** of Java web applications
-2. **Servlets solved important problems** (performance, portability, scalability)
-3. **But servlets have limitations** (boilerplate, complexity, testing)
-4. **Frameworks evolved** to address these limitations
-5. **Spring Boot represents the culmination** of decades of Java web development evolution
-6. **Understanding servlets helps appreciate** what Spring Boot does for you
+## 💡 Best Practices
+
+You won't write raw servlets in this course, but you will meet them under the hood:
+
+1. **Let the framework own the servlet** — in Spring Boot, a single `DispatcherServlet` (Lesson 5) receives every request; you write controllers, not `HttpServlet` subclasses.
+2. **Use `jakarta.*`, not `javax.*`** — Spring Boot 4 requires the Jakarta namespace; a `javax.servlet` import in a tutorial means it predates Jakarta EE 9.
+3. **Keep servlets (and later, controllers) stateless** — one instance serves all requests concurrently, so no per-request data in fields.
+4. **Always close JDBC resources** — use try-with-resources; Spring Data (Lesson 6) does this for you.
+5. **Never build JSON by string concatenation** — use a serializer such as Jackson (Lesson 5).
+
+---
+
+## 🎓 Summary
+
+### What We Learned
+
+1. **Jakarta EE** is a set of specifications; the **Servlet** specification defines how Java code handles HTTP
+2. A **servlet container** (Tomcat, Jetty) maps a URL to a servlet and calls its `doXxx()` method
+3. **`HttpServletRequest`** carries everything about the request; **`HttpServletResponse`** is filled in by your code
+4. Servlets are configured with **`web.xml`** or, since Servlet 3.0, with **`@WebServlet`**
+
+### Key Takeaways
+
+1. **Servlets are the foundation** of Java web applications — Spring MVC itself runs on one
+2. **Servlets solved important problems**: a standard, platform-independent API with a container-managed lifecycle
+3. **But servlets have limitations**: boilerplate, manual parameter handling and JSON, no dependency injection, hard to test
+4. **Frameworks evolved** to address these limitations, ending with **Spring Boot**
+5. **Understanding servlets helps you appreciate** what Spring Boot does for you
+
+### What's Next?
+
+The first missing piece on the list above is **dependency injection**. Lesson 2 introduces the Spring Framework's IoC container, which creates and wires your objects for you.
+
+---
 
 ## 📖 Additional Resources
 
 - [Jakarta Servlet Specification](https://jakarta.ee/specifications/servlet/)
-- [Jakarta Servlet 6.0 API JavaDoc](https://jakarta.ee/specifications/servlet/6.0/apidocs/)
+- [Jakarta Servlet 6.1 API JavaDoc](https://jakarta.ee/specifications/servlet/6.1/apidocs/)
 
 ---
 
-**Remember**: You don't need to be a servlet expert. The goal is to understand the "why" behind Spring Boot, not the "how" of servlets. Let's move forward to Spring! 🚀
+**Congratulations!** 🎉 You don't need to be a servlet expert — the goal was the "why" behind Spring Boot, not the "how" of servlets. Continue to [Lesson 2: Spring Framework - Dependency Injection & IoC](../lesson-02-spring-di-ioc/README.md) to meet the container that will manage your objects. 🚀

@@ -76,7 +76,7 @@
             <scope>test</scope>
         </dependency>
 
-        <!-- Spring Boot Starter Test: web layer testing (JUnit 5, Spring Test, AssertJ) -->
+        <!-- Spring Boot Starter Test: web layer testing (JUnit Jupiter 6, Spring Test, AssertJ) -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-webmvc-test</artifactId>

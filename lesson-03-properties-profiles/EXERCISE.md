@@ -20,18 +20,25 @@ This exercise continues directly on the **SchoolAdministration** project from th
 
 > **Prerequisite**: finish the [Lesson 2 exercise](../lesson-02-spring-di-ioc/EXERCISE.md) first (or start from the `springcontextaware` branch of the [reference solution](https://github.com/vives-backendprogramming/SchoolAdministration)). This exercise assumes `DummyDataSource`, `SchoolDatabaseStub`, and all services/DAOs are already Spring beans wired through `ApplicationConfiguration`.
 
+---
+
 ## 🎯 Learning Objectives
 
 By the end of this exercise, you will have:
+
 - Externalized configuration values with `@Value` and an `application.properties` file
-- Registered a non-default properties file with `@PropertySource`, including the `PropertySourcesPlaceholderConfigurer` bean plain Spring requires
+- Registered a properties file with `@PropertySource`, plus a `PropertySourcesPlaceholderConfigurer` bean so a missing property fails at startup instead of silently
 - Replaced `System.out.println` with proper **SLF4J + Logback** logging
 - Introduced an interface to allow `@Profile` to swap two implementations of the same contract at runtime
 - Seen, first-hand, the exact error Spring throws when two beans of the same type are ambiguous — and how `@Profile` resolves it
 
+---
+
 ## 🚀 Getting Started
 
 Continue in the same project you built in Lesson 2. `DummyDataSource` currently just prints a message and returns `null` from `getConnection()` — you're about to make it read real (fictional) credentials from a properties file.
+
+---
 
 ## 🔧 Part 1: Externalizing the Datasource Credentials
 
@@ -46,7 +53,7 @@ Continue in the same project you built in Lesson 2. `DummyDataSource` currently 
 
    These don't point to a real database — `DummyDataSource` only *pretends* to connect. `getConnection()` should still return `null`, exactly as before.
 
-3. Register the file with Spring by adding `@PropertySource` to `ApplicationConfiguration` — **and don't skip the `PropertySourcesPlaceholderConfigurer` bean**. Without it, `@Value("${...}")` placeholders silently fail to resolve in plain Spring (see the main [Lesson 3 README](README.md#-propertysource) for why):
+3. Register the file with Spring by adding `@PropertySource` to `ApplicationConfiguration` — **and add the `PropertySourcesPlaceholderConfigurer` bean**. Without it, a typo in a property name doesn't fail: the field silently receives the literal text `${datasource.usernme}` (see the main [Lesson 3 README](README.md#-propertysource) for why):
 
    ```java
    @Configuration
@@ -75,6 +82,8 @@ Continue in the same project you built in Lesson 2. `DummyDataSource` currently 
    @Value("${datasource.url}")
    private String url;
    ```
+
+---
 
 ## 📝 Part 2: Logging the Injected Properties
 
@@ -110,7 +119,10 @@ The main lesson teaches **SLF4J + Logback**, not `java.util.logging` — stay co
 
    > **Note on the `password` log line**: logging a password is normally forbidden (see the main lesson's Logging Best Practices). It's included here at `DEBUG` level purely so you can *see* that property injection worked end to end on a fictional, non-existent database — treat it as a one-off teaching device, not a pattern to reuse.
 
-3. Run `SchoolAdminApp.main()` and confirm the three property values appear in the console log output.
+3. Run `SchoolAdminApp.main()` and confirm the three property values appear in the console log output. (Without a `logback.xml`, Logback logs at `DEBUG`, so the password line shows up — together with a lot of Spring's own debug output.)
+4. Try the safety net: temporarily rename `datasource.url` in `application.properties` and run again — the context now fails to start with `Could not resolve placeholder 'datasource.url'`. Comment out the `PropertySourcesPlaceholderConfigurer` bean and run once more: the app starts and logs `url=${datasource.url}`. Restore both.
+
+---
 
 ## 🌍 Part 3: Environment-Aware Email Sending with Profiles
 
@@ -188,6 +200,10 @@ Right now, `DummyEmailService` always "sends" (prints) emails, in every environm
 
 9. Change the VM option to `-Dspring.profiles.active=prod` and run again — only `"Email is sent"` should be logged; the message content should **not** appear, since `ProdEmailService` never logs it.
 
+10. Remove the VM option entirely and run once more. No profile is active, so *neither* bean exists and Spring fails with `No qualifying bean of type 'be.vives.ti.service.EmailService' available` — a profile-specific bean needs a profile.
+
+---
+
 ## ✅ Verification Checklist
 
 - [ ] `application.properties` exists under `src/main/resources` (marked as Resources Root) with the three `datasource.*` properties
@@ -197,9 +213,13 @@ Right now, `DummyEmailService` always "sends" (prints) emails, in every environm
 - [ ] Both `DummyEmailService` (`@Profile("dev")`) and `ProdEmailService` (`@Profile("prod")`) exist and compile
 - [ ] Running with `dev` active logs the email content; running with `prod` active does not
 
+---
+
 ## 📤 Submitting Your Work
 
-Commit and push your changes to your own GitHub repository.
+Commit and push your changes to your own Classroom repository.
+
+---
 
 ## 🔍 Reference Solution
 
