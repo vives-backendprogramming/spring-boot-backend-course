@@ -22,6 +22,9 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
 
     Optional<Order> findByOrderNumber(String orderNumber);
 
+    // for OrderSecurity: does this order belong to the customer with this e-mail address?
+    boolean existsByIdAndCustomerEmail(Long id, String email);
+
     // JOIN FETCH to avoid N+1 problem
     @Query("SELECT o FROM Order o JOIN FETCH o.orderLines ol JOIN FETCH ol.pizza WHERE o.id = :id")
     Optional<Order> findByIdWithOrderLines(@Param("id") Long id);

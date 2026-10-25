@@ -5,9 +5,6 @@ import be.vives.pizzastore.dto.request.UpdateCustomerRequest;
 import be.vives.pizzastore.dto.response.CustomerResponse;
 import be.vives.pizzastore.dto.response.OrderResponse;
 import be.vives.pizzastore.dto.response.PizzaResponse;
-import be.vives.pizzastore.security.CurrentUser;
-import be.vives.pizzastore.security.IsAdmin;
-import be.vives.pizzastore.security.IsAdminOrOwner;
 import be.vives.pizzastore.service.CustomerService;
 import be.vives.pizzastore.service.OrderService;
 import jakarta.validation.Valid;
@@ -35,7 +32,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/customers")
-@Tag(name = "Customer Management", description = "APIs for managing customers and their favorite pizzas")
+@Tag(name = "Customer Management", description = "APIs for managing all customers and their favorite pizzas. Requires ADMIN role; a customer uses My Account (/api/customers/me)")
 @SecurityRequirement(name = "bearerAuth")
 public class CustomerController {
 
@@ -50,7 +47,6 @@ public class CustomerController {
     }
 
     @GetMapping
-    @IsAdmin
     @Operation(
             summary = "Get all customers",
             description = """
@@ -78,30 +74,10 @@ public class CustomerController {
         return ResponseEntity.ok(customers);
     }
 
-    // the account of the logged-in user: how a customer finds out their own id after logging in
-    @GetMapping("/me")
-    @Operation(
-            summary = "Get the logged-in customer",
-            description = "Retrieves the account that belongs to the JWT token, including its id. Requires CUSTOMER or ADMIN role."
-    )
-    @ApiResponses(value = {
-            @ApiResponse(
-                    responseCode = "200",
-                    description = "The logged-in customer",
-                    content = @Content(schema = @Schema(implementation = CustomerResponse.class))
-            ),
-            @ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid")
-    })
-    public ResponseEntity<CustomerResponse> getCurrentCustomer(@Parameter(hidden = true) @CurrentUser String email) {
-        log.debug("GET /api/customers/me - {}", email);
-        return ResponseEntity.ok(customerService.findByEmail(email));
-    }
-
     @GetMapping("/{id}")
-    @IsAdminOrOwner
     @Operation(
             summary = "Get customer by ID",
-            description = "Retrieves a single customer by their unique identifier. Requires ADMIN role, or CUSTOMER role for your own account."
+            description = "Retrieves a single customer by their unique identifier. Requires ADMIN role."
     )
     @ApiResponses(value = {
             @ApiResponse(
@@ -110,7 +86,7 @@ public class CustomerController {
                     content = @Content(schema = @Schema(implementation = CustomerResponse.class))
             ),
             @ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid"),
-            @ApiResponse(responseCode = "403", description = "Forbidden - not an admin and not your own account"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - requires ADMIN role"),
             @ApiResponse(responseCode = "404", description = "Customer not found")
     })
     public ResponseEntity<CustomerResponse> getCustomer(
@@ -121,10 +97,9 @@ public class CustomerController {
     }
 
     @GetMapping("/{id}/orders")
-    @IsAdminOrOwner
     @Operation(
             summary = "Get customer's orders",
-            description = "Retrieves all orders for a specific customer, sorted by order date (newest first). Requires ADMIN role, or CUSTOMER role for your own account."
+            description = "Retrieves all orders for a specific customer, sorted by order date (newest first). Requires ADMIN role."
     )
     @ApiResponses(value = {
             @ApiResponse(
@@ -133,7 +108,7 @@ public class CustomerController {
                     content = @Content(schema = @Schema(implementation = Page.class))
             ),
             @ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid"),
-            @ApiResponse(responseCode = "403", description = "Forbidden - not an admin and not your own account"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - requires ADMIN role"),
             @ApiResponse(responseCode = "404", description = "Customer not found")
     })
     public ResponseEntity<Page<OrderResponse>> getCustomerOrders(
@@ -148,10 +123,9 @@ public class CustomerController {
     }
 
     @GetMapping("/{id}/favorites")
-    @IsAdminOrOwner
     @Operation(
             summary = "Get customer's favorite pizzas",
-            description = "Retrieves all favorite pizzas for a specific customer. Requires ADMIN role, or CUSTOMER role for your own account."
+            description = "Retrieves all favorite pizzas for a specific customer. Requires ADMIN role."
     )
     @ApiResponses(value = {
             @ApiResponse(
@@ -159,7 +133,7 @@ public class CustomerController {
                     description = "Successfully retrieved favorite pizzas"
             ),
             @ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid"),
-            @ApiResponse(responseCode = "403", description = "Forbidden - not an admin and not your own account"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - requires ADMIN role"),
             @ApiResponse(responseCode = "404", description = "Customer not found")
     })
     public ResponseEntity<List<PizzaResponse>> getFavoritePizzas(
@@ -169,9 +143,7 @@ public class CustomerController {
         return ResponseEntity.ok(favorites);
     }
 
-    // customers create their own account with POST /api/auth/register
     @PostMapping
-    @IsAdmin
     @Operation(
             summary = "Create a new customer",
             description = "Creates a new customer account (the password is stored as a BCrypt hash). Requires ADMIN role; customers register themselves via /api/auth/register."
@@ -202,10 +174,9 @@ public class CustomerController {
     }
 
     @PutMapping("/{id}")
-    @IsAdminOrOwner
     @Operation(
             summary = "Update a customer",
-            description = "Updates an existing customer's information. Requires ADMIN role, or CUSTOMER role for your own account."
+            description = "Updates an existing customer's information. Requires ADMIN role."
     )
     @ApiResponses(value = {
             @ApiResponse(
@@ -215,7 +186,7 @@ public class CustomerController {
             ),
             @ApiResponse(responseCode = "400", description = "Invalid request data"),
             @ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid"),
-            @ApiResponse(responseCode = "403", description = "Forbidden - not an admin and not your own account"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - requires ADMIN role"),
             @ApiResponse(responseCode = "404", description = "Customer not found")
     })
     public ResponseEntity<CustomerResponse> updateCustomer(
@@ -229,15 +200,14 @@ public class CustomerController {
     }
 
     @DeleteMapping("/{id}")
-    @IsAdminOrOwner
     @Operation(
             summary = "Delete a customer",
-            description = "Deletes a customer by their ID. Requires ADMIN role, or CUSTOMER role for your own account."
+            description = "Deletes a customer by their ID. Requires ADMIN role."
     )
     @ApiResponses(value = {
             @ApiResponse(responseCode = "204", description = "Customer deleted successfully"),
             @ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid"),
-            @ApiResponse(responseCode = "403", description = "Forbidden - not an admin and not your own account"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - requires ADMIN role"),
             @ApiResponse(responseCode = "404", description = "Customer not found")
     })
     public ResponseEntity<Void> deleteCustomer(
@@ -248,47 +218,45 @@ public class CustomerController {
         return ResponseEntity.noContent().build();
     }
 
-    @PostMapping("/{id}/favorites/{pizzaId}")
-    @IsAdminOrOwner
+    @PostMapping("/{customerId}/favorites/{pizzaId}")
     @Operation(
             summary = "Add pizza to favorites",
-            description = "Adds a pizza to a customer's favorites list. Requires ADMIN role, or CUSTOMER role for your own account."
+            description = "Adds a pizza to a customer's favorites list. Requires ADMIN role."
     )
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Pizza added to favorites successfully"),
             @ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid"),
-            @ApiResponse(responseCode = "403", description = "Forbidden - not an admin and not your own account"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - requires ADMIN role"),
             @ApiResponse(responseCode = "404", description = "Customer or pizza not found")
     })
     public ResponseEntity<Void> addFavoritePizza(
-            @Parameter(description = "Customer ID", required = true) @PathVariable Long id,
+            @Parameter(description = "Customer ID", required = true) @PathVariable Long customerId,
             @Parameter(description = "Pizza ID", required = true) @PathVariable Long pizzaId) {
 
-        log.debug("POST /api/customers/{}/favorites/{}", id, pizzaId);
+        log.debug("POST /api/customers/{}/favorites/{}", customerId, pizzaId);
 
-        customerService.addFavoritePizza(id, pizzaId);
+        customerService.addFavoritePizza(customerId, pizzaId);
         return ResponseEntity.ok().build();
     }
 
-    @DeleteMapping("/{id}/favorites/{pizzaId}")
-    @IsAdminOrOwner
+    @DeleteMapping("/{customerId}/favorites/{pizzaId}")
     @Operation(
             summary = "Remove pizza from favorites",
-            description = "Removes a pizza from a customer's favorites list. Requires ADMIN role, or CUSTOMER role for your own account."
+            description = "Removes a pizza from a customer's favorites list. Requires ADMIN role."
     )
     @ApiResponses(value = {
             @ApiResponse(responseCode = "204", description = "Pizza removed from favorites successfully"),
             @ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid"),
-            @ApiResponse(responseCode = "403", description = "Forbidden - not an admin and not your own account"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - requires ADMIN role"),
             @ApiResponse(responseCode = "404", description = "Customer or pizza not found")
     })
     public ResponseEntity<Void> removeFavoritePizza(
-            @Parameter(description = "Customer ID", required = true) @PathVariable Long id,
+            @Parameter(description = "Customer ID", required = true) @PathVariable Long customerId,
             @Parameter(description = "Pizza ID", required = true) @PathVariable Long pizzaId) {
 
-        log.debug("DELETE /api/customers/{}/favorites/{}", id, pizzaId);
+        log.debug("DELETE /api/customers/{}/favorites/{}", customerId, pizzaId);
 
-        customerService.removeFavoritePizza(id, pizzaId);
+        customerService.removeFavoritePizza(customerId, pizzaId);
         return ResponseEntity.noContent().build();
     }
 }

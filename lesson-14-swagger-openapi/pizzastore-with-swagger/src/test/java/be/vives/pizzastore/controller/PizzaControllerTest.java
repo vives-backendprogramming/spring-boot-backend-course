@@ -349,12 +349,16 @@ class PizzaControllerTest {
     @Test
     @WithAnonymousUser
     void createPizza_Anonymous_ReturnsUnauthorized() {
-        // no user: 401 Unauthorized (the HttpStatusEntryPoint of SecurityConfig), not 403
+        // no user: 401 Unauthorized (the entry point of SecurityConfig), not 403, as a ProblemDetail
         client.post().uri("/api/pizzas")
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(newPizzaRequest())
                 .exchange()
-                .expectStatus().isUnauthorized();
+                .expectStatus().isUnauthorized()
+                .expectHeader().contentType(MediaType.APPLICATION_PROBLEM_JSON)
+                .expectBody()
+                .jsonPath("$.status").isEqualTo(401)
+                .jsonPath("$.detail").isEqualTo("Authentication required. Send a valid JWT token in the Authorization header.");
 
         verify(pizzaService, never()).create(any());
     }
@@ -362,12 +366,16 @@ class PizzaControllerTest {
     @Test
     @WithMockUser(roles = "CUSTOMER")
     void createPizza_WithCustomerRole_ReturnsForbidden() {
-        // customers cannot create pizzas, only admins can
+        // customers cannot create pizzas, only admins can: a URL rule, answered as a ProblemDetail too
         client.post().uri("/api/pizzas")
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(newPizzaRequest())
                 .exchange()
-                .expectStatus().isForbidden();
+                .expectStatus().isForbidden()
+                .expectHeader().contentType(MediaType.APPLICATION_PROBLEM_JSON)
+                .expectBody()
+                .jsonPath("$.status").isEqualTo(403)
+                .jsonPath("$.detail").isEqualTo("Access denied. You do not have permission to access this resource.");
 
         verify(pizzaService, never()).create(any());
     }

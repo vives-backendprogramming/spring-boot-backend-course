@@ -8,12 +8,10 @@ import be.vives.pizzastore.dto.response.OrderResponse;
 import be.vives.pizzastore.dto.response.PizzaResponse;
 import be.vives.pizzastore.exception.GlobalExceptionHandler;
 import be.vives.pizzastore.exception.ResourceNotFoundException;
-import be.vives.pizzastore.security.CustomerSecurity;
 import be.vives.pizzastore.security.JwtUtil;
 import be.vives.pizzastore.security.SecurityConfig;
 import be.vives.pizzastore.service.CustomerService;
 import be.vives.pizzastore.service.OrderService;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureRestTestClient;
@@ -24,7 +22,6 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.userdetails.UserDetailsService;
-import org.springframework.security.test.context.support.WithAnonymousUser;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.client.RestTestClient;
@@ -42,8 +39,8 @@ import static org.mockito.Mockito.when;
 
 /**
  * Web-layer slice for CustomerController with RestTestClient and the real SecurityConfig.
- * /api/customers/** is open to CUSTOMER and ADMIN; the method-level rules (@IsAdmin, @IsAdminOrOwner) then decide
- * per endpoint. In these tests the logged-in CUSTOMER owns customer 1 and nobody else (see {@link #ownsCustomer1()}).
+ * Every /api/customers endpoint outside /me is for ADMIN, by a URL rule: a CUSTOMER gets 403 even for their own id
+ * (their account is at /api/customers/me, see CurrentCustomerControllerTest).
  */
 @WebMvcTest(controllers = CustomerController.class)
 @AutoConfigureRestTestClient
@@ -64,15 +61,6 @@ class CustomerControllerTest {
 
     @MockitoBean
     private JwtUtil jwtUtil;
-
-    // the bean that @IsAdminOrOwner calls by name: @customerSecurity.isOwner(#id, authentication)
-    @MockitoBean(name = "customerSecurity")
-    private CustomerSecurity customerSecurity;
-
-    @BeforeEach
-    void ownsCustomer1() {
-        when(customerSecurity.isOwner(eq(1L), any())).thenReturn(true);
-    }
 
     private static CustomerResponse john() {
         return new CustomerResponse(1L, "John Doe", "john@example.com", "1234567890", "123 Main St", "CUSTOMER");
@@ -97,7 +85,7 @@ class CustomerControllerTest {
     }
 
     @Test
-    @WithMockUser(roles = "CUSTOMER")
+    @WithMockUser(roles = "ADMIN")
     void getCustomer_whenExists_shouldReturnCustomer() {
         when(customerService.findById(1L)).thenReturn(john());
 
@@ -117,7 +105,6 @@ class CustomerControllerTest {
     @Test
     @WithMockUser(roles = "ADMIN")
     void getCustomer_whenNotExists_shouldReturnProblemDetail() {
-        // an admin: a customer asking for an id that is not theirs gets 403 before the service is even called
         when(customerService.findById(999L)).thenThrow(new ResourceNotFoundException("Customer", 999L));
 
         client.get().uri("/api/customers/{id}", 999)
@@ -159,7 +146,7 @@ class CustomerControllerTest {
     }
 
     @Test
-    @WithMockUser(roles = "CUSTOMER")
+    @WithMockUser(roles = "ADMIN")
     void getCustomer_whenUnexpectedErrorOccurs_shouldReturnProblemDetail() {
         when(customerService.findById(1L)).thenThrow(new IllegalStateException("boom"));
 
@@ -176,7 +163,7 @@ class CustomerControllerTest {
     }
 
     @Test
-    @WithMockUser(roles = "CUSTOMER")
+    @WithMockUser(roles = "ADMIN")
     void getCustomerOrders_shouldReturnPageOfOrders() {
         OrderResponse order1 = new OrderResponse(1L, "ORD-2024-000001", 1L, "John Doe",
                 List.of(), BigDecimal.valueOf(25.50), OrderStatus.PENDING, LocalDateTime.now());
@@ -197,7 +184,7 @@ class CustomerControllerTest {
     }
 
     @Test
-    @WithMockUser(roles = "CUSTOMER")
+    @WithMockUser(roles = "ADMIN")
     void getFavoritePizzas_shouldReturnListOfPizzas() {
         PizzaResponse pizza1 = new PizzaResponse(1L, "Margherita", BigDecimal.valueOf(8.50), "Classic pizza", null, true, null);
         PizzaResponse pizza2 = new PizzaResponse(2L, "Pepperoni", BigDecimal.valueOf(10.00), "Spicy pizza", null, true, null);
@@ -272,7 +259,7 @@ class CustomerControllerTest {
     }
 
     @Test
-    @WithMockUser(roles = "CUSTOMER")
+    @WithMockUser(roles = "ADMIN")
     void addFavoritePizza_shouldReturnOk() {
         doNothing().when(customerService).addFavoritePizza(1L, 2L);
 
@@ -284,7 +271,7 @@ class CustomerControllerTest {
     }
 
     @Test
-    @WithMockUser(roles = "CUSTOMER")
+    @WithMockUser(roles = "ADMIN")
     void removeFavoritePizza_shouldReturnNoContent() {
         doNothing().when(customerService).removeFavoritePizza(1L, 2L);
 
@@ -295,32 +282,7 @@ class CustomerControllerTest {
         verify(customerService).removeFavoritePizza(1L, 2L);
     }
 
-    // ---------- the account of the logged-in user ----------
-
-    @Test
-    @WithMockUser(username = "john@example.com", roles = "CUSTOMER")
-    void getCurrentCustomer_shouldReturnTheLoggedInCustomer() {
-        when(customerService.findByEmail("john@example.com")).thenReturn(john());
-
-        client.get().uri("/api/customers/me")
-                .exchange()
-                .expectStatus().isOk()
-                .expectBody()
-                .jsonPath("$.id").isEqualTo(1)
-                .jsonPath("$.email").isEqualTo("john@example.com");
-    }
-
-    @Test
-    @WithAnonymousUser
-    void getCurrentCustomer_Anonymous_ReturnsUnauthorized() {
-        client.get().uri("/api/customers/me")
-                .exchange()
-                .expectStatus().isUnauthorized();
-
-        verify(customerService, never()).findByEmail(any());
-    }
-
-    // ---------- method security: a customer only sees and changes their own account ----------
+    // ---------- URL rules: outside /me, a customer cannot use /api/customers at all ----------
 
     @Test
     @WithMockUser(roles = "CUSTOMER")
@@ -330,15 +292,17 @@ class CustomerControllerTest {
                 .expectStatus().isForbidden()
                 .expectHeader().contentType(MediaType.APPLICATION_PROBLEM_JSON)
                 .expectBody()
-                .jsonPath("$.status").isEqualTo(403);
+                .jsonPath("$.status").isEqualTo(403)
+                .jsonPath("$.detail").isEqualTo("Access denied. You do not have permission to access this resource.");
 
         verify(customerService, never()).findAll(any(Pageable.class));
     }
 
     @Test
     @WithMockUser(roles = "CUSTOMER")
-    void getCustomer_ofAnotherCustomer_returnsForbidden() {
-        client.get().uri("/api/customers/{id}", 2)
+    void getCustomer_withCustomerRole_returnsForbidden() {
+        // even with their own id: a customer uses /api/customers/me
+        client.get().uri("/api/customers/{id}", 1)
                 .exchange()
                 .expectStatus().isForbidden();
 
@@ -347,7 +311,7 @@ class CustomerControllerTest {
 
     @Test
     @WithMockUser(roles = "CUSTOMER")
-    void updateCustomer_ofAnotherCustomer_returnsForbidden() {
+    void updateCustomer_withCustomerRole_returnsForbidden() {
         client.put().uri("/api/customers/{id}", 2)
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(new UpdateCustomerRequest("Hacker", "jane@example.com", "1234567890", "Elsewhere 1"))
@@ -359,7 +323,7 @@ class CustomerControllerTest {
 
     @Test
     @WithMockUser(roles = "CUSTOMER")
-    void addFavoritePizza_forAnotherCustomer_returnsForbidden() {
+    void addFavoritePizza_withCustomerRole_returnsForbidden() {
         client.post().uri("/api/customers/{id}/favorites/{pizzaId}", 2, 1)
                 .exchange()
                 .expectStatus().isForbidden();

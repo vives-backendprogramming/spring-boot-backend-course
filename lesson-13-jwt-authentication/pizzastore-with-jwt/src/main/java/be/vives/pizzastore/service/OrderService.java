@@ -72,12 +72,13 @@ public class OrderService {
         return orderMapper.toResponse(order);
     }
 
-    public OrderResponse create(CreateOrderRequest request) {
-        log.debug("Creating new order for customer: {}", request.customerId());
+    // customerEmail is the username of the logged-in user, never a value from the request body
+    public OrderResponse create(String customerEmail, CreateOrderRequest request) {
+        log.debug("Creating new order for customer: {}", customerEmail);
 
-        Customer customer = customerRepository.findById(request.customerId()).orElse(null);
+        Customer customer = customerRepository.findByEmail(customerEmail).orElse(null);
         if (customer == null) {
-            throw new BusinessException("Customer with id " + request.customerId() + " not found");
+            throw new BusinessException("Customer with email " + customerEmail + " not found");
         }
 
         String orderNumber = generateOrderNumber();

@@ -10,6 +10,7 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.InsufficientAuthenticationException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -114,6 +115,15 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
                 "conflict", request);
     }
 
+    // from the entry point in SecurityConfig: a protected endpoint without a (valid) token
+    @ExceptionHandler(InsufficientAuthenticationException.class)
+    public ProblemDetail handleMissingAuthentication(InsufficientAuthenticationException ex, WebRequest request) {
+        log.warn("Authentication required: {}", ex.getMessage());
+        return buildProblemDetail(HttpStatus.UNAUTHORIZED,
+                "Authentication required. Send a valid JWT token in the Authorization header.", "unauthorized", request);
+    }
+
+    // a failed login (AuthController)
     @ExceptionHandler(AuthenticationException.class)
     public ProblemDetail handleAuthenticationException(AuthenticationException ex, WebRequest request) {
         // one message for "unknown e-mail" and "wrong password": never reveal which e-mail addresses have an account
@@ -121,6 +131,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return buildProblemDetail(HttpStatus.UNAUTHORIZED, "Invalid email or password", "unauthorized", request);
     }
 
+    // a URL rule (access-denied handler in SecurityConfig) or method security (@PreAuthorize) said no
     @ExceptionHandler(AccessDeniedException.class)
     public ProblemDetail handleAccessDeniedException(AccessDeniedException ex, WebRequest request) {
         log.warn("Access denied: {}", ex.getMessage());

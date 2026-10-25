@@ -4,6 +4,8 @@ import be.vives.pizzastore.domain.OrderStatus;
 import be.vives.pizzastore.dto.request.CreateOrderRequest;
 import be.vives.pizzastore.dto.request.UpdateOrderStatusRequest;
 import be.vives.pizzastore.dto.response.OrderResponse;
+import be.vives.pizzastore.security.CurrentUser;
+import be.vives.pizzastore.security.IsAdminOrOrderOwner;
 import be.vives.pizzastore.service.OrderService;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
@@ -11,7 +13,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
@@ -51,20 +52,22 @@ public class OrderController {
         return ResponseEntity.ok(orders);
     }
 
+    // an admin, or the customer who placed the order (a URL pattern cannot tell whose order /api/orders/12 is)
     @GetMapping("/{id}")
+    @IsAdminOrOrderOwner
     public ResponseEntity<OrderResponse> getOrder(@PathVariable Long id) {
         log.debug("GET /api/orders/{}", id);
         OrderResponse order = orderService.findById(id);
         return ResponseEntity.ok(order);
     }
 
-    // SecurityConfig: only a CUSTOMER may POST here; this rule adds: only for their own account
+    // SecurityConfig: only a CUSTOMER may POST here; the order is for the logged-in customer, taken from the JWT
     @PostMapping
-    @PreAuthorize("@customerSecurity.isOwner(#request.customerId(), authentication)")
-    public ResponseEntity<OrderResponse> createOrder(@Valid @RequestBody CreateOrderRequest request) {
-        log.debug("POST /api/orders - {}", request);
+    public ResponseEntity<OrderResponse> createOrder(@CurrentUser String email,
+                                                     @Valid @RequestBody CreateOrderRequest request) {
+        log.debug("POST /api/orders - {} - {}", email, request);
 
-        OrderResponse created = orderService.create(request);
+        OrderResponse created = orderService.create(email, request);
 
         URI location = ServletUriComponentsBuilder
                 .fromCurrentRequest()
@@ -86,7 +89,9 @@ public class OrderController {
         return ResponseEntity.ok(updated);
     }
 
+    // an admin, or the customer who placed the order; the business rules in OrderService still apply
     @DeleteMapping("/{id}")
+    @IsAdminOrOrderOwner
     public ResponseEntity<Void> cancelOrder(@PathVariable Long id) {
         log.debug("DELETE /api/orders/{}", id);
 

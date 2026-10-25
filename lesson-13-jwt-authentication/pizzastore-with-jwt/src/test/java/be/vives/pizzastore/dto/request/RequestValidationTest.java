@@ -159,7 +159,7 @@ class RequestValidationTest {
 
         @Test
         void validRequest_HasNoViolations() {
-            CreateOrderRequest request = new CreateOrderRequest(1L,
+            CreateOrderRequest request = new CreateOrderRequest(
                     List.of(new CreateOrderRequest.OrderLineRequest(1L, 2)));
 
             assertThat(violationsOf(request)).isEmpty();
@@ -167,13 +167,13 @@ class RequestValidationTest {
 
         @Test
         void emptyOrderLines_AreRejected() {
-            assertThat(violationsOf(new CreateOrderRequest(1L, List.of())))
+            assertThat(violationsOf(new CreateOrderRequest(List.of())))
                     .containsExactly("orderLines: Order must contain at least one pizza");
         }
 
         @Test
         void quantityZero_IsRejectedInsideTheOrderLine() {
-            CreateOrderRequest request = new CreateOrderRequest(1L,
+            CreateOrderRequest request = new CreateOrderRequest(
                     List.of(new CreateOrderRequest.OrderLineRequest(1L, 0)));
 
             // the property path tells exactly which element of the list is wrong
@@ -186,7 +186,7 @@ class RequestValidationTest {
                     .mapToObj(i -> new CreateOrderRequest.OrderLineRequest((long) i, 1))
                     .toList();
 
-            assertThat(violationsOf(new CreateOrderRequest(1L, lines)))
+            assertThat(violationsOf(new CreateOrderRequest(lines)))
                     .containsExactly("orderLines: Order can contain at most 20 order lines");
         }
     }

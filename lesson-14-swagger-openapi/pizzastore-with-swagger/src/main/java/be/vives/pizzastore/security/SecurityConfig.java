@@ -1,10 +1,10 @@
 package be.vives.pizzastore.security;
 
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
-import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
@@ -16,17 +16,17 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.factory.PasswordEncoderFactories;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import org.springframework.web.servlet.HandlerExceptionResolver;
 
 import java.util.List;
 
 @Configuration
 @EnableWebSecurity
-// @PreAuthorize on controller methods: the rules that depend on *which* customer is asked for (see CustomerSecurity)
+// @PreAuthorize on controller methods: the rules that depend on *which* order is asked for (see OrderSecurity)
 @EnableMethodSecurity
 public class SecurityConfig {
 
@@ -37,7 +37,10 @@ public class SecurityConfig {
     }
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain securityFilterChain(
+            HttpSecurity http,
+            // Spring MVC's exception resolver: hands an exception to the @ExceptionHandler methods of GlobalExceptionHandler
+            @Qualifier("handlerExceptionResolver") HandlerExceptionResolver exceptionResolver) throws Exception {
         http
                 // No CSRF protection needed: the token travels in the Authorization header, never in a cookie,
                 // so a browser cannot send it along automatically from another site
@@ -49,8 +52,8 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/pizzas/**").permitAll()
                         .requestMatchers("/h2-console/**").permitAll()
-                        // Spring Boot's error page: a 403 is rendered by forwarding to /error. That forward has no JWT,
-                        // so a protected /error would turn every 403 into a 401
+                        // Spring Boot's error page: an error outside Spring MVC is rendered by forwarding to /error.
+                        // That forward has no JWT, so a protected /error would turn such an error into a 401
                         .requestMatchers("/error").permitAll()
 
                         // Swagger/OpenAPI endpoints - public access for API documentation
@@ -62,12 +65,17 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.PATCH, "/api/pizzas/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/api/pizzas/**").hasRole("ADMIN")
 
-                        // Customer endpoints - CUSTOMER and ADMIN; @IsAdmin / @IsAdminOrOwner in CustomerController
-                        // decide per method (a customer only sees and changes their own account)
-                        .requestMatchers("/api/customers/**").hasAnyRole("CUSTOMER", "ADMIN")
+                        // Customer endpoints - the logged-in user's own account (the customer comes from the token),
+                        // every other customer endpoint is for ADMIN
+                        .requestMatchers("/api/customers/me/**").hasAnyRole("CUSTOMER", "ADMIN")
+                        .requestMatchers("/api/customers/**").hasRole("ADMIN")
 
-                        // Order endpoints - POST is for CUSTOMER, all other methods for ADMIN
+                        // Order endpoints - POST is for CUSTOMER; reading and cancelling one order is for CUSTOMER
+                        // and ADMIN, and @IsAdminOrOrderOwner in OrderController keeps a customer to their own orders;
+                        // everything else (all orders, status changes) is for ADMIN
                         .requestMatchers(HttpMethod.POST, "/api/orders").hasRole("CUSTOMER")
+                        .requestMatchers(HttpMethod.GET, "/api/orders/*").hasAnyRole("CUSTOMER", "ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/api/orders/*").hasAnyRole("CUSTOMER", "ADMIN")
                         .requestMatchers("/api/orders/**").hasRole("ADMIN")
 
                         // All other requests require authentication
@@ -76,10 +84,15 @@ public class SecurityConfig {
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
-                // No (valid) token on a protected endpoint: 401 Unauthorized. Without this entry point Spring Security
-                // answers 403 Forbidden, which is meant for "authenticated, but not allowed" (wrong role)
+                // Refused by the URL rules: the same ProblemDetail responses as everywhere else, made by GlobalExceptionHandler.
+                // - no (valid) token on a protected endpoint: the entry point, 401 Unauthorized. Without an entry point
+                //   Spring Security answers 403 Forbidden, which is meant for "authenticated, but not allowed"
+                // - logged in, but the wrong role: the access-denied handler, 403 Forbidden
                 .exceptionHandling(exceptions -> exceptions
-                        .authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED))
+                        .authenticationEntryPoint((request, response, authException) ->
+                                exceptionResolver.resolveException(request, response, null, authException))
+                        .accessDeniedHandler((request, response, accessDeniedException) ->
+                                exceptionResolver.resolveException(request, response, null, accessDeniedException))
                 )
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 

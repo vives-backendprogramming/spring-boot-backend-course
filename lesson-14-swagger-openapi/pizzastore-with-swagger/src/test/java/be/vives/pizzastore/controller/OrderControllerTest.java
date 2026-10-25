@@ -8,8 +8,8 @@ import be.vives.pizzastore.dto.response.OrderResponse;
 import be.vives.pizzastore.exception.BusinessException;
 import be.vives.pizzastore.exception.GlobalExceptionHandler;
 import be.vives.pizzastore.exception.ResourceNotFoundException;
-import be.vives.pizzastore.security.CustomerSecurity;
 import be.vives.pizzastore.security.JwtUtil;
+import be.vives.pizzastore.security.OrderSecurity;
 import be.vives.pizzastore.security.SecurityConfig;
 import be.vives.pizzastore.service.OrderService;
 import org.junit.jupiter.api.Test;
@@ -39,8 +39,9 @@ import static org.mockito.Mockito.when;
 
 /**
  * Web-layer slice for OrderController with RestTestClient and the real SecurityConfig:
- * only a CUSTOMER can place an order, and only for their own account (@PreAuthorize on createOrder);
- * every other order endpoint is for ADMIN.
+ * only a CUSTOMER can place an order, always for their own account (the customer comes from the logged-in user,
+ * not from the request body); reading and cancelling one order is for ADMIN and for the customer who placed it
+ * (@IsAdminOrOrderOwner); listing all orders and changing their status is for ADMIN.
  */
 @WebMvcTest(controllers = OrderController.class)
 @AutoConfigureRestTestClient
@@ -59,9 +60,12 @@ class OrderControllerTest {
     @MockitoBean
     private JwtUtil jwtUtil;
 
-    // called by name from @PreAuthorize("@customerSecurity.isOwner(#request.customerId(), authentication)")
-    @MockitoBean(name = "customerSecurity")
-    private CustomerSecurity customerSecurity;
+    // the bean that @IsAdminOrOrderOwner calls by name: @orderSecurity.isOwner(#id, authentication).
+    // Not stubbed, the mock answers false: "somebody else's order"
+    @MockitoBean(name = "orderSecurity")
+    private OrderSecurity orderSecurity;
+
+    private static final String EMMA = "emma@pizzastore.be";
 
     private static OrderResponse order(long id, long customerId, String customerName, OrderStatus status, double total) {
         return new OrderResponse(id, "ORD-2024-%06d".formatted(id), customerId, customerName,
@@ -76,7 +80,7 @@ class OrderControllerTest {
     }
 
     private static CreateOrderRequest validOrderRequest() {
-        return new CreateOrderRequest(1L, List.of(
+        return new CreateOrderRequest(List.of(
                 new CreateOrderRequest.OrderLineRequest(1L, 2),
                 new CreateOrderRequest.OrderLineRequest(2L, 1)));
     }
@@ -178,10 +182,9 @@ class OrderControllerTest {
     // ---------- creating (CUSTOMER) ----------
 
     @Test
-    @WithMockUser(roles = "CUSTOMER")
+    @WithMockUser(username = EMMA, roles = "CUSTOMER")
     void createOrder_shouldReturnCreatedOrder() {
-        when(customerSecurity.isOwner(eq(1L), any())).thenReturn(true);
-        when(orderService.create(any(CreateOrderRequest.class))).thenReturn(orderWithLines());
+        when(orderService.create(eq(EMMA), any(CreateOrderRequest.class))).thenReturn(orderWithLines());
 
         client.post().uri("/api/orders")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -195,38 +198,54 @@ class OrderControllerTest {
                 .jsonPath("$.totalAmount").isEqualTo(27.00)
                 .jsonPath("$.orderLines.length()").isEqualTo(2);
 
-        verify(orderService).create(any(CreateOrderRequest.class));
+        // the order is placed for the logged-in user: the e-mail address comes from the security context
+        verify(orderService).create(eq(EMMA), any(CreateOrderRequest.class));
     }
 
     @Test
-    @WithMockUser(roles = "CUSTOMER")
-    void createOrder_whenCustomerNotFound_shouldReturnProblemDetail() {
-        CreateOrderRequest request = new CreateOrderRequest(999L, List.of(new CreateOrderRequest.OrderLineRequest(1L, 2)));
-        // the security rule passes (as if the account was deleted in the meantime); the service then rejects the order
-        when(customerSecurity.isOwner(eq(999L), any())).thenReturn(true);
-        when(orderService.create(any(CreateOrderRequest.class)))
-                .thenThrow(new BusinessException("Customer with id 999 not found"));
+    @WithMockUser(username = EMMA, roles = "CUSTOMER")
+    void createOrder_ignoresCustomerIdInBody() {
+        // an old client (or an attacker) still sends a customerId: Jackson ignores the unknown field
+        when(orderService.create(eq(EMMA), any(CreateOrderRequest.class))).thenReturn(orderWithLines());
 
         client.post().uri("/api/orders")
                 .contentType(MediaType.APPLICATION_JSON)
-                .body(request)
+                .body("""
+                        {"customerId": 2, "orderLines": [{"pizzaId": 1, "quantity": 2}]}
+                        """)
+                .exchange()
+                .expectStatus().isCreated();
+
+        verify(orderService).create(eq(EMMA), any(CreateOrderRequest.class));
+    }
+
+    @Test
+    @WithMockUser(username = EMMA, roles = "CUSTOMER")
+    void createOrder_whenCustomerNotFound_shouldReturnProblemDetail() {
+        // the token is valid, but the account was deleted in the meantime; the service rejects the order
+        when(orderService.create(eq(EMMA), any(CreateOrderRequest.class)))
+                .thenThrow(new BusinessException("Customer with email " + EMMA + " not found"));
+
+        client.post().uri("/api/orders")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(validOrderRequest())
                 .exchange()
                 .expectStatus().isEqualTo(422)
                 .expectHeader().contentType(MediaType.APPLICATION_PROBLEM_JSON)
                 .expectBody()
                 .jsonPath("$.status").isEqualTo(422)
                 .jsonPath("$.title").isEqualTo("Unprocessable Content")
-                .jsonPath("$.detail").isEqualTo("Customer with id 999 not found")
+                .jsonPath("$.detail").isEqualTo("Customer with email " + EMMA + " not found")
                 .jsonPath("$.type").isEqualTo("https://api.pizzastore.example.com/errors/business-rule");
 
-        verify(orderService).create(any(CreateOrderRequest.class));
+        verify(orderService).create(eq(EMMA), any(CreateOrderRequest.class));
     }
 
     @Test
     @WithMockUser(roles = "CUSTOMER")
     void createOrder_withInvalidOrderLine_shouldReturnBadRequest() {
         // a negative quantity must be rejected before it ever reaches the service
-        CreateOrderRequest request = new CreateOrderRequest(1L, List.of(new CreateOrderRequest.OrderLineRequest(1L, -5)));
+        CreateOrderRequest request = new CreateOrderRequest(List.of(new CreateOrderRequest.OrderLineRequest(1L, -5)));
 
         client.post().uri("/api/orders")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -234,7 +253,7 @@ class OrderControllerTest {
                 .exchange()
                 .expectStatus().isBadRequest();
 
-        verify(orderService, never()).create(any());
+        verify(orderService, never()).create(any(), any());
     }
 
     // ---------- status and cancel (ADMIN) ----------
@@ -329,21 +348,7 @@ class OrderControllerTest {
                 .exchange()
                 .expectStatus().isForbidden();
 
-        verify(orderService, never()).create(any());
-    }
-
-    @Test
-    @WithMockUser(roles = "CUSTOMER")
-    void createOrder_forAnotherCustomer_returnsForbidden() {
-        // customerSecurity.isOwner(...) is not stubbed, so the mock answers false: customer 1 is somebody else
-        client.post().uri("/api/orders")
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(validOrderRequest())
-                .exchange()
-                .expectStatus().isForbidden()
-                .expectHeader().contentType(MediaType.APPLICATION_PROBLEM_JSON);
-
-        verify(orderService, never()).create(any());
+        verify(orderService, never()).create(any(), any());
     }
 
     @Test
@@ -356,13 +361,32 @@ class OrderControllerTest {
         verify(orderService, never()).findAll(any(Pageable.class));
     }
 
+    // ---------- method security: a customer reads and cancels only their own orders ----------
+
     @Test
-    @WithMockUser(roles = "CUSTOMER")
-    void getOrder_withCustomerRole_returnsForbidden() {
+    @WithMockUser(username = EMMA, roles = "CUSTOMER")
+    void getOrder_ownOrder_asCustomer_returnsOrder() {
+        when(orderSecurity.isOwner(eq(1L), any())).thenReturn(true);
+        when(orderService.findById(1L)).thenReturn(orderWithLines());
+
         client.get().uri("/api/orders/{id}", 1)
                 .exchange()
-                .expectStatus().isForbidden();
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath("$.id").isEqualTo(1);
 
+        verify(orderService).findById(1L);
+    }
+
+    @Test
+    @WithMockUser(username = EMMA, roles = "CUSTOMER")
+    void getOrder_ofAnotherCustomer_returnsForbidden() {
+        client.get().uri("/api/orders/{id}", 2)
+                .exchange()
+                .expectStatus().isForbidden()
+                .expectHeader().contentType(MediaType.APPLICATION_PROBLEM_JSON);
+
+        // the rule is checked before the method runs: the order is never even loaded
         verify(orderService, never()).findById(any());
     }
 
@@ -379,9 +403,22 @@ class OrderControllerTest {
     }
 
     @Test
-    @WithMockUser(roles = "CUSTOMER")
-    void cancelOrder_withCustomerRole_returnsForbidden() {
+    @WithMockUser(username = EMMA, roles = "CUSTOMER")
+    void cancelOrder_ownOrder_asCustomer_returnsNoContent() {
+        when(orderSecurity.isOwner(eq(1L), any())).thenReturn(true);
+        doNothing().when(orderService).cancel(1L);
+
         client.delete().uri("/api/orders/{id}", 1)
+                .exchange()
+                .expectStatus().isNoContent();
+
+        verify(orderService).cancel(1L);
+    }
+
+    @Test
+    @WithMockUser(username = EMMA, roles = "CUSTOMER")
+    void cancelOrder_ofAnotherCustomer_returnsForbidden() {
+        client.delete().uri("/api/orders/{id}", 2)
                 .exchange()
                 .expectStatus().isForbidden();
 

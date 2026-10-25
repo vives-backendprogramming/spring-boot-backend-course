@@ -4,6 +4,8 @@ import be.vives.pizzastore.dto.LoginRequest;
 import be.vives.pizzastore.dto.request.CreateCustomerRequest;
 import be.vives.pizzastore.dto.request.CreateOrderRequest;
 import be.vives.pizzastore.dto.request.CreatePizzaRequest;
+import be.vives.pizzastore.dto.response.OrderResponse;
+import be.vives.pizzastore.dto.response.PizzaResponse;
 import be.vives.pizzastore.repository.CustomerRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -22,7 +24,7 @@ import java.util.List;
 /**
  * Security end to end: real JWT tokens obtained from /api/auth, sent as "Authorization: Bearer ..."
  * to the real application on a random port. Slice tests with @WithMockUser prove the role rules;
- * this test proves the whole chain (login, token, filter, role check, controller) really works.
+ * this test proves the whole chain (login, token, filter, role check, ownership check, controller) really works.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = "spring.datasource.url=jdbc:h2:mem:security-integration-test")
@@ -51,6 +53,33 @@ class SecurityIntegrationTest {
         customer = accounts.registerCustomer();
     }
 
+    private TestAccounts.Account anotherCustomer() {
+        return new TestAccounts(client, customerRepository, passwordEncoder).registerCustomer();
+    }
+
+    private long createPizza() {
+        CreatePizzaRequest pizza = new CreatePizzaRequest("Security " + System.nanoTime(), new BigDecimal("9.00"), "desc", true, null);
+        return client.post().uri("/api/pizzas")
+                .header(HttpHeaders.AUTHORIZATION, admin.bearer())
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(pizza)
+                .exchange()
+                .expectStatus().isCreated()
+                .expectBody(PizzaResponse.class)
+                .returnResult().getResponseBody().id();
+    }
+
+    private long placeOrder(TestAccounts.Account account) {
+        return client.post().uri("/api/orders")
+                .header(HttpHeaders.AUTHORIZATION, account.bearer())
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(new CreateOrderRequest(List.of(new CreateOrderRequest.OrderLineRequest(createPizza(), 1))))
+                .exchange()
+                .expectStatus().isCreated()
+                .expectBody(OrderResponse.class)
+                .returnResult().getResponseBody().id();
+    }
+
     @Test
     void anonymous_CanReadPizzas() {
         client.get().uri("/api/pizzas")
@@ -64,7 +93,11 @@ class SecurityIntegrationTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(newPizza)
                 .exchange()
-                .expectStatus().isUnauthorized();
+                .expectStatus().isUnauthorized()
+                .expectHeader().contentType(MediaType.APPLICATION_PROBLEM_JSON)
+                .expectBody()
+                .jsonPath("$.status").isEqualTo(401)
+                .jsonPath("$.detail").isEqualTo("Authentication required. Send a valid JWT token in the Authorization header.");
     }
 
     @Test
@@ -74,7 +107,11 @@ class SecurityIntegrationTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(newPizza)
                 .exchange()
-                .expectStatus().isForbidden();
+                .expectStatus().isForbidden()
+                .expectHeader().contentType(MediaType.APPLICATION_PROBLEM_JSON)
+                .expectBody()
+                .jsonPath("$.status").isEqualTo(403)
+                .jsonPath("$.detail").isEqualTo("Access denied. You do not have permission to access this resource.");
     }
 
     @Test
@@ -105,7 +142,11 @@ class SecurityIntegrationTest {
         client.get().uri("/api/customers")
                 .header(HttpHeaders.AUTHORIZATION, "Bearer this.is.not-a-token")
                 .exchange()
-                .expectStatus().isUnauthorized();
+                .expectStatus().isUnauthorized()
+                .expectHeader().contentType(MediaType.APPLICATION_PROBLEM_JSON)
+                .expectBody()
+                .jsonPath("$.status").isEqualTo(401)
+                .jsonPath("$.detail").isEqualTo("Authentication required. Send a valid JWT token in the Authorization header.");
     }
 
     @Test
@@ -121,7 +162,7 @@ class SecurityIntegrationTest {
 
     @Test
     void register_ReturnsTokenThatWorksImmediately() {
-        client.get().uri("/api/customers/{id}", customer.id())
+        client.get().uri("/api/customers/me")
                 .header(HttpHeaders.AUTHORIZATION, customer.bearer())
                 .exchange()
                 .expectStatus().isOk()
@@ -129,7 +170,7 @@ class SecurityIntegrationTest {
                 .jsonPath("$.email").isEqualTo(customer.email());
     }
 
-    // ---------- method security: the owner of an account ----------
+    // ---------- the own account: /api/customers/me, everything else under /api/customers is for ADMIN ----------
 
     @Test
     void me_ReturnsTheAccountOfTheToken() {
@@ -143,14 +184,17 @@ class SecurityIntegrationTest {
     }
 
     @Test
-    void customer_CannotReadAnotherCustomer_ButAdminCan() {
-        TestAccounts.Account other = new TestAccounts(client, customerRepository, passwordEncoder).registerCustomer();
+    void customer_CannotUseCustomerIdEndpoints_ButAdminCan() {
+        TestAccounts.Account other = anotherCustomer();
 
-        client.get().uri("/api/customers/{id}", other.id())
+        // not even with their own id: that is what /api/customers/me is for
+        client.get().uri("/api/customers/{id}", customer.id())
                 .header(HttpHeaders.AUTHORIZATION, customer.bearer())
                 .exchange()
                 .expectStatus().isForbidden()
+                .expectHeader().contentType(MediaType.APPLICATION_PROBLEM_JSON)
                 .expectBody()
+                .jsonPath("$.status").isEqualTo(403)
                 .jsonPath("$.detail").isEqualTo("Access denied. You do not have permission to access this resource.");
 
         client.get().uri("/api/customers/{id}", other.id())
@@ -160,15 +204,97 @@ class SecurityIntegrationTest {
     }
 
     @Test
-    void customer_CannotOrderForAnotherCustomer() {
-        TestAccounts.Account other = new TestAccounts(client, customerRepository, passwordEncoder).registerCustomer();
+    void customer_OrderIsAlwaysForTheLoggedInCustomer() {
+        TestAccounts.Account other = anotherCustomer();
 
+        // the body tries to order for somebody else: the customerId is ignored, the token decides
         client.post().uri("/api/orders")
                 .header(HttpHeaders.AUTHORIZATION, customer.bearer())
                 .contentType(MediaType.APPLICATION_JSON)
-                .body(new CreateOrderRequest(other.id(), List.of(new CreateOrderRequest.OrderLineRequest(1L, 1))))
+                .body("""
+                        {"customerId": %d, "orderLines": [{"pizzaId": %d, "quantity": 1}]}
+                        """.formatted(other.id(), createPizza()))
+                .exchange()
+                .expectStatus().isCreated()
+                .expectBody()
+                .jsonPath("$.customerId").isEqualTo(customer.id().intValue());
+    }
+
+    @Test
+    void customer_SeesOwnOrdersUnderMe() {
+        long orderId = placeOrder(customer);
+
+        client.get().uri("/api/customers/me/orders")
+                .header(HttpHeaders.AUTHORIZATION, customer.bearer())
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath("$.content.length()").isEqualTo(1)
+                .jsonPath("$.content[0].id").isEqualTo((int) orderId);
+    }
+
+    // ---------- method security: one order belongs to one customer ----------
+
+    @Test
+    void customer_CanReadOwnOrder_ButNotSomebodyElses() {
+        long orderId = placeOrder(customer);
+        TestAccounts.Account other = anotherCustomer();
+
+        client.get().uri("/api/orders/{id}", orderId)
+                .header(HttpHeaders.AUTHORIZATION, customer.bearer())
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath("$.customerId").isEqualTo(customer.id().intValue());
+
+        client.get().uri("/api/orders/{id}", orderId)
+                .header(HttpHeaders.AUTHORIZATION, other.bearer())
+                .exchange()
+                .expectStatus().isForbidden()
+                .expectBody()
+                .jsonPath("$.detail").isEqualTo("Access denied. You do not have permission to access this resource.");
+
+        client.get().uri("/api/orders/{id}", orderId)
+                .header(HttpHeaders.AUTHORIZATION, admin.bearer())
+                .exchange()
+                .expectStatus().isOk();
+    }
+
+    @Test
+    void unknownOrder_IsForbiddenForCustomer_NotFoundForAdmin() {
+        // a customer cannot find out which order ids exist
+        client.get().uri("/api/orders/{id}", 987_654)
+                .header(HttpHeaders.AUTHORIZATION, customer.bearer())
                 .exchange()
                 .expectStatus().isForbidden();
+
+        client.get().uri("/api/orders/{id}", 987_654)
+                .header(HttpHeaders.AUTHORIZATION, admin.bearer())
+                .exchange()
+                .expectStatus().isNotFound();
+    }
+
+    @Test
+    void customer_CanCancelOwnOrder_ButNotSomebodyElses() {
+        long orderId = placeOrder(customer);
+        TestAccounts.Account other = anotherCustomer();
+
+        client.delete().uri("/api/orders/{id}", orderId)
+                .header(HttpHeaders.AUTHORIZATION, other.bearer())
+                .exchange()
+                .expectStatus().isForbidden();
+
+        client.delete().uri("/api/orders/{id}", orderId)
+                .header(HttpHeaders.AUTHORIZATION, customer.bearer())
+                .exchange()
+                .expectStatus().isNoContent();
+
+        client.get().uri("/api/orders/{id}", orderId)
+                .header(HttpHeaders.AUTHORIZATION, customer.bearer())
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath("$.status").isEqualTo("CANCELLED");
     }
 
     @Test

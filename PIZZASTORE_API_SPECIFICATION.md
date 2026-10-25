@@ -355,7 +355,7 @@ mvn spring-boot:run -Dspring.profiles.active=oidc
 | GET /orders/{id} | ❌ | ✅ (own) | ✅ |
 | GET /orders | ❌ | ❌ | ✅ |
 | PATCH /orders/{id}/status | ❌ | ❌ | ✅ |
-| DELETE /orders/{id} | ❌ | ❌ | ✅ |
+| DELETE /orders/{id} | ❌ | ✅ (own) | ✅ |
 | **Favorites** |
 | POST /customers/me/favorites/{pizzaId} | ❌ | ✅ | ✅ |
 | DELETE /customers/me/favorites/{pizzaId} | ❌ | ✅ | ✅ |

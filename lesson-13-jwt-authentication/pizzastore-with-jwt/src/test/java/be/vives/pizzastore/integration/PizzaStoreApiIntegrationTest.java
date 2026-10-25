@@ -255,7 +255,7 @@ class PizzaStoreApiIntegrationTest {
 
     // ---------- orders: a business scenario over several endpoints ----------
 
-    // a customer can only order for their own account, so every order is placed by and for customerAccount
+    // an order is always for the logged-in customer, so every order is placed by and for customerAccount
     @Nested
     class Orders {
 
@@ -268,7 +268,7 @@ class PizzaStoreApiIntegrationTest {
             OrderResponse order = client.post().uri("/api/orders")
                     .header(HttpHeaders.AUTHORIZATION, customerAccount.bearer())
                     .contentType(MediaType.APPLICATION_JSON)
-                    .body(new CreateOrderRequest(customerAccount.id(), List.of(
+                    .body(new CreateOrderRequest(List.of(
                             new CreateOrderRequest.OrderLineRequest(margherita.id(), 2),
                             new CreateOrderRequest.OrderLineRequest(diavola.id(), 1))))
                     .exchange()
@@ -320,7 +320,7 @@ class PizzaStoreApiIntegrationTest {
             client.post().uri("/api/orders")
                     .header(HttpHeaders.AUTHORIZATION, customerAccount.bearer())
                     .contentType(MediaType.APPLICATION_JSON)
-                    .body(new CreateOrderRequest(customerAccount.id(),
+                    .body(new CreateOrderRequest(
                             List.of(new CreateOrderRequest.OrderLineRequest(987_654L, 1))))
                     .exchange()
                     .expectStatus().isEqualTo(422);
@@ -339,7 +339,7 @@ class PizzaStoreApiIntegrationTest {
             OrderResponse order = client.post().uri("/api/orders")
                     .header(HttpHeaders.AUTHORIZATION, customerAccount.bearer())
                     .contentType(MediaType.APPLICATION_JSON)
-                    .body(new CreateOrderRequest(customerAccount.id(),
+                    .body(new CreateOrderRequest(
                             List.of(new CreateOrderRequest.OrderLineRequest(pizza.id(), 1))))
                     .exchange()
                     .expectStatus().isCreated()

@@ -20,7 +20,7 @@
 - [Password Encryption](#-password-encryption)
 - [Testing the Authentication](#-testing-the-authentication)
 - [Role-Based Access Control](#-role-based-access-control)
-- [Method Security: Who Owns This Customer?](#-method-security-who-owns-this-customer)
+- [Method Security: Whose Order Is This?](#-method-security-whose-order-is-this)
 - [CORS and CSRF](#-cors-and-csrf)
 - [Best Practices](#-best-practices)
 - [Testing Secured Controllers](#-testing-secured-controllers)
@@ -56,7 +56,7 @@ After [Lesson 12](../lesson-12-testing/README.md) PizzaStore is a complete, test
 This lesson answers two questions for every request:
 
 1. **Authentication**: *who* is calling? A customer logs in once with e-mail and password and receives a **JWT token**; every following request carries that token.
-2. **Authorization**: *may* this caller do this? Reading the menu is public, ordering is for customers, managing the menu and the orders is for admins. And one level deeper: a customer may read and change **their own** account and order for **themselves**, but not for somebody else.
+2. **Authorization**: *may* this caller do this? Reading the menu is public, ordering is for customers, managing the menu and the orders is for admins. And one level deeper: a customer works with **their own** account and may read and cancel **their own** orders, but not somebody else's.
 
 ---
 
@@ -67,25 +67,25 @@ The project of this lesson, [`pizzastore-with-jwt`](pizzastore-with-jwt), is **L
 | Added / changed | What it does |
 |-----------------|--------------|
 | [`pom.xml`](pizzastore-with-jwt/pom.xml) | Adds `spring-boot-starter-security`, the three JJWT artifacts and `spring-boot-starter-security-test` |
-| [`security/SecurityConfig.java`](pizzastore-with-jwt/src/main/java/be/vives/pizzastore/security/SecurityConfig.java) (new) | The `SecurityFilterChain`: public, customer and admin endpoints, stateless sessions, the JWT filter, CORS; `@EnableMethodSecurity`; the `PasswordEncoder` (`DelegatingPasswordEncoder`), the `AuthenticationManager` and the `CorsConfigurationSource` |
+| [`security/SecurityConfig.java`](pizzastore-with-jwt/src/main/java/be/vives/pizzastore/security/SecurityConfig.java) (new) | The `SecurityFilterChain`: public, customer and admin endpoints, stateless sessions, the JWT filter, CORS, an entry point and access-denied handler that hand `401`/`403` to `GlobalExceptionHandler`; `@EnableMethodSecurity`; the `PasswordEncoder` (`DelegatingPasswordEncoder`), the `AuthenticationManager` and the `CorsConfigurationSource` |
 | [`security/JwtUtil.java`](pizzastore-with-jwt/src/main/java/be/vives/pizzastore/security/JwtUtil.java) (new) | Creates and validates tokens |
 | [`security/JwtAuthenticationFilter.java`](pizzastore-with-jwt/src/main/java/be/vives/pizzastore/security/JwtAuthenticationFilter.java) (new) | Reads `Authorization: Bearer ...` and fills the `SecurityContext` |
 | [`security/CustomUserDetailsService.java`](pizzastore-with-jwt/src/main/java/be/vives/pizzastore/security/CustomUserDetailsService.java) (new) | Loads a `Customer` by e-mail for Spring Security |
-| [`security/CustomerSecurity.java`](pizzastore-with-jwt/src/main/java/be/vives/pizzastore/security/CustomerSecurity.java), [`IsAdmin.java`](pizzastore-with-jwt/src/main/java/be/vives/pizzastore/security/IsAdmin.java), [`IsAdminOrOwner.java`](pizzastore-with-jwt/src/main/java/be/vives/pizzastore/security/IsAdminOrOwner.java), [`CurrentUser.java`](pizzastore-with-jwt/src/main/java/be/vives/pizzastore/security/CurrentUser.java) (new) | Method security: "is this my account?" and two meta-annotations around `@PreAuthorize`; `@CurrentUser` injects the e-mail address of the logged-in user (see [Method Security](#-method-security-who-owns-this-customer)) |
+| [`security/OrderSecurity.java`](pizzastore-with-jwt/src/main/java/be/vives/pizzastore/security/OrderSecurity.java), [`IsAdminOrOrderOwner.java`](pizzastore-with-jwt/src/main/java/be/vives/pizzastore/security/IsAdminOrOrderOwner.java), [`CurrentUser.java`](pizzastore-with-jwt/src/main/java/be/vives/pizzastore/security/CurrentUser.java) (new) | Method security: "is this my order?" and a meta-annotation around `@PreAuthorize`; `@CurrentUser` injects the e-mail address of the logged-in user (see [Method Security](#-method-security-whose-order-is-this)) |
 | [`controller/AuthController.java`](pizzastore-with-jwt/src/main/java/be/vives/pizzastore/controller/AuthController.java), [`dto/LoginRequest.java`](pizzastore-with-jwt/src/main/java/be/vives/pizzastore/dto/LoginRequest.java), [`RegisterRequest.java`](pizzastore-with-jwt/src/main/java/be/vives/pizzastore/dto/RegisterRequest.java), [`AuthResponse.java`](pizzastore-with-jwt/src/main/java/be/vives/pizzastore/dto/AuthResponse.java) (new) | `POST /api/auth/register` and `POST /api/auth/login` |
-| [`controller/CustomerController.java`](pizzastore-with-jwt/src/main/java/be/vives/pizzastore/controller/CustomerController.java) | `@IsAdmin` / `@IsAdminOrOwner` per method, the new `GET /api/customers/me`, and the favorites path variable renamed from `{customerId}` to `{id}` (same URLs) so that one annotation fits all methods |
-| [`controller/OrderController.java`](pizzastore-with-jwt/src/main/java/be/vives/pizzastore/controller/OrderController.java) | `createOrder` gets a `@PreAuthorize`: a customer orders only for their own account |
+| [`controller/CurrentCustomerController.java`](pizzastore-with-jwt/src/main/java/be/vives/pizzastore/controller/CurrentCustomerController.java) (new) | `/api/customers/me/**`: the account, orders and favorites of the logged-in customer, taken from the token. [`CustomerController`](pizzastore-with-jwt/src/main/java/be/vives/pizzastore/controller/CustomerController.java) itself is unchanged and now for admins only |
+| [`controller/OrderController.java`](pizzastore-with-jwt/src/main/java/be/vives/pizzastore/controller/OrderController.java), [`dto/request/CreateOrderRequest.java`](pizzastore-with-jwt/src/main/java/be/vives/pizzastore/dto/request/CreateOrderRequest.java), [`service/OrderService.java`](pizzastore-with-jwt/src/main/java/be/vives/pizzastore/service/OrderService.java), [`repository/OrderRepository.java`](pizzastore-with-jwt/src/main/java/be/vives/pizzastore/repository/OrderRepository.java) | `@IsAdminOrOrderOwner` on `getOrder` and `cancelOrder`: a customer may read and cancel their own orders. `CreateOrderRequest` loses its `customerId`: `createOrder` takes the logged-in customer from the token with `@CurrentUser`, and `OrderService.create` looks the customer up by e-mail (see [Orders: the Customer Comes from the Token](#6-orders-the-customer-comes-from-the-token)). `existsByIdAndCustomerEmail` for the ownership check |
 | [`service/CustomerService.java`](pizzastore-with-jwt/src/main/java/be/vives/pizzastore/service/CustomerService.java) | `findByEmail` (for `/me`), and `create` now **hashes the password**: until now `POST /api/customers` stored it as typed, so such a customer could never log in |
 | [`config/AuditorAwareImpl.java`](pizzastore-with-jwt/src/main/java/be/vives/pizzastore/config/AuditorAwareImpl.java) (new) | Fills `createdBy`/`updatedBy` (Lesson 6a's auditing) with the logged-in user, `system` otherwise |
-| [`exception/GlobalExceptionHandler.java`](pizzastore-with-jwt/src/main/java/be/vives/pizzastore/exception/GlobalExceptionHandler.java) | Two extra handlers: `AuthenticationException` (failed login) → `401`, `AccessDeniedException` → `403`, both as `ProblemDetail` |
+| [`exception/GlobalExceptionHandler.java`](pizzastore-with-jwt/src/main/java/be/vives/pizzastore/exception/GlobalExceptionHandler.java) | Three extra handlers, all as `ProblemDetail`: `InsufficientAuthenticationException` (no valid token) → `401`, `AuthenticationException` (failed login) → `401`, `AccessDeniedException` (a URL rule or method security said no) → `403` |
 | [`application.properties`](pizzastore-with-jwt/src/main/resources/application.properties) | `jwt.secret` (overridable with the environment variable `JWT_SECRET`), `jwt.expiration`, `pizzastore.cors.allowed-origins` |
 | [`data.sql`](pizzastore-with-jwt/src/main/resources/data.sql) | The existing BCrypt hashes get the `{bcrypt}` prefix that the `DelegatingPasswordEncoder` needs |
-| [`src/test`](pizzastore-with-jwt/src/test/java/be/vives/pizzastore) | The test suite adapted to security (see [Testing Secured Controllers](#-testing-secured-controllers)): 252 tests |
+| [`src/test`](pizzastore-with-jwt/src/test/java/be/vives/pizzastore) | The test suite adapted to security (see [Testing Secured Controllers](#-testing-secured-controllers)): 264 tests |
 
 The other services, repositories, entities, mappers, request/response DTOs and the Open Food Facts client are **unchanged**, and so is `PizzaController`. Security is added in two layers, and that is the design to remember:
 
-1. **Around the application**: one configuration class and one filter decide per URL and HTTP method which *role* may call it. That covers all of `PizzaController` and most of `OrderController`.
-2. **On a few controller methods**: rules that depend on the *data* ("is customer 12 the one who is logged in?") cannot be written as a URL pattern. Those get a `@PreAuthorize`, wrapped in a readable meta-annotation (see [Method Security](#-method-security-who-owns-this-customer)).
+1. **Around the application**: one configuration class and one filter decide per URL and HTTP method which *role* may call it. That covers all of `PizzaController` and `CustomerController` and most of `OrderController`. A customer's own account gets its own URL, `/api/customers/me`, where the customer comes from the token: no id, so nothing to check.
+2. **On a few controller methods**: rules that depend on the *data* ("did the logged-in customer place order 12?") cannot be written as a URL pattern. Those get a `@PreAuthorize`, wrapped in a readable meta-annotation (see [Method Security](#-method-security-whose-order-is-this)).
 
 ---
 
@@ -148,7 +148,7 @@ Your Controller
    - Load user details
    - Set the authentication in the `SecurityContext`
 
-4. **AuthorizationFilter**: The final filter checks if the authenticated user (from `SecurityContext`) has permission to access the requested endpoint based on roles and authorities. This is the *URL-level* check; [method security](#-method-security-who-owns-this-customer) adds a second check later, when the controller method is called.
+4. **AuthorizationFilter**: The final filter checks if the authenticated user (from `SecurityContext`) has permission to access the requested endpoint based on roles and authorities. This is the *URL-level* check; [method security](#-method-security-whose-order-is-this) adds a second check later, when the controller method is called.
 
 The diagram is simplified: the real chain has more filters (`HeaderWriterFilter`, `RequestCacheAwareFilter`, ...). Spring Security logs the actual list at startup; set `logging.level.org.springframework.security=DEBUG` to see it, and to see per request which filter decided what.
 
@@ -389,7 +389,10 @@ public class SecurityConfig {
     }
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain securityFilterChain(
+            HttpSecurity http,
+            // Spring MVC's exception resolver: hands an exception to the @ExceptionHandler methods of GlobalExceptionHandler
+            @Qualifier("handlerExceptionResolver") HandlerExceptionResolver exceptionResolver) throws Exception {
         http
                 .csrf(AbstractHttpConfigurer::disable)      // see "CORS and CSRF"
                 .cors(Customizer.withDefaults())            // uses the CorsConfigurationSource bean below
@@ -406,12 +409,17 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.PATCH, "/api/pizzas/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/api/pizzas/**").hasRole("ADMIN")
 
-                        // Customer endpoints - CUSTOMER and ADMIN; @IsAdmin / @IsAdminOrOwner in CustomerController
-                        // decide per method (a customer only sees and changes their own account)
-                        .requestMatchers("/api/customers/**").hasAnyRole("CUSTOMER", "ADMIN")
+                        // Customer endpoints - the logged-in user's own account (the customer comes from the token),
+                        // every other customer endpoint is for ADMIN
+                        .requestMatchers("/api/customers/me/**").hasAnyRole("CUSTOMER", "ADMIN")
+                        .requestMatchers("/api/customers/**").hasRole("ADMIN")
 
-                        // Order endpoints - POST is for CUSTOMER, all other methods for ADMIN
+                        // Order endpoints - POST is for CUSTOMER; reading and cancelling one order is for CUSTOMER
+                        // and ADMIN, and @IsAdminOrOrderOwner in OrderController keeps a customer to their own orders;
+                        // everything else (all orders, status changes) is for ADMIN
                         .requestMatchers(HttpMethod.POST, "/api/orders").hasRole("CUSTOMER")
+                        .requestMatchers(HttpMethod.GET, "/api/orders/*").hasAnyRole("CUSTOMER", "ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/api/orders/*").hasAnyRole("CUSTOMER", "ADMIN")
                         .requestMatchers("/api/orders/**").hasRole("ADMIN")
 
                         // All other requests require authentication
@@ -420,10 +428,15 @@ public class SecurityConfig {
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
-                // No (valid) token on a protected endpoint: 401 Unauthorized. Without this entry point Spring Security
-                // answers 403 Forbidden, which is meant for "authenticated, but not allowed" (wrong role)
+                // Refused by the URL rules: the same ProblemDetail responses as everywhere else, made by GlobalExceptionHandler.
+                // - no (valid) token on a protected endpoint: the entry point, 401 Unauthorized. Without an entry point
+                //   Spring Security answers 403 Forbidden, which is meant for "authenticated, but not allowed"
+                // - logged in, but the wrong role: the access-denied handler, 403 Forbidden
                 .exceptionHandling(exceptions -> exceptions
-                        .authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED))
+                        .authenticationEntryPoint((request, response, authException) ->
+                                exceptionResolver.resolveException(request, response, null, authException))
+                        .accessDeniedHandler((request, response, accessDeniedException) ->
+                                exceptionResolver.resolveException(request, response, null, accessDeniedException))
                 )
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
@@ -527,16 +540,17 @@ The authentication provider is created and configured automatically by Spring Bo
    - `/api/auth/**`: Registration and login
    - `GET /api/pizzas/**`: Anonymous users can view pizzas (read-only)
    - `/h2-console/**`: H2 database console (development only)
-   - `/error`: Spring Boot's error page. When Spring Security refuses a logged-in user, it calls `response.sendError(403)`, and the servlet container *forwards* the request to `/error` to render the body. That forward carries no JWT (our filter runs once per request, not again for the forward), so if `/error` were protected the user would be anonymous there and get a `401` instead of the `403`. Permitting `/error` keeps the right status code
+   - `/error`: Spring Boot's error page. An error that is not handled inside Spring MVC ends in `response.sendError(...)`, and the servlet container *forwards* the request to `/error` to render the body. That forward carries no JWT (our filter runs once per request, not again for the forward), so if `/error` were protected the user would be anonymous there and get a `401` instead of the real status. Permitting `/error` keeps the right status code. (Without the handlers of point 5, even every `401` and `403` of Spring Security would take this route.)
 3. **Role-Based Access**:
-   - **CUSTOMER**: can use `/api/customers/**` (view, manage favorites) and can **place** an order (`POST /api/orders`)
-   - **ADMIN**: can use `/api/customers/**`, can modify the menu (`POST`, `PUT`, `PATCH`, `DELETE` on `/api/pizzas/**`, which includes the image upload and the Open Food Facts import) and manages the orders (every other `/api/orders/**` request)
+   - **CUSTOMER**: can use their own account under `/api/customers/me/**` (view, update, orders, favorites), can **place** an order (`POST /api/orders`) and can read and cancel **one** order (`GET`/`DELETE /api/orders/{id}`); whether it is *their* order is checked on the method
+   - **ADMIN**: can use all of `/api/customers/**`, can modify the menu (`POST`, `PUT`, `PATCH`, `DELETE` on `/api/pizzas/**`, which includes the image upload and the Open Food Facts import) and manages the orders (every `/api/orders/**` request except placing one)
    - The roles do not include each other: an admin cannot place an order and a customer cannot list all orders. `hasRole("X")` checks for exactly that role
+   - `/api/customers/me/**` also matches `/api/customers/me` itself, and `/api/orders/*` matches one path segment: `/api/orders/12`, not `/api/orders` and not `/api/orders/12/status`
 4. **Stateless Sessions**: No session storage on the server
-5. **401 vs 403**: `HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)` answers `401 Unauthorized` when a protected endpoint is called without a valid token ("who are you?"). A *logged-in* user without the right role gets `403 Forbidden` ("I know you, but you may not"). Without the entry point Spring Security answers `403` in both cases: stateless configurations have no login form or HTTP Basic that would register a `401` entry point
+5. **401 vs 403, both as `ProblemDetail`**: the **authentication entry point** answers `401 Unauthorized` when a protected endpoint is called without a valid token ("who are you?"); the **access-denied handler** answers `403 Forbidden` for a *logged-in* user without the right role ("I know you, but you may not"). Without an entry point Spring Security answers `403` in both cases: stateless configurations have no login form or HTTP Basic that would register a `401` entry point. Both handlers do the same thing: they pass the exception to Spring MVC's `HandlerExceptionResolver`, so the `@ExceptionHandler` methods of `GlobalExceptionHandler` write the body, exactly like for an exception thrown in a controller. A client gets one error format for the whole API, whether the URL rules, method security or the business rules said no. (The simplest entry point, `new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)`, also gives the `401`, but with an empty body.)
 6. **JWT Filter**: Added before Spring Security's authentication filter
 7. **Auto-Configuration**: Spring Boot automatically configures the authentication provider using our `UserDetailsService` and `PasswordEncoder` beans
-8. **Order matters**: the rules are checked top to bottom and the **first** match wins. That is why the specific `POST /api/orders` rule comes before the general `/api/orders/**` rule, and why the chain ends with `anyRequest().authenticated()`: an endpoint somebody adds later and forgets to list is protected by default, never public by accident
+8. **Order matters**: the rules are checked top to bottom and the **first** match wins. That is why the specific `/api/customers/me/**` and `/api/orders/*` rules come before the general `/api/customers/**` and `/api/orders/**` rules, and why the chain ends with `anyRequest().authenticated()`: an endpoint somebody adds later and forgets to list is protected by default, never public by accident
 
 ---
 
@@ -1080,29 +1094,36 @@ curl -X POST http://localhost:8080/api/pizzas \
   }'
 ```
 
-❌ **401 Unauthorized** - Authentication required
+❌ **401 Unauthorized** - Authentication required:
 
-The `401` comes from the `HttpStatusEntryPoint` in `SecurityConfig`. Compare it with step 6: there the caller *is* logged in, but as a customer, and gets `403 Forbidden`. The difference tells a client what to do: after a `401` it should (re)log in, after a `403` logging in again won't help. Sending an expired or tampered token gives the same `401`.
+```json
+{
+  "detail" : "Authentication required. Send a valid JWT token in the Authorization header.",
+  "instance" : "/api/pizzas",
+  "status" : 401,
+  "title" : "Unauthorized",
+  "type" : "https://api.pizzastore.example.com/errors/unauthorized"
+}
+```
+
+The `401` comes from the authentication entry point in `SecurityConfig`, the body from the `InsufficientAuthenticationException` handler in `GlobalExceptionHandler`. That handler is more specific than the `AuthenticationException` handler for a failed login, so a missing token does not get "Invalid email or password". Compare it with step 6: there the caller *is* logged in, but as a customer, and gets `403 Forbidden`. The difference tells a client what to do: after a `401` it should (re)log in, after a `403` logging in again won't help. Sending an expired or tampered token gives the same `401`.
 
 ### 5. Create Order with Customer Token
 
-Emma is customer `1` in `data.sql` (step 10 shows how a client finds that out):
+Emma places an order with her token. The body only says *what* she orders, not *for whom*:
 
 ```bash
 curl -X POST http://localhost:8080/api/orders \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $CUSTOMER_TOKEN" \
   -d '{
-    "customerId": 1,
     "orderLines": [
       {"pizzaId": 1, "quantity": 2}
     ]
   }'
 ```
 
-✅ **201 Created** - Customer can create orders, for their own account
-
-The same request with `"customerId": 2` (Liam) gives ❌ **403 Forbidden**: the URL rule lets every customer `POST /api/orders`, but the `@PreAuthorize` on `createOrder` checks that the order is for the logged-in customer (see [Method Security](#-method-security-who-owns-this-customer)).
+✅ **201 Created** - Customer can create orders. The body has no `customerId`: the order is for the customer in the token, and the response shows `"customerId": 1`. A client that still sends `"customerId": 2` (Liam) changes nothing, the field is ignored (see [Orders: the Customer Comes from the Token](#6-orders-the-customer-comes-from-the-token)).
 
 ### 6. Try to Create Pizza with Customer Token
 
@@ -1116,7 +1137,7 @@ curl -X POST http://localhost:8080/api/pizzas \
   }'
 ```
 
-❌ **403 Forbidden** - Requires ADMIN role
+❌ **403 Forbidden** - Requires ADMIN role. The body is a `ProblemDetail` with `"detail" : "Access denied. You do not have permission to access this resource."`, from the access-denied handler in `SecurityConfig`.
 
 ### 7. Create Pizza with Admin Token
 
@@ -1179,26 +1200,50 @@ curl -X POST http://localhost:8080/api/auth/login \
 
 ❌ **401 Unauthorized** with a `ProblemDetail` whose `detail` is `"Invalid email or password"` (see [Controller Implementation](#controller-implementation)). The message deliberately does not say *which* of the two was wrong, so nobody can find out which e-mail addresses have an account. A request without e-mail or password is a `400` (validation), and registering an e-mail address that already exists is a `409 Conflict` "Email already exists".
 
-### 10. Who Am I?
+### 10. Who Am I? Your Own Account
 
-The login response has no customer id. `GET /api/customers/me` returns the account that belongs to the token:
-
-```bash
-curl http://localhost:8080/api/customers/me -H "Authorization: Bearer $CUSTOMER_TOKEN"
-```
-
-✅ **200 OK**. Without a token: ❌ **401**.
-
-### 11. Somebody Else's Account
+The login response has no customer id, and a customer never needs one: everything about their own account lives under `/api/customers/me`, and the server takes the customer from the token:
 
 ```bash
-curl http://localhost:8080/api/customers/1 -H "Authorization: Bearer $CUSTOMER_TOKEN"   # Emma herself: 200
-curl http://localhost:8080/api/customers/2 -H "Authorization: Bearer $CUSTOMER_TOKEN"   # Liam: 403
-curl http://localhost:8080/api/customers   -H "Authorization: Bearer $CUSTOMER_TOKEN"   # all customers: 403
-curl http://localhost:8080/api/customers/2 -H "Authorization: Bearer $ADMIN_TOKEN"      # the admin: 200
+curl http://localhost:8080/api/customers/me           -H "Authorization: Bearer $CUSTOMER_TOKEN"   # Emma's account
+curl http://localhost:8080/api/customers/me/orders    -H "Authorization: Bearer $CUSTOMER_TOKEN"   # Emma's orders
+curl http://localhost:8080/api/customers/me/favorites -H "Authorization: Bearer $CUSTOMER_TOKEN"   # Emma's favorites
+curl -X POST http://localhost:8080/api/customers/me/favorites/2 -H "Authorization: Bearer $CUSTOMER_TOKEN"   # add Pepperoni
 ```
 
-The `403` is a `ProblemDetail` with `"detail" : "Access denied. You do not have permission to access this resource."`, produced by the `AccessDeniedException` handler in `GlobalExceptionHandler`. The same goes for `PUT`/`DELETE /api/customers/2` and for Liam's favorites.
+✅ **200 OK** for each. Without a token: ❌ **401**. `PUT /api/customers/me` updates the account, and `DELETE /api/customers/me/favorites/{pizzaId}` removes a favorite.
+
+The endpoints with a customer id in the URL are for the admin:
+
+```bash
+curl http://localhost:8080/api/customers/2 -H "Authorization: Bearer $ADMIN_TOKEN"      # Liam, for the admin: 200
+curl http://localhost:8080/api/customers/2 -H "Authorization: Bearer $CUSTOMER_TOKEN"   # 403
+curl http://localhost:8080/api/customers/1 -H "Authorization: Bearer $CUSTOMER_TOKEN"   # Emma's own id: 403 as well
+```
+
+A customer gets `403` even for their own id: that is a URL rule, it does not look at the id at all. Emma has `/me`.
+
+### 11. Your Own Orders, Not Somebody Else's
+
+In `data.sql`, orders 1 and 3 are Emma's and order 2 is Liam's. One order has one URL, `/api/orders/{id}`, for everybody:
+
+```bash
+curl http://localhost:8080/api/orders/1   -H "Authorization: Bearer $CUSTOMER_TOKEN"   # Emma's order: 200
+curl http://localhost:8080/api/orders/2   -H "Authorization: Bearer $CUSTOMER_TOKEN"   # Liam's order: 403
+curl http://localhost:8080/api/orders/999 -H "Authorization: Bearer $CUSTOMER_TOKEN"   # does not exist: 403
+curl http://localhost:8080/api/orders/2   -H "Authorization: Bearer $ADMIN_TOKEN"      # the admin: 200
+curl http://localhost:8080/api/orders/999 -H "Authorization: Bearer $ADMIN_TOKEN"      # the admin: 404
+```
+
+Cancelling follows the same rule, and the business rules of [Lesson 10](../lesson-10-validation-exception-handling/README.md) still apply after the security check:
+
+```bash
+curl -X DELETE http://localhost:8080/api/orders/3 -H "Authorization: Bearer $CUSTOMER_TOKEN"   # Emma's CONFIRMED order: 204
+curl -X DELETE http://localhost:8080/api/orders/1 -H "Authorization: Bearer $CUSTOMER_TOKEN"   # Emma's DELIVERED order: 422
+curl -X DELETE http://localhost:8080/api/orders/2 -H "Authorization: Bearer $CUSTOMER_TOKEN"   # Liam's order: 403
+```
+
+The URL rule lets every customer through to `GET`/`DELETE /api/orders/{id}`; the `403` for Liam's order comes from method security (see [Method Security](#-method-security-whose-order-is-this)). Its body is the same `ProblemDetail` as for a `403` from a URL rule (step 6, or `/api/customers/2` above): `"detail" : "Access denied. You do not have permission to access this resource."`, made by the `AccessDeniedException` handler in `GlobalExceptionHandler`. The URL rule's `403` reaches that handler through the access-denied handler in `SecurityConfig`, the method-security `403` directly, because `@PreAuthorize` throws while Spring MVC calls the controller. A client cannot tell, and does not need to.
 
 ---
 
@@ -1207,18 +1252,18 @@ The `403` is a `ProblemDetail` with `"detail" : "Access denied. You do not have 
 
 ### Access Control Summary
 
-"Own" means: the customer whose id is in the URL (or, for an order, in `customerId`) is the logged-in customer.
+"Own" means: the logged-in customer placed that order. For their own account a customer uses `/api/customers/me`, where the customer comes from the token, so there is nothing to check.
 
 | Endpoint | Method | Anonymous | CUSTOMER | ADMIN | Decided by |
 |----------|--------|-----------|----------|-------|------------|
 | `/api/auth/**` | ALL | ✅ | ✅ | ✅ | URL rule |
 | `/api/pizzas/**` | GET | ✅ | ✅ | ✅ | URL rule |
 | `/api/pizzas/**` | POST/PUT/PATCH/DELETE (incl. `/{id}/image` and `/{id}/nutritional-info/import`) | ❌ 401 | ❌ 403 | ✅ | URL rule |
-| `/api/customers/me` | GET | ❌ 401 | ✅ | ✅ | URL rule |
-| `/api/customers` | GET (all), POST | ❌ 401 | ❌ 403 | ✅ | URL rule + `@IsAdmin` |
-| `/api/customers/{id}`, `/{id}/orders`, `/{id}/favorites/**` | GET/PUT/DELETE/POST | ❌ 401 | ✅ own only | ✅ | URL rule + `@IsAdminOrOwner` |
-| `/api/orders` | POST | ❌ 401 | ✅ own only | ❌ 403 | URL rule + `@PreAuthorize` |
-| `/api/orders/**` | GET/PATCH/DELETE | ❌ 401 | ❌ 403 | ✅ | URL rule |
+| `/api/customers/me`, `/me/orders`, `/me/favorites/**` | GET/PUT/POST/DELETE | ❌ 401 | ✅ | ✅ | URL rule; the customer comes from the token (`@CurrentUser`) |
+| `/api/customers`, `/api/customers/{id}/**` | ALL | ❌ 401 | ❌ 403 | ✅ | URL rule |
+| `/api/orders` | POST | ❌ 401 | ✅ for themselves | ❌ 403 | URL rule; the customer comes from the token (`@CurrentUser`) |
+| `/api/orders/{id}` | GET/DELETE | ❌ 401 | ✅ own only | ✅ | URL rule + `@IsAdminOrOrderOwner` |
+| `/api/orders`, `/api/orders/{id}/status` | GET/PATCH | ❌ 401 | ❌ 403 | ✅ | URL rule |
 
 ### Two Layers
 
@@ -1228,16 +1273,18 @@ The rules live in two places, and each layer does what it is good at:
 |---|---|---|
 | Where | [`SecurityConfig`](pizzastore-with-jwt/src/main/java/be/vives/pizzastore/security/SecurityConfig.java), one place | on the controller method it protects |
 | When | in the `AuthorizationFilter`, before Spring MVC is even involved | when the method is called, after the request body is read and validated |
-| Knows | URL, HTTP method, roles | all of that **plus the method arguments** (`#id`, `#request.customerId()`) and any bean |
-| PizzaStore uses it for | "who may use this kind of endpoint" (role per URL) | "may *this* customer touch *this* customer record" |
+| Knows | URL, HTTP method, roles | all of that **plus the method arguments** (`#id`) and any bean |
+| PizzaStore uses it for | "who may use this kind of endpoint" (role per URL) | "may *this* customer touch *this* order" |
 
-The URL rules stay the first, coarse gate: anonymous callers never get past them, and a whole controller (`PizzaController`) is protected without a single annotation. Method security only refines.
+The URL rules stay the first, coarse gate: anonymous callers never get past them, and whole controllers (`PizzaController`, `CustomerController`) are protected without a single annotation. Method security only refines.
 
 ---
 
-## 🛂 Method Security: Who Owns This Customer?
+## 🛂 Method Security: Whose Order Is This?
 
-The URL rule `/api/customers/** → hasAnyRole("CUSTOMER", "ADMIN")` has a hole: **every** customer can read, change and delete **every** other customer, and could place orders on somebody else's name. No URL pattern can fix that, because `/api/customers/1` and `/api/customers/2` look the same to a pattern; the difference is in the *data*. This is what the book calls **domain-object** or **instance-level security**, and Spring Security solves it with method security.
+Most "is this mine?" questions disappear with a good URL design. A customer's own account is `/api/customers/me`: the server takes the customer from the token, and there is no id that could be somebody else's. The same goes for placing an order: the body has no `customerId`, the order is for the customer in the token (section 6 below).
+
+One question remains. An order has one URL, `/api/orders/12`, for the admin and for the customer who placed it, and the customer has no way to say "my" instead of `12`: they got the id from `/api/customers/me/orders` and now want that one order. The URL rule can only say "customers may call `GET /api/orders/*`"; `/api/orders/1` and `/api/orders/2` look the same to a pattern. Whether order 2 is Emma's is in the *data*. This is what the book calls **domain-object** or **instance-level security**, and Spring Security solves it with method security.
 
 ### 1. Switch It On: `@EnableMethodSecurity`
 
@@ -1257,77 +1304,74 @@ Without it every `@PreAuthorize` is silently ignored: Spring Boot does **not** e
 - `hasRole('ADMIN')`, `hasAnyRole(...)`, `hasAuthority(...)`, `isAuthenticated()`
 - `authentication`: the current `Authentication` (`authentication.name` is the e-mail address)
 - `#name`: a method parameter by its name (`#id`, `#request`)
-- `@beanName`: any Spring bean, e.g. `@customerSecurity.isOwner(...)`
+- `@beanName`: any Spring bean, e.g. `@orderSecurity.isOwner(...)`
 
-`OrderController.createOrder` uses it directly:
+Written out on `OrderController.getOrder`, the rule "an admin, or the customer who placed the order" reads:
 
 ```java
-// SecurityConfig: only a CUSTOMER may POST here; this rule adds: only for their own account
-@PostMapping
-@PreAuthorize("@customerSecurity.isOwner(#request.customerId(), authentication)")
-public ResponseEntity<OrderResponse> createOrder(@Valid @RequestBody CreateOrderRequest request) { ... }
+@GetMapping("/{id}")
+@PreAuthorize("hasRole('ADMIN') or @orderSecurity.isOwner(#id, authentication)")
+public ResponseEntity<OrderResponse> getOrder(@PathVariable Long id) { ... }
 ```
+
+PizzaStore does not write it out like this: step 4 gives the expression a name.
 
 ### 3. The Ownership Check: a Bean
 
-The question "is customer `X` the one who is logged in?" needs the database, so it lives in a small bean, [`CustomerSecurity`](pizzastore-with-jwt/src/main/java/be/vives/pizzastore/security/CustomerSecurity.java), registered under the name the expressions use:
+The question "did the logged-in customer place order `X`?" needs the database, so it lives in a small bean, [`OrderSecurity`](pizzastore-with-jwt/src/main/java/be/vives/pizzastore/security/OrderSecurity.java), registered under the name the expressions use:
 
 ```java
-@Component("customerSecurity")
-public class CustomerSecurity {
+@Component("orderSecurity")
+public class OrderSecurity {
     ...
-    public boolean isOwner(Long customerId, Authentication authentication) {
-        if (customerId == null || authentication == null) {
+    public boolean isOwner(Long orderId, Authentication authentication) {
+        if (orderId == null || authentication == null) {
             return false;
         }
-        // the username of a PizzaStore user is the e-mail address (see CustomUserDetailsService)
-        return customerRepository.findById(customerId)
-                .map(customer -> customer.getEmail().equals(authentication.getName()))
-                .orElse(false);
+        // the username of a PizzaStore user is the e-mail address (see CustomUserDetailsService);
+        // an unknown order is "not yours" too
+        return orderRepository.existsByIdAndCustomerEmail(orderId, authentication.getName());
     }
 }
 ```
 
-An unknown id is "not yours": a customer asking for `/api/customers/999` gets `403`, not `404`, so customers cannot probe which ids exist. An admin gets the honest `404`, because `hasRole('ADMIN')` is checked first.
+`existsByIdAndCustomerEmail` is a derived query in [`OrderRepository`](pizzastore-with-jwt/src/main/java/be/vives/pizzastore/repository/OrderRepository.java) (Lesson 6a): Spring Data turns `CustomerEmail` into a join from `Order` to its `customer` and asks the database for at most one matching id, without loading the order or its order lines.
 
-### 4. Meta-Annotations: `@IsAdmin` and `@IsAdminOrOwner`
+An unknown id is "not yours": a customer asking for `/api/orders/999` gets `403`, not `404`, so customers cannot probe which order ids exist. An admin gets the honest `404`, because `hasRole('ADMIN')` is checked first.
 
-The same expression on seven methods is seven chances for a typo, and a string the compiler never checks. The book's advice: write it **once**, in a custom annotation that is itself annotated with `@PreAuthorize`. Spring Security finds it on the method's annotations:
+### 4. A Meta-Annotation: `@IsAdminOrOrderOwner`
+
+A SpEL expression is a string the compiler never checks, and the same rule on several methods is several chances for a typo. The book's advice: write it **once**, in a custom annotation that is itself annotated with `@PreAuthorize` (its `@IsAdmin`, Listing 11-4). Spring Security finds it on the method's annotations:
 
 ```java
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)
-@PreAuthorize("hasRole('ADMIN') or @customerSecurity.isOwner(#id, authentication)")
-public @interface IsAdminOrOwner {
+@PreAuthorize("hasRole('ADMIN') or @orderSecurity.isOwner(#id, authentication)")
+public @interface IsAdminOrOrderOwner {
 }
 ```
 
-[`IsAdmin`](pizzastore-with-jwt/src/main/java/be/vives/pizzastore/security/IsAdmin.java) is the same with `hasRole('ADMIN')`. [`CustomerController`](pizzastore-with-jwt/src/main/java/be/vives/pizzastore/controller/CustomerController.java) now reads like a policy:
+[`OrderController`](pizzastore-with-jwt/src/main/java/be/vives/pizzastore/controller/OrderController.java) uses it on the two methods a customer may call for one order:
 
 ```java
-@GetMapping
-@IsAdmin
-public ResponseEntity<Page<CustomerResponse>> getAllCustomers(Pageable pageable) { ... }
-
+// an admin, or the customer who placed the order (a URL pattern cannot tell whose order /api/orders/12 is)
 @GetMapping("/{id}")
-@IsAdminOrOwner
-public ResponseEntity<CustomerResponse> getCustomer(@PathVariable Long id) { ... }
+@IsAdminOrOrderOwner
+public ResponseEntity<OrderResponse> getOrder(@PathVariable Long id) { ... }
 
-// customers create their own account with POST /api/auth/register
-@PostMapping
-@IsAdmin
-public ResponseEntity<CustomerResponse> createCustomer(@Valid @RequestBody CreateCustomerRequest request) { ... }
-
-@PostMapping("/{id}/favorites/{pizzaId}")
-@IsAdminOrOwner
-public ResponseEntity<Void> addFavoritePizza(@PathVariable Long id, @PathVariable Long pizzaId) { ... }
+// an admin, or the customer who placed the order; the business rules in OrderService still apply
+@DeleteMapping("/{id}")
+@IsAdminOrOrderOwner
+public ResponseEntity<Void> cancelOrder(@PathVariable Long id) { ... }
 ```
 
-`#id` refers to the parameter **named** `id`, so every method that carries `@IsAdminOrOwner` must call its customer-id parameter `id`. That is why the favorites endpoints changed from `{customerId}` to `{id}`; the URLs themselves are the same. (Parameter names are available at runtime because the Spring Boot parent compiles with `-parameters`, the same reason `@PathVariable Long id` works without `@PathVariable("id")`.)
+`#id` refers to the parameter **named** `id`, so every method that carries `@IsAdminOrOrderOwner` must call its order-id parameter `id`. (Parameter names are available at runtime because the Spring Boot parent compiles with `-parameters`, the same reason `@PathVariable Long id` works without `@PathVariable("id")`.)
+
+PizzaStore has no `@IsAdmin` like the book: "only an admin" is a pure role rule, and `SecurityConfig` already says it for every admin endpoint (see [Best Practices](#7-role-rules-centrally-ownership-rules-on-the-method)).
 
 ### 5. Who Am I? `@AuthenticationPrincipal` and `@CurrentUser`
 
-After logging in, a client knows its token but not its customer id. `GET /api/customers/me` answers that. `@AuthenticationPrincipal` injects the principal that `JwtAuthenticationFilter` stored in the `SecurityContext` (our `UserDetails`), and its `expression` picks one property; the meta-annotation [`@CurrentUser`](pizzastore-with-jwt/src/main/java/be/vives/pizzastore/security/CurrentUser.java) gives that a name, like the book's `@CRMUser`:
+The other half of the design is: let the token say who the customer is. `@AuthenticationPrincipal` injects the principal that `JwtAuthenticationFilter` stored in the `SecurityContext` (our `UserDetails`), and its `expression` picks one property; the meta-annotation [`@CurrentUser`](pizzastore-with-jwt/src/main/java/be/vives/pizzastore/security/CurrentUser.java) gives that a name, like the book's `@CRMUser`:
 
 ```java
 @Target(ElementType.PARAMETER)
@@ -1337,15 +1381,52 @@ public @interface CurrentUser {
 }
 ```
 
+[`CurrentCustomerController`](pizzastore-with-jwt/src/main/java/be/vives/pizzastore/controller/CurrentCustomerController.java) (`/api/customers/me`) uses it on every method:
+
 ```java
-// the account of the logged-in user: how a customer finds out their own id after logging in
-@GetMapping("/me")
+@GetMapping
 public ResponseEntity<CustomerResponse> getCurrentCustomer(@CurrentUser String email) {
     return ResponseEntity.ok(customerService.findByEmail(email));
 }
+
+@GetMapping("/orders")
+public ResponseEntity<Page<OrderResponse>> getMyOrders(@CurrentUser String email, ...) {
+    ...
+    return ResponseEntity.ok(orderService.findByCustomerId(customerId(email), pageable));
+}
 ```
 
-No `SecurityContextHolder`, no casting in the controller, and in a test `@WithMockUser(username = "john@example.com")` is all it takes. `/me` is a literal path, so Spring MVC prefers it over `/{id}`.
+No `SecurityContextHolder`, no casting in the controller, and in a test `@WithMockUser(username = "john@example.com")` is all it takes. `/api/customers/me` is a literal path, so Spring MVC prefers it over `/api/customers/{id}` in `CustomerController`. That controller is the one of Lesson 12, **unchanged**: with `/me` for customers, everything in it is for the admin, and one URL rule says so.
+
+### 6. Orders: the Customer Comes from the Token
+
+Until Lesson 12, `CreateOrderRequest` had a `customerId`: without login, the body was the only way to say who orders. With a token, the server already knows that. Keeping the field would mean: the client sends a value the server already has, and the server then has to check that the value is the one it already has. Even the only correct value is redundant, and every other value is an attempt to order on somebody else's name.
+
+So the field is gone and `createOrder` asks the token, exactly like `/me`:
+
+```java
+// SecurityConfig: only a CUSTOMER may POST here; the order is for the logged-in customer, taken from the JWT
+@PostMapping
+public ResponseEntity<OrderResponse> createOrder(@CurrentUser String email,
+                                                 @Valid @RequestBody CreateOrderRequest request) { ... }
+```
+
+`OrderService.create(email, request)` looks the customer up with `customerRepository.findByEmail(email)`. There is no `@PreAuthorize` on `createOrder`: a rule that can never fail does not need to be checked.
+
+### When Is an Id in the Request Right?
+
+This is a general rule: **never take the identity of the caller from the request when the authentication already tells you**. A `customerId` in the body or in the URL (or an `"owner"`, `"userId"`, `"createdBy"` field) for "the logged-in user" is the classic **IDOR** (*Insecure Direct Object Reference*) hole: the API is only safe as long as nobody forgets the check. Without the id there is nothing to forget.
+
+An id from the request is right when it names the **resource** the caller wants to work on, not the caller:
+
+| Id in the request | Names | PizzaStore |
+|---|---|---|
+| "my account", "my orders", "my favorites" | the caller | no id: `/api/customers/me/**`, customer from the token |
+| the customer of a new order | the caller | no id: `POST /api/orders`, customer from the token |
+| a customer, for the admin | a resource | `/api/customers/{id}/**`, URL rule: ADMIN only |
+| one order | a resource | `/api/orders/{id}`, URL rule + `@IsAdminOrOrderOwner` |
+
+So method security belongs exactly where the last row is: the caller names a resource that may or may not be theirs. An order field `customerId` would only make sense if somebody may order *for another customer*, for example staff taking an order by phone. PizzaStore has no such role (an admin cannot place orders at all); if it did, the field would be optional and only staff could use it.
 
 ### Controller or Service?
 
@@ -1402,7 +1483,7 @@ curl -i -X OPTIONS http://localhost:8080/api/orders \
   -H "Access-Control-Request-Headers: authorization,content-type"
 ```
 
-✅ `200` with `Access-Control-Allow-Origin: http://localhost:5173`. With `-H "Origin: https://evil.example.com"`: ❌ `403 Invalid CORS request`. Never use `*` as allowed origin for an API that accepts credentials; list the front-ends you trust.
+✅ `200` with `Access-Control-Allow-Origin: http://localhost:5173`. With `-H "Origin: https://evil.example.com"`: ❌ `403 Invalid CORS request`, as plain text: that answer comes from Spring's CORS processing, before any security rule, and is the one error that is not a `ProblemDetail` (a browser does not show it to the user anyway, it blocks the request). Never use `*` as allowed origin for an API that accepts credentials; list the front-ends you trust.
 
 ### CSRF: Why It Is Off
 
@@ -1492,11 +1573,11 @@ Two places for one rule drift apart, and nobody knows which one is the real one.
 
 ```java
 @GetMapping("/{id}")
-@IsAdminOrOwner                                // hasRole('ADMIN') or @customerSecurity.isOwner(#id, authentication)
-public ResponseEntity<CustomerResponse> getCustomer(@PathVariable Long id) { ... }
+@IsAdminOrOrderOwner                           // hasRole('ADMIN') or @orderSecurity.isOwner(#id, authentication)
+public ResponseEntity<OrderResponse> getOrder(@PathVariable Long id) { ... }
 ```
 
-`@IsAdmin` on `getAllCustomers` and `createCustomer` is the one exception to "don't repeat": the URL rule for `/api/customers/**` is deliberately broad (customers need `/me` and their own record), so the admin-only methods inside it say so themselves.
+That is why PizzaStore has no `@IsAdmin` on admin-only methods, although the book shows one (Listing 11-4): every admin endpoint already has a URL rule that says `hasRole("ADMIN")`. And design the URLs so that ownership rules are rare: `/api/customers/me` instead of `/api/customers/{id}` with "only if it is yours" needs no rule at all.
 
 ---
 
@@ -1588,48 +1669,68 @@ void importNutritionalInfo_WithCustomerRole_ReturnsForbidden() {
 }
 ```
 
-An anonymous `POST` gets `401` (`createPizza_Anonymous_ReturnsUnauthorized`): `@WithAnonymousUser` plus the real `SecurityConfig` also tests the `HttpStatusEntryPoint` (see [Testing the Authentication](#4-try-to-create-pizza-without-auth)).
+An anonymous `POST` gets `401` (`createPizza_Anonymous_ReturnsUnauthorized`): `@WithAnonymousUser` plus the real `SecurityConfig` also tests the entry point and its `ProblemDetail` body (see [Testing the Authentication](#4-try-to-create-pizza-without-auth)); `createPizza_WithCustomerRole_ReturnsForbidden` does the same for the access-denied handler.
 
-[`OrderControllerTest`](pizzastore-with-jwt/src/test/java/be/vives/pizzastore/controller/OrderControllerTest.java) and [`CustomerControllerTest`](pizzastore-with-jwt/src/test/java/be/vives/pizzastore/controller/CustomerControllerTest.java) follow the same pattern, with `@WithMockUser` per test. They check the less obvious rules of the [access table](#access-control-summary): a customer may place an order, but an **admin may not** (`createOrder_withAdminRole_returnsForbidden`), and a customer may not list, read, update or cancel orders. [`AuthControllerTest`](pizzastore-with-jwt/src/test/java/be/vives/pizzastore/controller/AuthControllerTest.java) tests the public `/api/auth` endpoints without any user: a duplicate e-mail address gives a `409` and invalid registration data a `400`, both as `ProblemDetail`.
+[`OrderControllerTest`](pizzastore-with-jwt/src/test/java/be/vives/pizzastore/controller/OrderControllerTest.java), [`CustomerControllerTest`](pizzastore-with-jwt/src/test/java/be/vives/pizzastore/controller/CustomerControllerTest.java) and [`CurrentCustomerControllerTest`](pizzastore-with-jwt/src/test/java/be/vives/pizzastore/controller/CurrentCustomerControllerTest.java) follow the same pattern, with `@WithMockUser` per test. They check the less obvious rules of the [access table](#access-control-summary): a customer may place an order, but an **admin may not** (`createOrder_withAdminRole_returnsForbidden`); a customer may not list orders or change their status; a customer gets `403` on `/api/customers/{id}` even for their own id (`getCustomer_withCustomerRole_returnsForbidden`). [`AuthControllerTest`](pizzastore-with-jwt/src/test/java/be/vives/pizzastore/controller/AuthControllerTest.java) tests the public `/api/auth` endpoints without any user: a duplicate e-mail address gives a `409` and invalid registration data a `400`, both as `ProblemDetail`.
 
-#### Method Security in the Slice
+#### The Current User in the Slice
 
-`@WebMvcTest` does not load `CustomerSecurity` (a plain `@Component`), but the `@IsAdminOrOwner` expression calls it by name. [`CustomerControllerTest`](pizzastore-with-jwt/src/test/java/be/vives/pizzastore/controller/CustomerControllerTest.java) therefore registers a mock **under that name** and decides who owns what:
+`@WithMockUser(username = ...)` sets the principal that `@CurrentUser` reads. [`CurrentCustomerControllerTest`](pizzastore-with-jwt/src/test/java/be/vives/pizzastore/controller/CurrentCustomerControllerTest.java) logs in as `john@example.com` and checks that every `/me` endpoint works on *that* customer, without any id in the request:
 
 ```java
-// the bean that @IsAdminOrOwner calls by name: @customerSecurity.isOwner(#id, authentication)
-@MockitoBean(name = "customerSecurity")
-private CustomerSecurity customerSecurity;
-
 @BeforeEach
-void ownsCustomer1() {
-    when(customerSecurity.isOwner(eq(1L), any())).thenReturn(true);
+void johnIsCustomer1() {
+    when(customerService.findByEmail(JOHN)).thenReturn(john());
 }
 
 @Test
-@WithMockUser(roles = "CUSTOMER")
-void getCustomer_ofAnotherCustomer_returnsForbidden() {
-    client.get().uri("/api/customers/{id}", 2)        // not stubbed: the mock answers false
+@WithMockUser(username = JOHN, roles = "CUSTOMER")
+void addFavoritePizza_addsToTheLoggedInCustomer() {
+    client.post().uri("/api/customers/me/favorites/{pizzaId}", 2)
             .exchange()
-            .expectStatus().isForbidden();
+            .expectStatus().isOk();
 
-    verify(customerService, never()).findById(any());
-}
-
-@Test
-@WithMockUser(username = "john@example.com", roles = "CUSTOMER")
-void getCurrentCustomer_shouldReturnTheLoggedInCustomer() {
-    when(customerService.findByEmail("john@example.com")).thenReturn(john());
-
-    client.get().uri("/api/customers/me")
-            .exchange()
-            .expectStatus().isOk()
-            .expectBody()
-            .jsonPath("$.email").isEqualTo("john@example.com");
+    verify(customerService).addFavoritePizza(1L, 2L);
 }
 ```
 
-The slice tests the *rule* (`@IsAdminOrOwner` is on the method and is enforced); whether `CustomerSecurity` itself compares the right e-mail addresses is proven by the full-stack tests below, with a real database. `OrderControllerTest` does the same for `createOrder` (`createOrder_forAnotherCustomer_returnsForbidden`). A quick sanity check that these tests really test something: comment out `@EnableMethodSecurity` and eight tests turn red (six in the slices, two full-stack).
+`OrderControllerTest` does the same for `createOrder`: it passes the logged-in e-mail address to the service, even when the body still contains a `customerId` (`createOrder_ignoresCustomerIdInBody`).
+
+#### Method Security in the Slice
+
+`@WebMvcTest` does not load `OrderSecurity` (a plain `@Component`), but the `@IsAdminOrOrderOwner` expression calls it by name. [`OrderControllerTest`](pizzastore-with-jwt/src/test/java/be/vives/pizzastore/controller/OrderControllerTest.java) therefore registers a mock **under that name** and decides per test who owns what:
+
+```java
+// the bean that @IsAdminOrOrderOwner calls by name: @orderSecurity.isOwner(#id, authentication).
+// Not stubbed, the mock answers false: "somebody else's order"
+@MockitoBean(name = "orderSecurity")
+private OrderSecurity orderSecurity;
+
+@Test
+@WithMockUser(username = EMMA, roles = "CUSTOMER")
+void getOrder_ownOrder_asCustomer_returnsOrder() {
+    when(orderSecurity.isOwner(eq(1L), any())).thenReturn(true);
+    when(orderService.findById(1L)).thenReturn(orderWithLines());
+
+    client.get().uri("/api/orders/{id}", 1)
+            .exchange()
+            .expectStatus().isOk();
+}
+
+@Test
+@WithMockUser(username = EMMA, roles = "CUSTOMER")
+void getOrder_ofAnotherCustomer_returnsForbidden() {
+    client.get().uri("/api/orders/{id}", 2)
+            .exchange()
+            .expectStatus().isForbidden()
+            .expectHeader().contentType(MediaType.APPLICATION_PROBLEM_JSON);
+
+    // the rule is checked before the method runs: the order is never even loaded
+    verify(orderService, never()).findById(any());
+}
+```
+
+The slice tests the *rule* (`@IsAdminOrOrderOwner` is on the method and is enforced); whether `OrderSecurity` itself finds the right orders is proven by the full-stack tests below, with a real database. A quick sanity check that these tests really test something: comment out `@EnableMethodSecurity` and five tests turn red (two in the slice, three full-stack).
 
 > **Multipart in a slice.** The four image-upload tests are in a separate class, [`PizzaImageUploadControllerTest`](pizzastore-with-jwt/src/test/java/be/vives/pizzastore/controller/PizzaImageUploadControllerTest.java), that uses MockMvc instead of `RestTestClient`: a `RestTestClient` bound to MockMvc does not turn a multipart body into request parts (Lesson 12, *Which one should I use?*). `@WithMockUser` works with both.
 
@@ -1679,21 +1780,21 @@ void customer_CannotListAllOrders_ButAdminCan() {
 }
 ```
 
-The other tests of the class: anonymous users can read pizzas but get `401` when they try to create one, a customer gets `403` and an admin `201`, a garbage token gives `401` (not a `500`), a wrong password gives `401`, and the token returned by `register` works immediately. And for the method-level rules and CORS: `/me` returns the account of the token, a customer cannot read another customer (the admin can) or order for them, a customer created by an admin can log in (the password was hashed), and a CORS preflight from `http://localhost:3000` is accepted while one from an unknown origin is rejected.
+The other tests of the class: anonymous users can read pizzas but get `401` when they try to create one, a customer gets `403` and an admin `201`, a garbage token gives `401` (not a `500`), a wrong password gives `401`, and the token returned by `register` works immediately. For the own account: `/me` returns the account of the token and `/me/orders` its orders, and a customer cannot use `/api/customers/{id}`, not even with their own id (the admin can). For method security, with real orders in a real database: a customer reads and cancels their own order but gets `403` for somebody else's (`customer_CanReadOwnOrder_ButNotSomebodyElses`, `customer_CanCancelOwnOrder_ButNotSomebodyElses`), and an unknown order id is `403` for a customer but `404` for the admin. Finally, a customer created by an admin can log in (the password was hashed), and a CORS preflight from `http://localhost:3000` is accepted while one from an unknown origin is rejected.
 
-The full-stack tests of Lesson 12 needed the same change: [`PizzaStoreApiIntegrationTest`](pizzastore-with-jwt/src/test/java/be/vives/pizzastore/integration/PizzaStoreApiIntegrationTest.java) creates an admin and a customer in `@BeforeEach` and sends their tokens with every request that needs one; its order scenarios place every order for that customer's own account, because ordering for somebody else is now a `403`. The MockMvc-based [`PizzaIntegrationTest`](pizzastore-with-jwt/src/test/java/be/vives/pizzastore/integration/PizzaIntegrationTest.java) uses `@WithMockUser(roles = "ADMIN")`, which works because MockMvc runs on the test thread.
+The full-stack tests of Lesson 12 needed the same change: [`PizzaStoreApiIntegrationTest`](pizzastore-with-jwt/src/test/java/be/vives/pizzastore/integration/PizzaStoreApiIntegrationTest.java) creates an admin and a customer in `@BeforeEach` and sends their tokens with every request that needs one; its orders no longer contain a `customerId`: every order is placed by, and therefore for, that customer. [`SecurityIntegrationTest`](pizzastore-with-jwt/src/test/java/be/vives/pizzastore/integration/SecurityIntegrationTest.java) proves it with a real token: a body with somebody else's `customerId` still gives an order for the logged-in customer (`customer_OrderIsAlwaysForTheLoggedInCustomer`). The MockMvc-based [`PizzaIntegrationTest`](pizzastore-with-jwt/src/test/java/be/vives/pizzastore/integration/PizzaIntegrationTest.java) uses `@WithMockUser(roles = "ADMIN")`, which works because MockMvc runs on the test thread.
 
 ### The Test Suite of This Lesson
 
-`mvn test` runs **252 tests**:
+`mvn test` runs **264 tests**:
 
 | Kind | Test classes | Tests |
 |------|--------------|------:|
 | Unit (no Spring) | `PizzaServiceTest`, `CustomerServiceTest`, `OrderServiceTest`, `NutritionImportServiceTest`, `RequestValidationTest`, `PizzaControllerStandaloneTest` | 97 |
 | Slice | `PizzaRepositoryTest`, `CustomerRepositoryTest`, `OrderRepositoryTest` (`@DataJpaTest`) | 40 |
-| | `PizzaControllerTest`, `CustomerControllerTest`, `OrderControllerTest`, `AuthControllerTest` (`@WebMvcTest` + `RestTestClient` + security), `PizzaImageUploadControllerTest` (MockMvc) | 68 |
+| | `PizzaControllerTest`, `CustomerControllerTest`, `CurrentCustomerControllerTest`, `OrderControllerTest`, `AuthControllerTest` (`@WebMvcTest` + `RestTestClient` + security), `PizzaImageUploadControllerTest` (MockMvc) | 76 |
 | | `PizzaJsonTest`, `PizzaMapperTest`, `OpenFoodFactsClientTest` | 13 |
-| Full stack | `ApplicationSmokeTest`, `PizzaIntegrationTest`, `PizzaStoreApiIntegrationTest`, `BeanOverrideIntegrationTest`, `SecurityIntegrationTest` | 34 |
+| Full stack | `ApplicationSmokeTest`, `PizzaIntegrationTest`, `PizzaStoreApiIntegrationTest`, `BeanOverrideIntegrationTest`, `SecurityIntegrationTest` | 38 |
 
 Compared with Lesson 12, this is the test suite of the final PizzaStore: the controller tests are written with `RestTestClient` only (Lesson 12's side-by-side comparison classes `PizzaControllerRestTestClientTest` and `PizzaControllerMockMvcTesterTest` have done their job and are not carried over), and `AuthControllerTest`, `SecurityIntegrationTest`, the role and ownership tests and the password-hashing tests in `CustomerServiceTest` are new.
 
@@ -1816,8 +1917,8 @@ In this lesson, you learned:
 ✅ **JWT generation and validation** - Using jjwt library  
 ✅ **Password hashing** - BCrypt behind a `DelegatingPasswordEncoder`, on every path that creates an account  
 ✅ **Role-based access control** - CUSTOMER and ADMIN roles, as URL rules  
-✅ **Method security** - `@EnableMethodSecurity`, `@PreAuthorize`, meta-annotations, an ownership check bean  
-✅ **The current user** - `@AuthenticationPrincipal` behind `@CurrentUser`, `GET /api/customers/me`  
+✅ **Method security** - `@EnableMethodSecurity`, `@PreAuthorize`, a meta-annotation, an ownership check bean for orders  
+✅ **The current user** - `@AuthenticationPrincipal` behind `@CurrentUser`, the own account under `/api/customers/me`  
 ✅ **CORS and CSRF** - which one a token API needs, and why  
 ✅ **Authentication endpoints** - Register and login  
 ✅ **Testing secured endpoints** - With and without JWT tokens  
@@ -1828,16 +1929,17 @@ In this lesson, you learned:
 1. **JWT is stateless**: No server-side session storage
 2. **Always hash passwords**: Never store plain text passwords
 3. **Use role-based access**: Restrict endpoints based on user roles, centrally, and end with `anyRequest().authenticated()`
-4. **Check ownership on the method**: a role says *what kind* of user you are, not *whose* data you may touch
-5. **Secure your secret**: Store JWT secret in environment variables
-6. **Test thoroughly**: Verify all access control rules work correctly, the allowed and the forbidden cases
+4. **Take the caller from the token, not from the request**: an id that the authentication already gives you is a field or path variable to remove, not to check (`/me`, an order without `customerId`)
+5. **Check ownership on the method**: when the caller names a resource that may be somebody else's (`/api/orders/12`), a role says *what kind* of user you are, not *whose* data you may touch
+6. **Secure your secret**: Store JWT secret in environment variables
+7. **Test thoroughly**: Verify all access control rules work correctly, the allowed and the forbidden cases
 
 ---
 
 **Note on the book**: *Pro Spring Boot 4* covers security in Chapter 11, *Securing Spring Boot Applications* (p. 281-320). This lesson follows its first part closely:
 
 - *Modern Security Architecture* (p. 282-286): the security filter chain, the lambda DSL and component-based `SecurityFilterChain` beans, the modular starters, and *Advanced Request Matching* with `requestMatchers` per HTTP method, `hasRole` vs. `hasAuthority` and the catch-all `anyRequest().authenticated()` (Listing 11-1) → [Security Configuration](#%EF%B8%8F-security-configuration).
-- *Fine-Grained Authorization: RBAC and Method Security* (p. 287-291): `@EnableMethodSecurity`, `@PreAuthorize` with SpEL, domain-object (instance-level) security, the `@IsAdmin` meta-annotation (Listing 11-4) and `@AuthenticationPrincipal` behind a custom annotation (`@CRMUser`, Listing 11-5) → [Method Security](#-method-security-who-owns-this-customer), with `@IsAdmin`, `@IsAdminOrOwner` and `@CurrentUser`.
+- *Fine-Grained Authorization: RBAC and Method Security* (p. 287-291): `@EnableMethodSecurity`, `@PreAuthorize` with SpEL, domain-object (instance-level) security, the `@IsAdmin` meta-annotation (Listing 11-4) and `@AuthenticationPrincipal` behind a custom annotation (`@CRMUser`, Listing 11-5) → [Method Security](#-method-security-whose-order-is-this), with `@IsAdminOrOrderOwner` (PizzaStore leaves the role-only `@IsAdmin` to the URL rules) and `@CurrentUser`.
 - *Exploit Protection: CSRF and CORS* (p. 291-292, Listing 11-7) → [CORS and CSRF](#-cors-and-csrf). The book keeps CSRF on with a cookie-based token for single-page apps; PizzaStore turns it off because its token is a header, not a cookie.
 - *Secure Credential Storage: Password Encoding* (p. 292-293): BCrypt behind `PasswordEncoderFactories.createDelegatingPasswordEncoder()` (Listing 11-8), exactly what `SecurityConfig.passwordEncoder()` does → [Password Encryption](#-password-encryption).
 - *The Identity Contract* (p. 293-294): a custom `UserDetailsService` on top of the repository with the `User.withUsername(...)` builder (Listing 11-9) → [`CustomUserDetailsService`](#custom-userdetailsservice-implementation).
@@ -1858,11 +1960,12 @@ The rest of the chapter (one-time tokens, 2FA, passkeys, OIDC login, reactive se
 ✅ **JWT Authentication**: token-based, stateless  
 ✅ **User Registration & Login**: `POST /api/auth/register`, `POST /api/auth/login`  
 ✅ **Role-Based Access Control**: CUSTOMER and ADMIN roles, see the [access table](#access-control-summary)  
-✅ **Method Security**: a customer only reads and changes their own account and orders only for themselves; `GET /api/customers/me`  
+✅ **Own account under `/api/customers/me`**: the customer comes from the token, for the account, orders and favorites, and for every new order  
+✅ **Method Security**: a customer reads and cancels only their own orders (`@IsAdminOrOrderOwner`)  
 ✅ **Password Hashing**: BCrypt behind a `DelegatingPasswordEncoder`  
 ✅ **CORS** for browser front-ends on `localhost:3000` and `localhost:5173`  
 ✅ **Everything from Lessons 6a-12**, including the Open Food Facts import (admin only)  
-✅ **252 tests**, including role and ownership tests in the web slice and end-to-end tests with real tokens  
+✅ **264 tests**, including role and ownership tests in the web slice and end-to-end tests with real tokens  
 ❌ No API documentation yet: Lesson 14
 
 ### Test Accounts
@@ -1898,12 +2001,13 @@ curl -X POST http://localhost:8080/api/pizzas \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
   -d '{"name":"Secure Pizza","price":12.99,"available":true}'
 
-# Login as Emma: her own account works, Liam's does not
+# Login as Emma: her own account and orders work, Liam's order does not
 CUSTOMER_TOKEN=$(curl -s -X POST http://localhost:8080/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"emma.johnson@example.com","password":"password123"}' | jq -r '.token')
-curl http://localhost:8080/api/customers/me -H "Authorization: Bearer $CUSTOMER_TOKEN"                        # 200
-curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8080/api/customers/2 -H "Authorization: Bearer $CUSTOMER_TOKEN"   # 403
+curl http://localhost:8080/api/customers/me -H "Authorization: Bearer $CUSTOMER_TOKEN"                                     # 200
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8080/api/orders/1 -H "Authorization: Bearer $CUSTOMER_TOKEN"   # 200
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8080/api/orders/2 -H "Authorization: Bearer $CUSTOMER_TOKEN"   # 403
 ```
 
 Port 8080 taken by another application? Start with `mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=8081` and use that port in the examples.

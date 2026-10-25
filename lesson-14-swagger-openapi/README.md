@@ -54,12 +54,12 @@ The project of this lesson, [`pizzastore-with-swagger`](pizzastore-with-swagger)
 |-----------------|--------------|
 | [`pom.xml`](pizzastore-with-swagger/pom.xml) | Adds `springdoc-openapi-starter-webmvc-ui` 3.0.3 |
 | [`config/OpenApiConfig.java`](pizzastore-with-swagger/src/main/java/be/vives/pizzastore/config/OpenApiConfig.java) (new) | API metadata, servers, the `bearerAuth` security scheme, and `ProblemDetail` as the schema of every error response |
-| [`controller/*.java`](pizzastore-with-swagger/src/main/java/be/vives/pizzastore/controller) | `@Tag`, `@Operation`, `@ApiResponses`, `@Parameter`, `@SecurityRequirement` and `@ParameterObject` on every endpoint. **Only annotations**: not one line of logic changed |
+| [`controller/*.java`](pizzastore-with-swagger/src/main/java/be/vives/pizzastore/controller) | `@Tag`, `@Operation`, `@ApiResponses`, `@Parameter`, `@SecurityRequirement` and `@ParameterObject` on every endpoint, and `@Parameter(hidden = true)` on every `@CurrentUser` parameter: the e-mail address comes from the token, so Swagger UI must not ask for it. **Only annotations**: not one line of logic changed |
 | [`dto/LoginRequest.java`](pizzastore-with-swagger/src/main/java/be/vives/pizzastore/dto/LoginRequest.java), [`RegisterRequest.java`](pizzastore-with-swagger/src/main/java/be/vives/pizzastore/dto/RegisterRequest.java), [`dto/request/CreatePizzaRequest.java`](pizzastore-with-swagger/src/main/java/be/vives/pizzastore/dto/request/CreatePizzaRequest.java) | `@Schema` descriptions and examples |
 | [`security/SecurityConfig.java`](pizzastore-with-swagger/src/main/java/be/vives/pizzastore/security/SecurityConfig.java) | One extra rule: the documentation endpoints are public |
 | [`application.properties`](pizzastore-with-swagger/src/main/resources/application.properties) | `springdoc.*` settings |
 
-Services, repositories, entities, mappers, the Open Food Facts client, `data.sql` and the 252 tests are unchanged. Documentation is metadata *about* the code.
+Services, repositories, entities, mappers, the Open Food Facts client, `data.sql` and the 264 tests are unchanged. Documentation is metadata *about* the code.
 
 ---
 
@@ -442,7 +442,7 @@ public ResponseEntity<PizzaResponse> importNutritionalInfo(
 
 The description field accepts **Markdown**, so the link to Open Food Facts is clickable in Swagger UI. A client developer reading this knows, without opening our code, that a `502` is not their fault and can be retried, while a `422` means they should try another barcode. `ImportNutritionRequest` has no `@Schema` at all, yet Swagger UI shows the barcode as required with its regular expression: springdoc reads `@NotBlank` and `@Pattern` (see [Validation Annotations Integration](#validation-annotations-integration)).
 
-> **`401` or `403`?** The two are documented separately because PizzaStore really returns both: `401 Unauthorized` when the token is missing, expired or invalid (the `HttpStatusEntryPoint` of [Lesson 13's `SecurityConfig`](../lesson-13-jwt-authentication/README.md#key-points)), `403 Forbidden` when a logged-in user lacks the role. A client developer needs that difference: after a `401` the app shows the login screen again, after a `403` it doesn't.
+> **`401` or `403`?** The two are documented separately because PizzaStore really returns both: `401 Unauthorized` when the token is missing, expired or invalid (the authentication entry point of [Lesson 13's `SecurityConfig`](../lesson-13-jwt-authentication/README.md#key-points)), `403 Forbidden` when a logged-in user lacks the role or the order is not theirs. Both come as a `ProblemDetail`, like every other error of the API. A client developer needs that difference: after a `401` the app shows the login screen again, after a `403` it doesn't.
 
 ---
 
@@ -997,7 +997,7 @@ The project includes:
 ✅ **DTOs documented** with `@Schema`  
 ✅ **JWT Bearer authentication in Swagger UI**  
 ✅ **Swagger UI** at `/swagger-ui.html`, **OpenAPI spec** at `/v3/api-docs` and `/v3/api-docs.yaml`  
-✅ **252 tests** (`mvn test`)
+✅ **264 tests** (`mvn test`)
 
 ### Running the Project
 
