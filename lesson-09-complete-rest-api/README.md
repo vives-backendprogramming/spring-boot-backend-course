@@ -34,7 +34,8 @@ By the end of this lesson, you will be able to:
 12. [What Happens When Things Go Wrong?](#%EF%B8%8F-what-happens-when-things-go-wrong)
 13. [Best Practices Summary](#-best-practices-summary)
 14. [Summary](#-summary)
-15. [Runnable Project](#-runnable-project)
+15. [Additional Resources](#-additional-resources)
+16. [Runnable Project](#-runnable-project)
 
 ---
 

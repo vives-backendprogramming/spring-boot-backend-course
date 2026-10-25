@@ -45,7 +45,7 @@ By the end of this lesson, you will be able to:
 
 ## 🔄 Recap: Where Lesson 13 Left Us
 
-After [Lesson 13](../lesson-13-jwt-authentication/README.md) PizzaStore is complete: a tested REST API with validation, `ProblemDetail` errors, the Open Food Facts import and JWT security, including the customer's own account under `/api/customers/me` and order ownership. What is missing is a **description for the people who have to use it**. A front-end or mobile developer now has to read our Java code (or ask us) to know which endpoints exist, what to send, what comes back, which role is needed and which errors are possible. This lesson generates that description from the code, as an **OpenAPI 3** document, and makes it browsable and testable with **Swagger UI**.
+After [Lesson 13](../lesson-13-jwt-authentication/README.md) PizzaStore is complete: a tested REST API with validation and JWT security. What is missing is a **description for the people who have to use it**. A front-end or mobile developer now has to read our Java code (or ask us) to know which endpoints exist, what to send, what comes back, which role is needed and which errors are possible. This lesson generates that description from the code, as an **OpenAPI 3** document, and makes it browsable and testable with **Swagger UI**.
 
 ---
 
@@ -129,7 +129,7 @@ Once added, Springdoc automatically exposes:
 | `/v3/api-docs` | OpenAPI specification in JSON format |
 | `/v3/api-docs.yaml` | OpenAPI specification in YAML format |
 
-**No additional configuration is required!** The library automatically scans your controllers and generates documentation. springdoc 3 writes an **OpenAPI 3.1** document (`"openapi": "3.1.0"`, the badge next to the title in Swagger UI); set `springdoc.api-docs.version=openapi_3_0` only if a tool you use still needs 3.0.
+**No additional configuration is required!** The library automatically scans your controllers and generates documentation. springdoc 3 writes an **OpenAPI 3.1** document.
 
 ---
 

@@ -48,7 +48,7 @@ By the end of this lesson, you will be able to:
 
 **JPA (Java Persistence API)** is a specification for Object-Relational Mapping (ORM) in Java — it defines annotations (`@Entity`, `@Id`, …) and an `EntityManager` API, but it is vendor-neutral: **Hibernate** is the JPA implementation Spring Boot uses by default (EclipseLink and OpenJPA are alternatives).
 
-**Spring Data JPA** builds on top of plain JPA to make it easier to use, by adding the repository abstraction from [Lesson 6](../lesson-06-spring-data/README.md#the-repository-abstraction):
+**Spring Data JPA** builds on top of plain JPA to make it easier to use, by adding the repository abstraction from [Lesson 6](../lesson-06-spring-data/README.md#-the-repository-abstraction):
 
 ```
 Application Code
@@ -383,7 +383,7 @@ public interface PizzaRepository extends JpaRepository<Pizza, Long> {
 
 ### 1. Query Methods (Derived Queries)
 
-Following the naming conventions from [Lesson 6](../lesson-06-spring-data/README.md#query-methods-and-naming-conventions), PizzaStore's `PizzaRepository` defines several derived queries:
+Following the naming conventions from [Lesson 6](../lesson-06-spring-data/README.md#-query-methods-and-naming-conventions), PizzaStore's `PizzaRepository` defines several derived queries:
 
 ```java
 // repository/PizzaRepository.java

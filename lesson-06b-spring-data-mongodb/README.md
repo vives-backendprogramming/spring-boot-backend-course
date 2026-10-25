@@ -53,7 +53,7 @@ Spring Data MongoDB gives you the exact same programming model as Spring Data JP
 
 Best practices the book calls out, and that this lesson's project follows:
 
-- **Use records or plain immutable-leaning classes** — MongoDB documents map well to immutability. This lesson's project keeps mutable classes instead, matching the style of the final PizzaStore project (see the [comparison table](#-comparison-jpa-vs-mongodb) below for why).
+- **Use records or plain immutable-leaning classes** — MongoDB documents map well to immutability. This lesson's project keeps mutable classes instead, matching the style of the final PizzaStore project (see the [comparison table](#%EF%B8%8F-comparison-jpa-vs-mongodb) below for why).
 - **Implement `Persistable`** when you assign IDs yourself, to avoid an extra existence check before every insert. This lesson lets MongoDB generate `ObjectId`-backed string IDs instead, so it doesn't come up — worth knowing about if you ever assign your own IDs.
 - **Manage indexes explicitly** with `@Indexed`, so query performance doesn't silently degrade as a collection grows.
 
@@ -108,7 +108,7 @@ The rule of thumb: **embed what you always read together and that has a bounded 
 
 ## 🗄️ The MongoRepository Interface
 
-Just like `JpaRepository<T, ID>` in Lesson 6a, `MongoRepository<T, ID>` is the module-specific specialization of the shared `Repository`/`CrudRepository` hierarchy from [Lesson 6](../lesson-06-spring-data/README.md#the-repository-abstraction) — the id type is `String` here instead of `Long`:
+Just like `JpaRepository<T, ID>` in Lesson 6a, `MongoRepository<T, ID>` is the module-specific specialization of the shared `Repository`/`CrudRepository` hierarchy from [Lesson 6](../lesson-06-spring-data/README.md#-the-repository-abstraction) — the id type is `String` here instead of `Long`:
 
 ```java
 // repository/PizzaRepository.java
@@ -119,7 +119,7 @@ public interface PizzaRepository extends MongoRepository<Pizza, String> {
 
 ## 🔍 Custom Queries
 
-Derived query methods use the exact same naming conventions from [Lesson 6](../lesson-06-spring-data/README.md#query-methods-and-naming-conventions) — Spring Data MongoDB parses the method name into a BSON query filter instead of JPQL:
+Derived query methods use the exact same naming conventions from [Lesson 6](../lesson-06-spring-data/README.md#-query-methods-and-naming-conventions) — Spring Data MongoDB parses the method name into a BSON query filter instead of JPQL:
 
 ```java
 // repository/PizzaRepository.java
