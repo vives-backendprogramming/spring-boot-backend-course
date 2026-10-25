@@ -48,9 +48,9 @@ public class PizzaController {
     @Operation(
             summary = "Get all pizzas",
             description = """
-                    Retrieves a list of all available pizzas. Supports filtering by price range and name, and pagination.
+                    Retrieves pizzas. Supports filtering by price range and name, or (without a filter) pagination.
                     
-                    **Pagination parameters** (query params):
+                    **Pagination parameters** (query params, ignored when a filter is used):
                     - `page`: Page number (0-indexed, default: 0)
                     - `size`: Items per page (default: 20)
                     - `sort`: Sort field and direction (e.g., `name,asc` or `price,desc`)
@@ -59,8 +59,11 @@ public class PizzaController {
     @ApiResponses(value = {
             @ApiResponse(
                     responseCode = "200",
-                    description = "Successfully retrieved pizzas",
-                    content = @Content(schema = @Schema(implementation = Page.class))
+                    description = """
+                            Without filter: a page of pizzas (`content` holds the PizzaResponse objects).
+                            With minPrice/maxPrice or name: a plain JSON array of PizzaResponse objects, without paging.
+                            """,
+                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = Page.class))
             )
     })
     public ResponseEntity<?> getPizzas(

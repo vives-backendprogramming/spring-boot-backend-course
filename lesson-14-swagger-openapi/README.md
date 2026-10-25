@@ -18,9 +18,11 @@
 10. [Handling Pageable Parameters](#-handling-pageable-parameters)
 11. [Accessing Swagger UI](#-accessing-swagger-ui)
 12. [Testing with Swagger UI](#-testing-with-swagger-ui)
-13. [Best Practices](#-best-practices)
-14. [Summary](#-summary)
-15. [Runnable Project](#-runnable-project)
+13. [Testing the Documentation](#-testing-the-documentation)
+14. [Best Practices](#-best-practices)
+15. [Beyond This Lesson](#-beyond-this-lesson)
+16. [Summary](#-summary)
+17. [Runnable Project](#-runnable-project)
 
 ---
 
@@ -36,13 +38,14 @@ By the end of this lesson, you will be able to:
 - ✅ Access and use Swagger UI for API testing
 - ✅ Test authenticated endpoints via Swagger UI
 - ✅ Generate OpenAPI specifications in JSON/YAML format
+- ✅ Check the generated documentation in an automated test
 - ✅ Apply best practices for API documentation
 
 ---
 
 ## 🔄 Recap: Where Lesson 13 Left Us
 
-After [Lesson 13](../lesson-13-jwt-authentication/README.md) PizzaStore is complete: a tested REST API with validation, `ProblemDetail` errors, the Open Food Facts import and JWT security. What is missing is a **description for the people who have to use it**. A front-end or mobile developer now has to read our Java code (or ask us) to know which endpoints exist, what to send, what comes back, which role is needed and which errors are possible. This lesson generates that description from the code, as an **OpenAPI 3** document, and makes it browsable and testable with **Swagger UI**.
+After [Lesson 13](../lesson-13-jwt-authentication/README.md) PizzaStore is complete: a tested REST API with validation, `ProblemDetail` errors, the Open Food Facts import and JWT security, including the customer's own account under `/api/customers/me` and order ownership. What is missing is a **description for the people who have to use it**. A front-end or mobile developer now has to read our Java code (or ask us) to know which endpoints exist, what to send, what comes back, which role is needed and which errors are possible. This lesson generates that description from the code, as an **OpenAPI 3** document, and makes it browsable and testable with **Swagger UI**.
 
 ---
 
@@ -53,13 +56,14 @@ The project of this lesson, [`pizzastore-with-swagger`](pizzastore-with-swagger)
 | Added / changed | What it does |
 |-----------------|--------------|
 | [`pom.xml`](pizzastore-with-swagger/pom.xml) | Adds `springdoc-openapi-starter-webmvc-ui` 3.0.3 |
-| [`config/OpenApiConfig.java`](pizzastore-with-swagger/src/main/java/be/vives/pizzastore/config/OpenApiConfig.java) (new) | API metadata, servers, the `bearerAuth` security scheme, and `ProblemDetail` as the schema of every error response |
+| [`config/OpenApiConfig.java`](pizzastore-with-swagger/src/main/java/be/vives/pizzastore/config/OpenApiConfig.java) (new) | API metadata, the `bearerAuth` security scheme, and `ProblemDetail` as the schema of every error response |
 | [`controller/*.java`](pizzastore-with-swagger/src/main/java/be/vives/pizzastore/controller) | `@Tag`, `@Operation`, `@ApiResponses`, `@Parameter`, `@SecurityRequirement` and `@ParameterObject` on every endpoint, and `@Parameter(hidden = true)` on every `@CurrentUser` parameter: the e-mail address comes from the token, so Swagger UI must not ask for it. **Only annotations**: not one line of logic changed |
-| [`dto/LoginRequest.java`](pizzastore-with-swagger/src/main/java/be/vives/pizzastore/dto/LoginRequest.java), [`RegisterRequest.java`](pizzastore-with-swagger/src/main/java/be/vives/pizzastore/dto/RegisterRequest.java), [`dto/request/CreatePizzaRequest.java`](pizzastore-with-swagger/src/main/java/be/vives/pizzastore/dto/request/CreatePizzaRequest.java) | `@Schema` descriptions and examples |
+| [`dto/LoginRequest.java`](pizzastore-with-swagger/src/main/java/be/vives/pizzastore/dto/LoginRequest.java), [`RegisterRequest.java`](pizzastore-with-swagger/src/main/java/be/vives/pizzastore/dto/RegisterRequest.java), [`dto/request/CreatePizzaRequest.java`](pizzastore-with-swagger/src/main/java/be/vives/pizzastore/dto/request/CreatePizzaRequest.java), [`dto/request/NutritionalInfoRequest.java`](pizzastore-with-swagger/src/main/java/be/vives/pizzastore/dto/request/NutritionalInfoRequest.java) | `@Schema` descriptions and examples, and a `minimum` that springdoc cannot derive from `@PositiveOrZero` |
 | [`security/SecurityConfig.java`](pizzastore-with-swagger/src/main/java/be/vives/pizzastore/security/SecurityConfig.java) | One extra rule: the documentation endpoints are public |
 | [`application.properties`](pizzastore-with-swagger/src/main/resources/application.properties) | `springdoc.*` settings |
+| [`OpenApiDocumentationTest.java`](pizzastore-with-swagger/src/test/java/be/vives/pizzastore/integration/OpenApiDocumentationTest.java) (new test) | Checks the generated `/v3/api-docs` (see [Testing the Documentation](#-testing-the-documentation)); the test `application.properties` gets the same `springdoc.default-produces-media-type` |
 
-Services, repositories, entities, mappers, the Open Food Facts client, `data.sql` and the 264 tests are unchanged. Documentation is metadata *about* the code.
+Services, repositories, entities, mappers, the Open Food Facts client and `data.sql` are unchanged, and so are Lesson 13's 264 tests (272 with the 8 new documentation tests). Documentation is metadata *about* the code.
 
 ---
 
@@ -107,7 +111,7 @@ Add the `springdoc-openapi-starter-webmvc-ui` dependency to your `pom.xml`:
 </dependencies>
 ```
 
-springdoc's version line follows Spring Boot: **springdoc 3.x is for Spring Boot 4** (Spring Framework 7, Jackson 3), springdoc 2.x for Spring Boot 3. Spring Boot does not manage its version, so it is set in `<properties>`.
+springdoc's version line follows Spring Boot: **springdoc 3.x is for Spring Boot 4** (Spring Framework 7, Jackson 3), springdoc 2.x for Spring Boot 3. Within 3.x, look at the minor version too: **3.0.x is built against Spring Boot 4.0** (the version of this course), 3.1.x and 3.2.x against Spring Boot 4.1. Spring Boot does not manage springdoc's version, so it is set in `<properties>`, and you upgrade it together with Spring Boot.
 
 This single dependency includes:
 - OpenAPI specification generation
@@ -125,7 +129,7 @@ Once added, Springdoc automatically exposes:
 | `/v3/api-docs` | OpenAPI specification in JSON format |
 | `/v3/api-docs.yaml` | OpenAPI specification in YAML format |
 
-**No additional configuration is required!** The library automatically scans your controllers and generates documentation.
+**No additional configuration is required!** The library automatically scans your controllers and generates documentation. springdoc 3 writes an **OpenAPI 3.1** document (`"openapi": "3.1.0"`, the badge next to the title in Swagger UI); set `springdoc.api-docs.version=openapi_3_0` only if a tool you use still needs 3.0.
 
 ---
 
@@ -147,21 +151,19 @@ Once added, Springdoc automatically exposes:
                         **Authentication**: This API uses JWT Bearer token authentication.
                         
                         **Authorization**:
-                        - **Anonymous users**: Can view available pizzas (GET /api/pizzas)
-                        - **CUSTOMER role**: Can place orders and manage their profile
-                        - **ADMIN role**: Can manage pizzas (create, update, delete) and view all orders
+                        - **Anonymous users**: Can view pizzas (GET /api/pizzas), register and log in (/api/auth)
+                        - **CUSTOMER role**: Can place orders, read and cancel their own orders, and manage their own account and favorites (/api/customers/me)
+                        - **ADMIN role**: Can manage pizzas, customers and all orders
+                        
+                        Endpoints with a lock need a token: log in, click **Authorize** and paste the token (without "Bearer ").
                         """,
                 contact = @Contact(
                         name = "VIVES",
                         email = "yves.seurynck@vives.be",
                         url = "https://www.vives.be"
                 )
-        ),
-        servers = {
-                @Server(url = "http://localhost:8080", description = "Local Development"),
-                @Server(url = "https://api.pizzastore.example.com", description = "Production")
-        },
-        security = @SecurityRequirement(name = "bearerAuth")
+        )
+        // no "servers" and no global "security": see below
 )
 @SecurityScheme(
         name = "bearerAuth",
@@ -178,10 +180,13 @@ public class OpenApiConfig {
 **Key Elements:**
 
 - `@OpenAPIDefinition`: Global API metadata
-- `@Info`: API title, version, description and contact (a `license` can be added too)
-- `@Server`: Available servers (development, staging, production); Swagger UI lets you pick one
-- `@SecurityScheme`: Authentication mechanism (JWT Bearer token)
-- `@SecurityRequirement`: Global security requirement
+- `@Info`: API title, version, description (Markdown) and contact (a `license` can be added too)
+- `@SecurityScheme`: Authentication mechanism (JWT Bearer token), referenced by its `name` from `@SecurityRequirement`
+
+Two attributes of `@OpenAPIDefinition` are **deliberately not used**:
+
+- **`servers`**: with `servers = @Server(url = "http://localhost:8080")` Swagger UI sends every "Try it out" request to port 8080, also when the application runs on another port or host. Without `servers`, springdoc adds the URL the document was requested on (`"Generated server url"`), so Swagger UI always calls the application that serves it. Declare `@Server`s only for fixed, real environments (and behind a reverse proxy, set `server.forward-headers-strategy=framework` so the generated URL is the public one).
+- **`security`**: `security = @SecurityRequirement(name = "bearerAuth")` on `@OpenAPIDefinition` is a *global* requirement: Swagger UI then shows a lock on **every** operation, also on `GET /api/pizzas`, `/api/auth/login` and `/api/auth/register`, which do not need a token. PizzaStore therefore puts `@SecurityRequirement` on the secured controllers and operations only (see [Secured Endpoints](#secured-endpoints)).
 
 ### Application Properties Configuration
 
@@ -197,6 +202,8 @@ springdoc.swagger-ui.path=/swagger-ui.html
 springdoc.swagger-ui.operations-sorter=method
 springdoc.swagger-ui.tags-sorter=alpha
 springdoc.swagger-ui.try-it-out-enabled=true
+# success responses are JSON: without this an @ApiResponse without mediaType is documented as */*
+springdoc.default-produces-media-type=application/json
 ```
 
 **Common Properties:**
@@ -209,7 +216,9 @@ springdoc.swagger-ui.try-it-out-enabled=true
 | `springdoc.swagger-ui.path` | Path for Swagger UI | `/swagger-ui.html` |
 | `springdoc.swagger-ui.operations-sorter` | Sort operations by method or alpha | - |
 | `springdoc.swagger-ui.tags-sorter` | Sort tags alphabetically | - |
-| `springdoc.swagger-ui.try-it-out-enabled` | Enable "Try it out" button | `true` |
+| `springdoc.swagger-ui.try-it-out-enabled` | Open every operation directly in "Try it out" mode (no extra click on the button) | `false` |
+| `springdoc.default-produces-media-type` | Media type of responses whose `@Content` names no `mediaType` | `*/*` |
+| `springdoc.swagger-ui.persist-authorization` | Keep the token of **Authorize** after a page reload (in the browser's local storage) | `false` |
 
 ---
 
@@ -302,11 +311,15 @@ public ResponseEntity<PizzaResponse> createPizza(@RequestBody CreatePizzaRequest
 
 The `@SecurityRequirement` annotation links an endpoint to a security scheme defined in your OpenAPI configuration. 
 
-**Key Points:**
-- **Global Security**: When applied in `@OpenAPIDefinition(security = ...)`, all endpoints are secured by default
-- **Endpoint-Level Security**: Use `@SecurityRequirement` at method level to override global settings
-- **Public Endpoints**: Use `@SecurityRequirement(name = "")` or omit the annotation to make an endpoint public (when global security is enabled)
-- **Multiple Schemes**: You can apply multiple security requirements: `security = {@SecurityRequirement(name = "bearerAuth"), @SecurityRequirement(name = "apiKey")}`
+**Where to put it:**
+- **On a controller class**: every operation of the controller gets the lock. PizzaStore does this on `OrderController`, `CustomerController` and `CurrentCustomerController`, whose endpoints all need a token
+- **On an operation**: `@Operation(security = @SecurityRequirement(name = "bearerAuth"))` or `@SecurityRequirement` on the method. `PizzaController` does this for `POST`, `PUT`, `DELETE`, the image upload and the import, because its `GET`s are public
+- **Nowhere**: the operation is public. `AuthController` and the `GET`s of `PizzaController` have no `@SecurityRequirement`, so Swagger UI shows them without a lock and sends them without a token
+- **Globally**, on `@OpenAPIDefinition(security = ...)`: every operation is secured, the public ones included. An operation can switch it off again with an empty `@SecurityRequirements` (plural, from `io.swagger.v3.oas.annotations.security`). With mostly secured endpoints that is a valid choice; PizzaStore has enough public endpoints to prefer the explicit way above
+
+The name, `"bearerAuth"`, must be the `name` of a `@SecurityScheme`. Several `@SecurityRequirement`s on one operation are **alternatives** (the client may use one of them), as in OpenAPI's `security` array.
+
+> The documentation does not secure anything: `SecurityConfig` decides who may call what. `@SecurityRequirement` only tells Swagger UI to send the token and tells the reader that a token is needed. Keep the two in sync; [`OpenApiDocumentationTest`](#-testing-the-documentation) checks that the public endpoints have no lock and the secured ones do.
 
 #### Available Security Scheme Types
 
@@ -448,183 +461,116 @@ The description field accepts **Markdown**, so the link to Open Food Facts is cl
 
 ## 🏷️ Documenting DTOs
 
+### What springdoc Already Knows
+
+springdoc builds a schema for every DTO from its Java type, **without any annotation**: the record components or getters become the properties, `Long` becomes `integer` with `format: int64`, an `enum` becomes a list of allowed values, a nested record becomes a `$ref` to its own schema. `UpdateOrderStatusRequest` has no `@Schema` at all, and still appears as:
+
+```json
+"UpdateOrderStatusRequest": {
+  "type": "object",
+  "properties": {
+    "status": { "type": "string", "enum": ["PENDING", "CONFIRMED", "PREPARING", "READY", "DELIVERED", "CANCELLED"] }
+  },
+  "required": ["status"]
+}
+```
+
+`@Schema` adds what the type cannot tell: a **description** and a realistic **example**, which Swagger UI uses to pre-fill the request body of "Try it out".
+
 ### Using @Schema on Records
 
-For request/response DTOs, use `@Schema` annotations to provide descriptions and examples:
+[`CreatePizzaRequest`](pizzastore-with-swagger/src/main/java/be/vives/pizzastore/dto/request/CreatePizzaRequest.java) (excerpt):
 
 ```java
-package be.vives.pizzastore.dto.request;
-
-import io.swagger.v3.oas.annotations.media.Schema;
-import jakarta.validation.constraints.DecimalMin;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
-
-import java.math.BigDecimal;
-
 @Schema(description = "Request object for creating a new pizza")
 public record CreatePizzaRequest(
 
         @NotBlank(message = "Pizza name is required")
-        @Schema(description = "Name of the pizza", example = "Margherita", required = true)
+        @Schema(description = "Name of the pizza", example = "Margherita")
         String name,
 
         @NotNull(message = "Price is required")
         @DecimalMin(value = "0.01", message = "Price must be positive")
-        @Schema(description = "Price of the pizza in EUR", example = "12.50", required = true)
+        @Schema(description = "Price of the pizza in EUR", example = "12.50")
         BigDecimal price,
 
-        @Schema(description = "Description of the pizza", 
-                example = "Classic pizza with tomato sauce, mozzarella, and fresh basil")
-        String description,
+        // description, available ...
 
-        @Schema(description = "Whether the pizza is available for ordering", 
-                example = "true", 
-                defaultValue = "true")
-        Boolean available
+        @Valid
+        @Schema(description = "Nutritional information for the pizza")
+        NutritionalInfoRequest nutritionalInfo
 ) {
 }
 ```
 
-### Using @Schema on Classes
-
-For traditional Java classes:
+On a record, `@Schema` goes on the record component; on a class such as [`LoginRequest`](pizzastore-with-swagger/src/main/java/be/vives/pizzastore/dto/LoginRequest.java) and [`RegisterRequest`](pizzastore-with-swagger/src/main/java/be/vives/pizzastore/dto/RegisterRequest.java) it goes on the field:
 
 ```java
-package be.vives.pizzastore.dto;
-
-import io.swagger.v3.oas.annotations.media.Schema;
-import jakarta.validation.constraints.Email;
-import jakarta.validation.constraints.NotBlank;
-
 @Schema(description = "Request object for user login")
 public class LoginRequest {
 
     @NotBlank(message = "Email is required")
     @Email(message = "Email should be valid")
-    @Schema(description = "User's email address", 
-            example = "john.doe@example.com", 
-            required = true)
+    @Schema(description = "User's email address", example = "john.doe@example.com")
     private String email;
-
-    @NotBlank(message = "Password is required")
-    @Schema(description = "User's password", 
-            example = "password123", 
-            required = true)
-    private String password;
-
-    // Constructors, getters, setters...
+    // ...
 }
 ```
+
+> **No `required = true`.** Older examples write `@Schema(..., required = true)`. That attribute is deprecated in swagger-annotations 2.2 (its replacement is `requiredMode = Schema.RequiredMode.REQUIRED`), and in PizzaStore it is not needed at all: `@NotBlank` and `@NotNull` already make the field required in the schema, see below. One rule, written once.
+
+The response DTOs (`PizzaResponse`, `OrderResponse`, ...) have no `@Schema`: their names and types are clear enough, and springdoc documents them from the records.
 
 ### Validation Annotations Integration
 
-**Springdoc automatically reflects Bean Validation annotations in the OpenAPI specification!**
+**springdoc reads the Jakarta Bean Validation annotations of Lesson 10** and turns them into schema constraints. You document a rule once, in Java, and it shows up in the documentation. This is the schema that springdoc generates for `RegisterRequest` (from `/v3/api-docs`, descriptions and examples left out):
 
-When you add Jakarta Bean Validation annotations to your DTOs, they are automatically included in the generated OpenAPI spec, which means:
-- **Required fields** are marked as required in Swagger UI (via `@NotNull`, `@NotBlank`)
-- **String length constraints** appear in the schema (via `@Size`)
-- **Numeric ranges** are documented (via `@Min`, `@Max`, `@DecimalMin`, `@DecimalMax`)
-- **Format validations** are shown (via `@Email`, `@Pattern`)
-- **Custom error messages** help developers understand validation rules
-
-#### Example: CreatePizzaRequest
-
-```java
-package be.vives.pizzastore.dto.request;
-
-import io.swagger.v3.oas.annotations.media.Schema;
-import jakarta.validation.constraints.DecimalMin;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
-
-import java.math.BigDecimal;
-
-@Schema(description = "Request object for creating a new pizza")
-public record CreatePizzaRequest(
-
-        @NotBlank(message = "Pizza name is required")
-        @Schema(description = "Name of the pizza", example = "Margherita", required = true)
-        String name,
-
-        @NotNull(message = "Price is required")
-        @DecimalMin(value = "0.01", message = "Price must be positive")
-        @Schema(description = "Price of the pizza in EUR", example = "12.50", required = true)
-        BigDecimal price,
-
-        @Schema(description = "Description of the pizza", 
-                example = "Classic pizza with tomato sauce, mozzarella, and fresh basil")
-        String description
-) {
+```json
+"RegisterRequest": {
+  "type": "object",
+  "properties": {
+    "name":     { "type": "string", "minLength": 2, "maxLength": 100 },
+    "email":    { "type": "string", "format": "email", "minLength": 1 },
+    "password": { "type": "string", "minLength": 6, "maxLength": 100 },
+    "phone":    { "type": "string", "pattern": "^\\+?[0-9 ]{10,16}$" },
+    "address":  { "type": "string", "minLength": 0, "maxLength": 200 }
+  },
+  "required": ["email", "name", "password"]
 }
 ```
 
-#### Example: RegisterRequest
+In Swagger UI a required field gets a red asterisk, and the **Schema** tab of the request body shows the lengths, the pattern and the format.
 
-```java
-package be.vives.pizzastore.dto;
+**How PizzaStore's constraints end up in the schema** (checked against the generated `/v3/api-docs`):
 
-import io.swagger.v3.oas.annotations.media.Schema;
-import jakarta.validation.constraints.Email;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Pattern;
-import jakarta.validation.constraints.Size;
+| Jakarta Validation annotation | In the OpenAPI schema | Example in PizzaStore |
+|-------------------------------|------------------------|-----------------------|
+| `@NotNull` | field in `required` | `UpdateOrderStatusRequest.status` |
+| `@NotBlank` | field in `required` + `minLength: 1` | `LoginRequest.email` |
+| `@NotEmpty` (collection) | field in `required` | `CreateOrderRequest.orderLines` |
+| `@Size(min = x, max = y)` | `minLength`/`maxLength` (string), `minItems`/`maxItems` (collection) | `RegisterRequest.name`: 2-100 |
+| `@Min(value)` | `minimum` | `OrderLineRequest.quantity`: 1 |
+| `@DecimalMin(value)` | `minimum` | `CreatePizzaRequest.price`: 0.01 |
+| `@Pattern(regexp)` | `pattern` | `ImportNutritionRequest.barcode` |
+| `@Email` | `format: email` | `RegisterRequest.email` |
+| `@PositiveOrZero` | **nothing** | `NutritionalInfoRequest` (see below) |
 
-@Schema(description = "Request object for user registration")
-public class RegisterRequest {
+The validation **messages** (`"Email is required"`) are not part of the schema: they only appear in the `ProblemDetail` of a `400`.
 
-    @NotBlank(message = "Name is required")
-    @Size(min = 2, max = 100, message = "Name must be between 2 and 100 characters")
-    @Schema(description = "User's full name", example = "John Doe", required = true)
-    private String name;
+### When the Annotations Are Not Enough
 
-    @NotBlank(message = "Email is required")
-    @Email(message = "Email should be valid")
-    @Schema(description = "User's email address", example = "john.doe@example.com", required = true)
-    private String email;
+The translation is good, not complete, so **look at the generated document** instead of assuming. Two cases in PizzaStore:
 
-    @NotBlank(message = "Password is required")
-    @Size(min = 6, max = 100, message = "Password must be at least 6 characters")
-    @Schema(description = "User's password (minimum 6 characters)", example = "password123", required = true)
-    private String password;
+- **`@PositiveOrZero` is not translated** by springdoc 3.0. [`NutritionalInfoRequest`](pizzastore-with-swagger/src/main/java/be/vives/pizzastore/dto/request/NutritionalInfoRequest.java) therefore states the minimum itself:
 
-    @Pattern(regexp = "^\\+?[0-9 ]{10,16}$", message = "Phone number should be valid")
-    @Schema(description = "User's phone number", example = "+32 456 78 90 12")
-    private String phone;
+  ```java
+  @PositiveOrZero(message = "Calories cannot be negative")
+  @Schema(description = "Energy in kcal", example = "250", minimum = "0")
+  Integer calories,
+  ```
 
-    @Size(max = 200, message = "Address must not exceed 200 characters")
-    @Schema(description = "User's address", example = "123 Main Street, Brussels")
-    private String address;
-
-    // Constructors, getters, setters...
-}
-```
-
-#### How Validation Appears in OpenAPI/Swagger UI
-
-When you open the Swagger UI and look at these request schemas, you'll see:
-
-1. **Required fields** are marked with a red asterisk (*) and listed in the "required" array
-2. **String length** constraints show `minLength` and `maxLength` properties
-3. **Numeric constraints** show `minimum`, `maximum`, and `exclusiveMinimum` properties
-4. **Pattern validation** shows the regex pattern
-5. **Format validation** shows the format type (e.g., `format: email`)
-6. **Example values** help developers understand expected input
-
-**Key Validation Annotations and Their OpenAPI Mappings:**
-
-| Jakarta Validation Annotation | OpenAPI Property | Description |
-|------------------------------|------------------|-------------|
-| `@NotNull`, `@NotBlank`, `@NotEmpty` | `required: true` | Field is mandatory |
-| `@Size(min = x, max = y)` | `minLength: x, maxLength: y` | String/collection size constraints |
-| `@Min(value)`, `@Max(value)` | `minimum: value, maximum: value` | Numeric range constraints (inclusive) |
-| `@DecimalMin(value)`, `@DecimalMax(value)` | `minimum: value, maximum: value` | Decimal range constraints |
-| `@Pattern(regexp)` | `pattern: "regexp"` | Regular expression validation |
-| `@Email` | `format: "email"` | Email format validation |
-| `@Positive`, `@PositiveOrZero` | `minimum: 0` or `minimum: 1` | Positive number constraint |
-| `@Negative`, `@NegativeOrZero` | `maximum: 0` or `maximum: -1` | Negative number constraint |
-
-This automatic integration means **you document validation rules once** in your Java code, and they're automatically reflected in your API documentation—no duplication needed!
+  The validation still comes from `@PositiveOrZero`; `minimum = "0"` only documents it. [`OpenApiDocumentationTest`](#-testing-the-documentation) checks that it is there.
+- **`@NotEmpty` together with `@Size(max = 20)`** on `CreateOrderRequest.orderLines` is documented as `minItems: 0, maxItems: 20`: the default `min = 0` of `@Size` wins over the "at least one" of `@NotEmpty`. The API itself rejects an empty list (`400`), only the schema is too lenient. `@Size(min = 1, max = 20)` would document it correctly.
 
 ---
 
@@ -738,7 +684,24 @@ public ResponseEntity<?> getPizzas(
 - `sort=name,asc`
 - `sort=price,desc`
 
-This ensures Swagger generates the correct query string: `?page=0&size=10&sort=name,asc`
+This ensures Swagger generates the correct query string: `?page=0&size=10&sort=name,asc`. springdoc even documents the defaults and limits of Spring Data: `page` has `default: 0, minimum: 0`, `size` has `default: 20, minimum: 1`.
+
+### When the Return Type Says Nothing: `ResponseEntity<?>`
+
+`getPizzas` returns `ResponseEntity<?>`: a `Page<PizzaResponse>` without filter, a plain `List<PizzaResponse>` with `minPrice`/`maxPrice` or `name`. springdoc cannot derive a schema from `?`, so the `200` response must say it. PizzaStore documents the page as schema and explains both shapes in the description:
+
+```java
+@ApiResponse(
+        responseCode = "200",
+        description = """
+                Without filter: a page of pizzas (`content` holds the PizzaResponse objects).
+                With minPrice/maxPrice or name: a plain JSON array of PizzaResponse objects, without paging.
+                """,
+        content = @Content(mediaType = "application/json", schema = @Schema(implementation = Page.class))
+)
+```
+
+Documentation that needs this much explanation is often a sign of an API that could be simpler (for instance: always return a page, also when filtering). Writing the documentation is a good moment to notice that.
 
 ---
 
@@ -783,10 +746,9 @@ The Swagger UI interface displays:
 ### Testing Public Endpoints
 
 1. Open `http://localhost:8080/swagger-ui.html`
-2. Navigate to **Pizza Management** → `GET /api/pizzas`
-3. Click **"Try it out"**
-4. Click **"Execute"**
-5. View the response:
+2. Navigate to **Pizza Management** → `GET /api/pizzas` and click it open. Because of `springdoc.swagger-ui.try-it-out-enabled=true` the parameters are editable right away (without that property, click **"Try it out"** first)
+3. Click **"Execute"**
+4. View the response:
    - Status code (200)
    - Response body (JSON)
    - Response headers
@@ -797,17 +759,16 @@ For endpoints requiring authentication:
 
 #### Step 1: Log In
 
-1. Navigate to **Authentication** → `POST /api/auth/login`
-2. Click **"Try it out"**
-3. Fill in the request body. Creating a pizza needs the ADMIN role, so log in as the admin of `data.sql` (registering through `/api/auth/register` always gives you the CUSTOMER role):
+1. Navigate to **Authentication** → `POST /api/auth/login` (no lock: logging in needs no token)
+2. Replace the example request body. Creating a pizza needs the ADMIN role, so log in as the admin of `data.sql` (registering through `/api/auth/register` always gives you the CUSTOMER role):
    ```json
    {
      "email": "admin@pizzastore.be",
      "password": "password123"
    }
    ```
-4. Click **"Execute"**
-5. **Copy the JWT token** from the response:
+3. Click **"Execute"**
+4. **Copy the JWT token** from the response:
    ```json
    {
      "token": "eyJhbGciOiJIUzM4NCJ9...",
@@ -825,13 +786,14 @@ For endpoints requiring authentication:
 3. Click **"Authorize"**
 4. Click **"Close"**
 
+The lock icons are now closed. Swagger UI keeps the token in memory only: after a page reload you have to authorize again (unless `springdoc.swagger-ui.persist-authorization=true`, which stores it in the browser).
+
 #### Step 3: Test Secured Endpoints
 
 Now you can test secured endpoints:
 
 1. Navigate to **Pizza Management** → `POST /api/pizzas`
-2. Click **"Try it out"**
-3. Fill in the request body:
+2. Fill in the request body:
    ```json
    {
      "name": "Quattro Formaggi",
@@ -840,10 +802,63 @@ Now you can test secured endpoints:
      "available": true
    }
    ```
-4. Click **"Execute"**
-5. View the response (201 Created)
+3. Click **"Execute"**
+4. View the response (201 Created). The **Curl** box shows the request Swagger UI sent, including `-H 'Authorization: Bearer eyJ...'`
 
-The JWT token is automatically included in the `Authorization` header for all subsequent requests! Try the Open Food Facts import the same way: **Pizza Management** → `POST /api/pizzas/{id}/nutritional-info/import`, `id` = `1`, body `{ "barcode": "3017620422003" }`. Then log in as `emma.johnson@example.com`, authorize with her token and repeat: now you get the `403` that the documentation promises.
+The JWT token is automatically included in the `Authorization` header for all subsequent requests! Try the Open Food Facts import the same way: **Pizza Management** → `POST /api/pizzas/{id}/nutritional-info/import`, `id` = `1`, body `{ "barcode": "3017620422003" }`. Then log in as `emma.johnson@example.com`, authorize with her token and repeat: now you get the `403` that the documentation promises. With her token, try **My Account** → `GET /api/customers/me` as well: there is no e-mail parameter to fill in, because the server takes it from the token.
+
+---
+
+## 🔬 Testing the Documentation
+
+Swagger UI is checked by looking at it. But the OpenAPI document is also **input for other programs**: a front-end team may generate its TypeScript client from `/v3/api-docs`. A missing lock, a wrong schema or a parameter that should not be there then breaks their code, not ours. And it breaks silently: all 264 tests of Lesson 13 stay green when the documentation is wrong.
+
+[`OpenApiDocumentationTest`](pizzastore-with-swagger/src/test/java/be/vives/pizzastore/integration/OpenApiDocumentationTest.java) therefore starts the application (like the other full-stack tests of [Lesson 12](../lesson-12-testing/README.md)), fetches `/v3/api-docs` **without a token** and checks it with JSONPath:
+
+```java
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+        properties = "spring.datasource.url=jdbc:h2:mem:openapi-documentation-test")
+@AutoConfigureRestTestClient
+class OpenApiDocumentationTest {
+
+    @Autowired
+    private RestTestClient client;
+
+    @Test
+    void onlySecuredEndpoints_HaveALock() {
+        client.get().uri("/v3/api-docs")
+                .exchange()
+                .expectBody()
+                // no global security requirement: it would also put a lock on the public endpoints
+                .jsonPath("$.security").doesNotExist()
+                .jsonPath("$.paths['/api/pizzas'].get.security").doesNotExist()
+                .jsonPath("$.paths['/api/auth/login'].post.security").doesNotExist()
+                .jsonPath("$.paths['/api/pizzas'].post.security[0].bearerAuth").exists()
+                .jsonPath("$.paths['/api/customers/me'].get.security[0].bearerAuth").exists();
+                // ...
+    }
+    // ...
+}
+```
+
+Paths contain `/` and `{}`, so they are written in bracket notation: `$.paths['/api/pizzas/{id}']`. The test class checks:
+
+| Test | What it guarantees |
+|------|--------------------|
+| `apiDocs_ArePublic_AndDescribeTheJwtScheme` | `/v3/api-docs` answers `200` without a token, with the `bearerAuth` scheme (`http`, `bearer`, `JWT`) |
+| `server_IsTheUrlTheDocumentWasRequestedOn` | OpenAPI 3.1, and the server is the running application (no hardcoded port) |
+| `yamlAndSwaggerUi_ArePublic` | `/v3/api-docs.yaml` and `/swagger-ui/index.html` are reachable (the `SecurityConfig` rule) |
+| `onlySecuredEndpoints_HaveALock` | no global requirement; public endpoints without, secured endpoints with `bearerAuth` |
+| `errorResponses_AreDocumentedAsProblemDetail` | a `404`/`422` is `application/problem+json` with the `ProblemDetail` schema, a `200` is `application/json` with the real DTO |
+| `currentUser_IsNotAParameter` | `@Parameter(hidden = true)` on `@CurrentUser`: `/api/customers/me` and `POST /api/orders` have no e-mail parameter |
+| `pageable_IsDocumentedAsSeparateQueryParameters` | `@ParameterObject`: `page` and `size` are query parameters, there is no `pageable` object |
+| `validationAnnotations_EndUpInTheSchemas` | `required`, `minLength`, `format: email`, `pattern`, and the `minimum` of `NutritionalInfoRequest` |
+
+Is the test worth it? Put `security = @SecurityRequirement(name = "bearerAuth")` back on `@OpenAPIDefinition` and `onlySecuredEndpoints_HaveALock` fails with `Expected no value at JSON path "$.security"`. Writing the test also revealed that the success responses were documented as `*/*` instead of `application/json`, which led to `springdoc.default-produces-media-type=application/json`.
+
+> **Test properties**: the tests use `src/test/resources/application.properties`, which replaces the main `application.properties`. Every `springdoc.*` setting that changes the document (here `default-produces-media-type`) must therefore be in the test properties as well, or the test checks a different document than the one the application serves.
+
+`mvn test` now runs **272 tests**: the 264 of Lesson 13 and these 8.
 
 ---
 
@@ -860,19 +875,15 @@ Provide clear, detailed descriptions for:
 ```java
 @Operation(
         summary = "Create a new order",
-        description = """
-                Creates a new order for a customer.
-                
-                Business Rules:
-                - Customer must exist
-                - All pizzas must exist and be available
-                - Order total is automatically calculated
-                - Order status starts as PENDING
-                
-                Requires CUSTOMER role.
-                """
+        description = "Creates a new order for the logged-in customer (taken from the JWT, not from the request body). Requires CUSTOMER role. Order is created with status PENDING."
 )
+@ApiResponses(value = {
+        // 201, 400, 401, 403 ...
+        @ApiResponse(responseCode = "422", description = "Business rule violation - unknown pizza or pizza not available")
+})
 ```
+
+This is `createOrder` of [`OrderController`](pizzastore-with-swagger/src/main/java/be/vives/pizzastore/controller/OrderController.java): it says *whose* order it is (a client developer would otherwise look for a `customerId` field), which role is needed and which business rules lead to which status code.
 
 ### 2. Realistic Examples
 
@@ -885,6 +896,8 @@ private String email;
 @Schema(description = "Pizza price in EUR", example = "12.50")
 private BigDecimal price;
 ```
+
+Swagger UI fills "Try it out" with these examples, so a good example is also one that the API accepts: a valid e-mail address, a price above the `@DecimalMin`.
 
 ### 3. Document All Status Codes
 
@@ -933,8 +946,9 @@ Clearly document security requirements:
 
 ### 6. Keep Documentation in Sync
 
-- Update documentation when changing endpoints
-- Review Swagger UI regularly to ensure accuracy
+- Update documentation when changing endpoints: a new status code in `GlobalExceptionHandler` or a new role rule in `SecurityConfig` belongs in the `@ApiResponses` as well
+- Let a test check what matters most (see [Testing the Documentation](#-testing-the-documentation))
+- Look at the generated `/v3/api-docs`, not only at the annotations: it is what clients see
 
 ### 7. Avoid Over-Documentation
 
@@ -955,13 +969,26 @@ Don't document obvious things:
 
 ### 8. Use Validation Annotations
 
-Leverage Bean Validation - Springdoc automatically documents them:
+Leverage Bean Validation - springdoc documents them (with the exceptions of [When the Annotations Are Not Enough](#when-the-annotations-are-not-enough)):
 
 ```java
 @NotBlank(message = "Name is required")
 @Size(min = 2, max = 100)
-private String name;  // Automatically documented!
+private String name;  // required, minLength 2, maxLength 100
 ```
+
+---
+
+## 🔭 Beyond This Lesson
+
+PizzaStore works **code-first**: the Java code is the source, the OpenAPI document is generated from it. Some topics that build on this lesson:
+
+- **API-first (contract-first)**: the team writes the OpenAPI document (YAML) *before* the code, agrees on it with the front-end team, and generates interfaces and DTOs from it with the [OpenAPI Generator](https://openapi-generator.tech/) Maven plugin. The document is then the contract, and the controllers implement the generated interfaces. Useful when several teams build against an API that does not exist yet.
+- **Generated clients**: the same OpenAPI Generator (or tools such as `openapi-typescript`) turns PizzaStore's `/v3/api-docs` into a TypeScript, Kotlin or Swift client. That is the most important reason to keep the document correct and tested.
+- **The document as a build artifact**: the `springdoc-openapi-maven-plugin`, together with the `start`/`stop` goals of the `spring-boot-maven-plugin`, runs the application during `mvn verify` and saves `/v3/api-docs` as a file, so it can be published, reviewed in a pull request or compared with the previous version to detect breaking changes.
+- **Groups**: a `GroupedOpenApi` bean splits the documentation, for instance a public group (`/api/pizzas/**`, `/api/auth/**`) and an admin group, each with its own document under `/v3/api-docs/{group}` and its own entry in Swagger UI's top bar.
+- **Production**: decide whether the documentation is public. Switch it off in a production profile with `springdoc.api-docs.enabled=false` and `springdoc.swagger-ui.enabled=false`, or keep it but remove the permit rule from `SecurityConfig`.
+- **Spring REST Docs**: a test-driven alternative from the Spring team: the documentation is generated from snippets that MockMvc, `WebTestClient` or REST Assured tests produce, so it can only document what a test has proven. More work than springdoc, but never out of sync.
 
 ---
 
@@ -970,18 +997,23 @@ private String name;  // Automatically documented!
 In this lesson, you learned:
 
 - ✅ How to integrate **Springdoc OpenAPI** into Spring Boot 4
-- ✅ How to configure **global API metadata** and **security schemes**
+- ✅ How to configure **global API metadata** and **security schemes**, and why PizzaStore declares no global security requirement and no fixed servers
 - ✅ How to document **controllers** with `@Operation`, `@ApiResponses`, `@Parameter`
 - ✅ How to document **error responses** once, as `ProblemDetail`, with an `OpenApiCustomizer`
-- ✅ How to document **DTOs** with `@Schema`, and how validation annotations end up in the schema
+- ✅ How to document **DTOs** with `@Schema`, how validation annotations end up in the schema, and where that translation stops
 - ✅ How to configure **Spring Security** to allow Swagger UI access
 - ✅ How to access and use **Swagger UI** for interactive API testing
 - ✅ How to **test JWT-secured endpoints** via Swagger UI
+- ✅ How to **test the generated document** with `RestTestClient` and JSONPath
 - ✅ **Best practices** for API documentation
 
 ---
 
-**Note on the book**: *Pro Spring Boot 4* does not cover API documentation: the words OpenAPI, Swagger and springdoc do not occur in the book. This lesson is the course's own addition, based on the [springdoc-openapi documentation](https://springdoc.org/) and the [OpenAPI Specification](https://spec.openapis.org/oas/latest.html).
+**Note on the book**: *Pro Spring Boot 4* does not cover API documentation: the words OpenAPI, Swagger and springdoc do not occur in the book. This lesson is the course's own addition, based on the [springdoc-openapi documentation](https://springdoc.org/) and the [OpenAPI Specification](https://spec.openapis.org/oas/latest.html). Related material in the book:
+
+- Chapter 3, *Web Development with Spring Boot*, section *RESTful API Design and Native Versioning* (p. 63-64): the REST principles (resources as nouns, HTTP methods, meaningful status codes) that an OpenAPI document describes, and API versioning, for when the documented contract has to change.
+- Chapter 15, *Building Cloud-Native Microservices with Spring Cloud*, section *Consumer-Driven Contract Testing* (p. 440-442): another way to make an API contract explicit, with Spring Cloud Contract. There the contract is a test that the provider must pass, which goes further than describing the API.
+- Appendix A, *Spring for GraphQL with Spring Boot*, *Best Practices* (p. 512): "Schema First", the GraphQL counterpart of the API-first approach in [Beyond This Lesson](#-beyond-this-lesson).
 
 ---
 
@@ -991,13 +1023,13 @@ In this lesson, you learned:
 
 The project includes:
 
-✅ **Spring Boot 4.0** on **Java 25**, springdoc-openapi 3.0.3  
+✅ **Spring Boot 4.0** on **Java 25**, springdoc-openapi 3.0.3 (OpenAPI 3.1)  
 ✅ **Everything from Lessons 6a-13**: domain, repositories, DTOs, services, REST API, validation, `ProblemDetail` errors, the Open Food Facts import, JWT security  
-✅ **All controllers documented** with `@Operation`, `@ApiResponses`, `@Parameter`; error responses as `ProblemDetail`  
+✅ **All controllers documented** with `@Operation`, `@ApiResponses`, `@Parameter`; error responses as `ProblemDetail`; a lock only on the secured endpoints  
 ✅ **DTOs documented** with `@Schema`  
 ✅ **JWT Bearer authentication in Swagger UI**  
 ✅ **Swagger UI** at `/swagger-ui.html`, **OpenAPI spec** at `/v3/api-docs` and `/v3/api-docs.yaml`  
-✅ **264 tests** (`mvn test`)
+✅ **272 tests** (`mvn test`): Lesson 13's 264 plus 8 that check the generated OpenAPI document
 
 ### Running the Project
 

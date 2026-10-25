@@ -4,9 +4,7 @@ import io.swagger.v3.oas.annotations.OpenAPIDefinition;
 import io.swagger.v3.oas.annotations.enums.SecuritySchemeType;
 import io.swagger.v3.oas.annotations.info.Contact;
 import io.swagger.v3.oas.annotations.info.Info;
-import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.security.SecurityScheme;
-import io.swagger.v3.oas.annotations.servers.Server;
 import io.swagger.v3.core.converter.ModelConverters;
 import io.swagger.v3.oas.models.media.Content;
 import io.swagger.v3.oas.models.media.MediaType;
@@ -27,21 +25,21 @@ import org.springframework.http.ProblemDetail;
                         **Authentication**: This API uses JWT Bearer token authentication.
                         
                         **Authorization**:
-                        - **Anonymous users**: Can view available pizzas (GET /api/pizzas)
-                        - **CUSTOMER role**: Can place orders and manage their profile
-                        - **ADMIN role**: Can manage pizzas (create, update, delete) and view all orders
+                        - **Anonymous users**: Can view pizzas (GET /api/pizzas), register and log in (/api/auth)
+                        - **CUSTOMER role**: Can place orders, read and cancel their own orders, and manage their own account and favorites (/api/customers/me)
+                        - **ADMIN role**: Can manage pizzas, customers and all orders
+                        
+                        Endpoints with a lock need a token: log in, click **Authorize** and paste the token (without "Bearer ").
                         """,
                 contact = @Contact(
                         name = "VIVES",
                         email = "yves.seurynck@vives.be",
                         url = "https://www.vives.be"
                 )
-        ),
-        servers = {
-                @Server(url = "http://localhost:8080", description = "Local Development"),
-                @Server(url = "https://api.pizzastore.example.com", description = "Production")
-        },
-        security = @SecurityRequirement(name = "bearerAuth")
+        )
+        // no "servers": springdoc then uses the URL the document was requested on, so "Try it out" works on any host and port
+        // no global "security = @SecurityRequirement(...)": that would put a lock on the public endpoints too.
+        // The secured controllers and operations declare @SecurityRequirement(name = "bearerAuth") themselves.
 )
 @SecurityScheme(
         name = "bearerAuth",
