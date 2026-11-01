@@ -27,6 +27,7 @@ This exercise continues directly on the **SchoolAdministration** project from th
 By the end of this exercise, you will have:
 
 - Externalized configuration values with `@Value` and an `application.properties` file
+- Kept a secret (the database password) out of the code **and** out of `application.properties` by reading it from an environment variable
 - Registered a properties file with `@PropertySource`, plus a `PropertySourcesPlaceholderConfigurer` bean so a missing property fails at startup instead of silently
 - Replaced `System.out.println` with proper **SLF4J + Logback** logging
 - Introduced an interface to allow `@Profile` to swap two implementations of the same contract at runtime
@@ -36,22 +37,23 @@ By the end of this exercise, you will have:
 
 ## 🚀 Getting Started
 
-Continue in the same project you built in Lesson 2. `DummyDataSource` currently just prints a message and returns `null` from `getConnection()` — you're about to make it read real (fictional) credentials from a properties file.
+Continue in the same project you built in Lesson 2. `DummyDataSource` currently just prints a message and returns `null` from `getConnection()` — you're about to make it read (fictional) connection settings from a properties file, and the password from an environment variable.
 
 ---
 
 ## 🔧 Part 1: Externalizing the Datasource Credentials
 
 1. Create a `resources` folder under `src/main`. In IntelliJ, right-click it → **Mark Directory as → Resources Root**.
-2. Create `src/main/resources/application.properties` with these three fictional database credentials:
+2. Create `src/main/resources/application.properties` with these two fictional connection settings:
 
    ```properties
    datasource.username=admin
-   datasource.password=PazzW0rt
    datasource.url=jdbc:sqlserver://not-a-real-student-database.database.windows.net:1433;database=Students
    ```
 
    These don't point to a real database — `DummyDataSource` only *pretends* to connect. `getConnection()` should still return `null`, exactly as before.
+
+   **The password does not go in this file.** `application.properties` is committed to Git together with your code, so everyone with access to the repository could read it (see [Passwords and Other Secrets](README.md#passwords-and-other-secrets)). It comes from an environment variable instead.
 
 3. Register the file with Spring by adding `@PropertySource` to `ApplicationConfiguration` — **and add the `PropertySourcesPlaceholderConfigurer` bean**. Without it, a typo in a property name doesn't fail: the field silently receives the literal text `${datasource.usernme}` (see the main [Lesson 3 README](README.md#-propertysource) for why):
 
@@ -70,18 +72,20 @@ Continue in the same project you built in Lesson 2. `DummyDataSource` currently 
    }
    ```
 
-4. In `DummyDataSource`, add three `@Value`-annotated fields for the properties above:
+4. In `DummyDataSource`, add three `@Value`-annotated fields: two for the properties above, one for the `DATASOURCE_PASSWORD` environment variable:
 
    ```java
    @Value("${datasource.username}")
    private String username;
 
-   @Value("${datasource.password}")
-   private String password;
-
    @Value("${datasource.url}")
    private String url;
+
+   @Value("${DATASOURCE_PASSWORD}")   // environment variable, never a value in code or in application.properties
+   private String password;
    ```
+
+5. Set the environment variable in your IntelliJ run configuration for `SchoolAdminApp`: **Run → Edit Configurations → Environment variables**, add `DATASOURCE_PASSWORD` with a fictional value of your own choice. Spring reads environment variables like any other property source (see [Where Properties Come From](README.md#-where-properties-come-from-property-sources--priority)).
 
 ---
 
@@ -104,7 +108,7 @@ The main lesson teaches **SLF4J + Logback**, not `java.util.logging` — stay co
    </dependency>
    ```
 
-2. In `DummyDataSource`, create a logger and use it in `getConnection()` to log the three injected values every time the method is called:
+2. In `DummyDataSource`, create a logger and use it in `getConnection()` to log the username and URL every time the method is called. The password is **never** logged, at no level (see the main lesson's [Logging Best Practices](README.md#-logging-best-practices)):
 
    ```java
    private static final Logger log = LoggerFactory.getLogger(DummyDataSource.class);
@@ -112,15 +116,13 @@ The main lesson teaches **SLF4J + Logback**, not `java.util.logging` — stay co
    @Override
    public Connection getConnection() throws SQLException {
        log.info("Connecting with username={}, url={}", username, url);
-       log.debug("Using password={}", password); // never log secrets at INFO or above in real code!
        return null;
    }
    ```
 
-   > **Note on the `password` log line**: logging a password is normally forbidden (see the main lesson's Logging Best Practices). It's included here at `DEBUG` level purely so you can *see* that property injection worked end to end on a fictional, non-existent database — treat it as a one-off teaching device, not a pattern to reuse.
-
-3. Run `SchoolAdminApp.main()` and confirm the three property values appear in the console log output. (Without a `logback.xml`, Logback logs at `DEBUG`, so the password line shows up — together with a lot of Spring's own debug output.)
+3. Run `SchoolAdminApp.main()` and confirm the username and URL appear in the console log output. (Without a `logback.xml`, Logback logs at `DEBUG`, so you also see a lot of Spring's own debug output.)
 4. Try the safety net: temporarily rename `datasource.url` in `application.properties` and run again — the context now fails to start with `Could not resolve placeholder 'datasource.url'`. Comment out the `PropertySourcesPlaceholderConfigurer` bean and run once more: the app starts and logs `url=${datasource.url}`. Restore both.
+5. Now remove `DATASOURCE_PASSWORD` from the run configuration and run again: the context fails to start with `Could not resolve placeholder 'DATASOURCE_PASSWORD'`. A missing secret is caught at startup, just like a missing property. Put the variable back.
 
 ---
 
@@ -206,9 +208,10 @@ Right now, `DummyEmailService` always "sends" (prints) emails, in every environm
 
 ## ✅ Verification Checklist
 
-- [ ] `application.properties` exists under `src/main/resources` (marked as Resources Root) with the three `datasource.*` properties
+- [ ] `application.properties` exists under `src/main/resources` (marked as Resources Root) with `datasource.username` and `datasource.url`, and **no password**
+- [ ] `DummyDataSource` reads the password from the `DATASOURCE_PASSWORD` environment variable, set in the IntelliJ run configuration
 - [ ] `ApplicationConfiguration` has `@PropertySource` **and** the `PropertySourcesPlaceholderConfigurer` bean
-- [ ] `DummyDataSource` logs the three injected values (via SLF4J, not `System.out.println` or `java.util.logging`) every time `getConnection()` runs
+- [ ] `DummyDataSource` logs the username and URL (via SLF4J, not `System.out.println` or `java.util.logging`) every time `getConnection()` runs, and never the password
 - [ ] `EmailService` interface exists; `TeacherService` depends on the interface, not on `DummyEmailService` directly
 - [ ] Both `DummyEmailService` (`@Profile("dev")`) and `ProdEmailService` (`@Profile("prod")`) exist and compile
 - [ ] Running with `dev` active logs the email content; running with `prod` active does not

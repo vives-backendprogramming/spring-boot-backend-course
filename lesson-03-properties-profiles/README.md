@@ -45,7 +45,7 @@ By the end of this lesson, you will be able to:
 
 ## 🔄 Recap: Where Lesson 2 Left Us
 
-In Lesson 2, the Spring container took over creating and wiring our objects. But the beans themselves still contain **hardcoded values**: a database URL, a username, a password — written straight into Java code.
+In Lesson 2, the Spring container took over creating and wiring our objects. But the beans themselves still contain **hardcoded values**: the folder where PizzaStore keeps its pizza images, the URL of the site — written straight into Java code.
 
 In real-world applications, configuration differs between environments (development, testing, production). Hardcoding these values makes applications inflexible and difficult to maintain.
 
@@ -57,18 +57,17 @@ Spring provides mechanisms to **externalize configuration** through **properties
 
 ### The Problem: Hardcoded Values
 
+PizzaStore stores uploaded pizza images in a folder and builds links to them. Both values are written straight into the code:
+
 ```java
 @Configuration
-public class DataSourceConfig {
-    
+public class StorageConfig {
+
     @Bean
-    public DataSource dataSource() {
-        DriverManagerDataSource ds = new DriverManagerDataSource();
-        ds.setDriverClassName("oracle.jdbc.driver.OracleDriver");
-        ds.setUrl("jdbc:oracle:thin:@localhost:1521:XE");
-        ds.setUsername("username");
-        ds.setPassword("password");
-        return ds;
+    public FileStorageService fileStorageService() {
+        return new FileStorageService(
+                "uploads/pizzas",            // folder for uploaded pizza images
+                "http://localhost:8080");    // base URL of the image links
     }
 }
 ```
@@ -76,9 +75,9 @@ public class DataSourceConfig {
 **Problems**:
 
 - ❌ Cannot change without recompiling
-- ❌ Different values for dev/test/prod
-- ❌ Credentials in source code (security risk!)
+- ❌ Different values for dev/test/prod: on the production server the images live in `/var/www/pizzastore/uploads/pizzas` and the links point to `https://pizzastore.example.com`
 - ❌ Hard to test with different configurations
+- ❌ And for a **secret** such as a database password it would be a security risk: hardcoded, it ends up in Git
 
 ### The Solution: Externalized Configuration
 
@@ -93,6 +92,19 @@ public class DataSourceConfig {
 
 **Property values can be injected directly into your beans using the `@Value` annotation.**
 
+### Passwords and Other Secrets
+
+A password, an API key or a token is configuration too, but it is a **secret**: it belongs **neither in the Java code nor in `application.properties`**. Both are committed to Git, and everyone with access to the repository (or to the built application) can read them.
+
+A secret comes from **outside** the application, typically an environment variable on the server. Spring reads it like any other property (see [Where Properties Come From](#-where-properties-come-from-property-sources--priority)):
+
+```java
+@Value("${DB_PASSWORD}")   // the DB_PASSWORD environment variable: never a literal value in code
+private String dbPassword;
+```
+
+That's why no example in this course contains a password: the PizzaStore production profile later reads its database credentials exactly like this.
+
 ---
 
 ## 💉 @Value Annotation
@@ -103,21 +115,14 @@ The `@Value` annotation injects property values into your Spring beans.
 
 ```java
 @Configuration
-public class DataSourceConfig {
-    
-    private String driver = "oracle.jdbc.driver.OracleDriver";
-    private String jdbcUrl = "jdbc:oracle:thin:@localhost:1521:XE";
-    private String username = "username";
-    private String password = "password";
-    
+public class StorageConfig {
+
+    private String uploadDir = "uploads/pizzas";
+    private String baseUrl = "http://localhost:8080";
+
     @Bean
-    public DataSource dataSource() {
-        DriverManagerDataSource ds = new DriverManagerDataSource();
-        ds.setDriverClassName(driver);
-        ds.setUrl(jdbcUrl);
-        ds.setUsername(username);
-        ds.setPassword(password);
-        return ds;
+    public FileStorageService fileStorageService() {
+        return new FileStorageService(uploadDir, baseUrl);
     }
 }
 ```
@@ -128,28 +133,17 @@ Still hardcoded, but better organized.
 
 ```java
 @Configuration
-public class DataSourceConfig {
-    
-    @Value("${vives.jdbc.oracle.driver}")
-    private String driver;
-    
-    @Value("${vives.jdbc.oracle.url}")
-    private String jdbcUrl;
-    
-    @Value("${vives.jdbc.oracle.username}")
-    private String username;
-    
-    @Value("${vives.jdbc.oracle.password}")
-    private String password;
-    
+public class StorageConfig {
+
+    @Value("${file.upload-dir}")
+    private String uploadDir;
+
+    @Value("${file.base-url}")
+    private String baseUrl;
+
     @Bean
-    public DataSource dataSource() {
-        DriverManagerDataSource ds = new DriverManagerDataSource();
-        ds.setDriverClassName(driver);
-        ds.setUrl(jdbcUrl);
-        ds.setUsername(username);
-        ds.setPassword(password);
-        return ds;
+    public FileStorageService fileStorageService() {
+        return new FileStorageService(uploadDir, baseUrl);
     }
 }
 ```
@@ -159,11 +153,11 @@ public class DataSourceConfig {
 ### @Value with Default Values
 
 ```java
-@Value("${server.port:8080}")
-private int serverPort;  // Uses 8080 if property not found
+@Value("${file.upload-dir:uploads/pizzas}")
+private String uploadDir;  // Uses "uploads/pizzas" if property not found
 
-@Value("${app.name:MyApp}")
-private String appName;  // Uses "MyApp" if property not found
+@Value("${pizzastore.max-pizzas-per-order:10}")
+private int maxPizzasPerOrder;  // Uses 10 if property not found
 ```
 
 **Syntax**: `@Value("${property.name:defaultValue}")`
@@ -220,12 +214,12 @@ This is exactly why the [Configuration Hierarchy](#configuration-hierarchy) at t
 Create a file named **`application.properties`** in **`src/main/resources`**:
 
 ```properties
-# Database Configuration
-vives.jdbc.oracle.driver=oracle.jdbc.driver.OracleDriver
-vives.jdbc.oracle.url=jdbc:oracle:thin:@localhost:1521:XE
-vives.jdbc.oracle.username=username
-vives.jdbc.oracle.password=password
+# Pizza image storage
+file.upload-dir=uploads/pizzas
+file.base-url=http://localhost:8080
 ```
+
+**What never goes in this file**: passwords, API keys and tokens. `application.properties` is committed to Git together with the code (see [Passwords and Other Secrets](#passwords-and-other-secrets)).
 
 **Location**: conventionally on the classpath root (`src/main/resources`) — but unlike Spring Boot later in this course, plain Spring does **not** discover this file automatically. You have to point Spring at it yourself with `@PropertySource` (see below).
 
@@ -233,17 +227,17 @@ vives.jdbc.oracle.password=password
 
 ```properties
 # Use lowercase with dots or hyphens
-app.name=PizzaStore
-app.version=1.0.0
+pizzastore.name=Mario's Pizza
+pizzastore.max-pizzas-per-order=10
 
 # Group related properties
-pizzastore.name=Mario's Pizza
-pizzastore.max-orders=100
+file.upload-dir=uploads/pizzas
+file.base-url=http://localhost:8080
 
 # Comments start with #
-# Database settings
-db.host=localhost
-db.port=5432
+# Delivery settings
+pizzastore.delivery.fee=2.50
+pizzastore.delivery.free-from=25.00
 ```
 
 **Best Practices**:
@@ -262,24 +256,24 @@ Besides `.properties`, Spring also supports **YAML** (`.yml`) as a property file
 **`application.properties`**:
 
 ```properties
-server.port=9090
-spring.application.name=demoservice
-datasource.url=jdbc:mysql://localhost:3601/db
+server.port=8080
+spring.application.name=pizzastore
+file.upload-dir=uploads/pizzas
 ```
 
 **`application.yml`** (equivalent):
 
 ```yaml
+server:
+  port: 8080
 spring:
   application:
-    name: demoservice
-server:
-  port: 9090
-datasource:
-  url: jdbc:mysql://localhost:3601/db
+    name: pizzastore
+file:
+  upload-dir: uploads/pizzas
 ```
 
-Both resolve to the exact same properties (`server.port`, `spring.application.name`, `datasource.url`) once loaded into the `Environment` — `@Value("${server.port}")` works identically regardless of which format produced the value.
+Both resolve to the exact same properties (`server.port`, `spring.application.name`, `file.upload-dir`) once loaded into the `Environment` — `@Value("${server.port}")` works identically regardless of which format produced the value.
 
 **⚠️ Does this work in plain Spring?** Not out of the box. Unlike `.properties`, plain Spring **cannot** parse a `.yml` file without an extra dependency: `org.yaml.snakeyaml` must be added to the classpath yourself. **Spring Boot**, starting in [Lesson 4](../lesson-04-spring-boot-intro/README.md), ships this dependency automatically via `spring-boot-starter`, which is why YAML "just works" there with zero extra setup.
 
@@ -307,14 +301,14 @@ public class AppConfig {
 
 **`classpath:`** refers to `src/main/resources/`
 
-**⚠️ Why the `PropertySourcesPlaceholderConfigurer` bean?** Since Spring 4.3, `@Value("${...}")` resolves against the `Environment` even without it — but *leniently*: a property that doesn't exist (a typo, a missing file) is not an error. The field silently receives the literal text `${vives.jdbc.oracle.url}`, and you only find out when the connection fails much later. With this bean registered, an unresolvable placeholder **fails at startup** with `Could not resolve placeholder 'vives.jdbc.oracle.url'`. The bean must be `static` so Spring can create it very early, before the beans that use `@Value`. (Spring Boot registers it for you.)
+**⚠️ Why the `PropertySourcesPlaceholderConfigurer` bean?** Since Spring 4.3, `@Value("${...}")` resolves against the `Environment` even without it — but *leniently*: a property that doesn't exist (a typo, a missing file) is not an error. The field silently receives the literal text `${file.upload-dir}`, and you only find out when the connection fails much later. With this bean registered, an unresolvable placeholder **fails at startup** with `Could not resolve placeholder 'file.upload-dir'`. The bean must be `static` so Spring can create it very early, before the beans that use `@Value`. (Spring Boot registers it for you.)
 
 ### Multiple Property Sources
 
 ```java
 @Configuration
 @PropertySource("classpath:/application.properties")
-@PropertySource("classpath:/database.properties")
+@PropertySource("classpath:/delivery.properties")
 public class AppConfig {
 }
 ```
@@ -325,7 +319,7 @@ Or use `@PropertySources`:
 @Configuration
 @PropertySources({
     @PropertySource("classpath:/application.properties"),
-    @PropertySource("classpath:/database.properties")
+    @PropertySource("classpath:/delivery.properties")
 })
 public class AppConfig {
 }
@@ -378,16 +372,13 @@ Use `@Profile` to conditionally load beans based on the active profile.
 @Configuration
 @Profile("production")
 public class ProductionConfig {
-    
+
     @Bean
-    public DataSource dataSource() {
-        // Production database configuration
-        DriverManagerDataSource ds = new DriverManagerDataSource();
-        ds.setDriverClassName("org.postgresql.Driver");
-        ds.setUrl("jdbc:postgresql://prod-server:5432/pizzastore");
-        ds.setUsername("prod_user");
-        ds.setPassword("secure_password");
-        return ds;
+    public FileStorageService fileStorageService() {
+        // Production: images on the web server, links to the public site
+        return new FileStorageService(
+                "/var/www/pizzastore/uploads/pizzas",
+                "https://pizzastore.example.com");
     }
 }
 ```
@@ -440,33 +431,23 @@ public class ProductionEmailService {
 
 ```java
 @Configuration
-public class DataSourceConfig {
-    
+public class StorageConfig {
+
     @Bean
     @Profile("development")
-    public DataSource devDataSource() {
-        DriverManagerDataSource ds = new DriverManagerDataSource();
-        ds.setDriverClassName("org.h2.Driver");
-        ds.setUrl("jdbc:h2:mem:testdb");
-        ds.setUsername("sa");
-        ds.setPassword("");
-        return ds;
+    public FileStorageService devFileStorageService() {
+        return new FileStorageService("uploads/pizzas", "http://localhost:8080");
     }
-    
+
     @Bean
     @Profile("production")
-    public DataSource prodDataSource(@Value("${DB_PASSWORD}") String password) {
-        DriverManagerDataSource ds = new DriverManagerDataSource();
-        ds.setDriverClassName("org.postgresql.Driver");
-        ds.setUrl("jdbc:postgresql://prod-server:5432/pizzastore");
-        ds.setUsername("prod_user");
-        ds.setPassword(password);   // read from the DB_PASSWORD environment variable
-        return ds;
+    public FileStorageService prodFileStorageService(@Value("${file.upload-dir}") String uploadDir) {
+        return new FileStorageService(uploadDir, "https://pizzastore.example.com");
     }
 }
 ```
 
-Note that `"${DB_PASSWORD}"` only means something inside `@Value` (or a properties file): passed as a normal Java string to `setPassword(...)`, it would literally become the password.
+A bean method can take its own `@Value` parameters: in production the folder comes from a property set on the server.
 
 ---
 
